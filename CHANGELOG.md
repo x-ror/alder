@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.0.0-rc.1
+
+The release candidate for 1.0.0. From 1.0 the [stability page](https://x-ror.github.io/vscode-ruby-templates/reference/stability/) says what follows Semantic Versioning. When upgrading from 0.16, check the entries marked **Breaking**. This candidate is on GitHub (the `.vsix` files) and on npm under `next`, not on the Marketplace or Open VSX.
 
 - **Breaking:** a department's `enabled = true` in a `.ruby-templates.toml` (`[Layout]`, `[Style]`, `[Turbo]`, ...) only turns back on the rules that are on by default, cancelling an `enabled = false` from a file above. A rule that is off by default (`Layout/EmptyLines`, `Turbo/PreferTurboAttributes`, `Layout/LineLength`, ...) needs its own `[Layout.EmptyLines] enabled = true`, so rules added later can't start rewriting files.
 - **Breaking:** `disabled_diagnostics` and the `[jbuilder]` table are removed from `.ruby-templates.toml`; the file reports them as a problem that names the replacement, `[Html.ImgAlt] enabled = false` (or `exclude = [...]` for some files). The VS Code `rubyTemplates.<language>.disabledDiagnostics` settings stay.
