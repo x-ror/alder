@@ -26,7 +26,7 @@ These may change in any release:
 
 A minor version may add rules, but a project that passes `ruby-templates check` and `format --check` keeps passing:
 
-- A new formatting rule is off by default.
+- A new formatting rule is off by default, and a department's `enabled = true` doesn't turn it on: only its own `enabled = true` does.
 - A new lint rule is off by default or reports at information severity, which never fails `check`. It may be turned on, or raised, in the next major version.
 - A rule's severity may be lowered in a minor version, and raised only in a major one.
 
