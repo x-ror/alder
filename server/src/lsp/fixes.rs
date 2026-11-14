@@ -6,7 +6,7 @@ use super::{off_server_task, Backend};
 use crate::checks::Doc;
 use crate::erb::html_lint::code::IMG_MISSING_ALT;
 use crate::rails::attribute_lints::{PERMANENT_REQUIRES_ID, UNKNOWN_CONTROLLER, UNKNOWN_TARGET_OR_ACTION};
-use crate::rails::missing_translation::I18N_MISSING_KEY;
+use crate::rails::missing_translation::MISSING_TRANSLATION;
 use crate::rails::project::Project;
 use crate::rails::unknown_route::UNKNOWN_ROUTE;
 use crate::rails::{i18n, locale_edit, paths, stimulus_edit};
@@ -30,7 +30,7 @@ fn is_confident(flagged: &str, suggestion: &str) -> bool {
 
 /// Whether the quick fixes of `d` read files, which is done off the server task.
 fn reads_files(d: &Diagnostic) -> bool {
-    matches!(util::code(d), Some(I18N_MISSING_KEY | UNKNOWN_CONTROLLER | UNKNOWN_TARGET_OR_ACTION))
+    matches!(util::code(d), Some(MISSING_TRANSLATION | UNKNOWN_CONTROLLER | UNKNOWN_TARGET_OR_ACTION))
 }
 
 fn quick_fix(title: String, d: &Diagnostic, edit: WorkspaceEdit, preferred: bool) -> CodeAction {
@@ -66,7 +66,7 @@ pub(super) fn document_fixes(uri: &Uri, doc: &Doc, diagnostics: &[Diagnostic]) -
                     let route = data_str(d, "replace")?;
                     replace(d, format!("Replace with `{route}`"), route.to_string(), route)
                 }
-                I18N_MISSING_KEY => {
+                MISSING_TRANSLATION => {
                     let key = data_str(d, "suggest")?;
                     let range = util::position_to_offset(&doc.text, d.range.start)?..util::position_to_offset(&doc.text, d.range.end)?;
                     let quote = doc.text.get(range)?.chars().next().filter(|quote| matches!(quote, '"' | '\''))?;
@@ -100,7 +100,7 @@ impl Backend {
         let diagnostics: Vec<Diagnostic> = diagnostics.iter().filter(|d| reads_files(d)).cloned().collect();
         off_server_task(move || {
             let fixes = diagnostics.iter().filter_map(|d| match util::code(d)? {
-                I18N_MISSING_KEY => add_translation(&project, &path, d, can_create),
+                MISSING_TRANSLATION => add_translation(&project, &path, d, can_create),
                 UNKNOWN_CONTROLLER => create_controller(&path, d, can_create),
                 _ => add_member(&path, d),
             });
@@ -248,9 +248,10 @@ mod tests {
             fixed("<%= link_to x, usrs_path %>", &[route]),
             [("Replace with `users_path`".into(), true, "<%= link_to x, users_path %>".into())]
         );
-        let double = diagnostic("Rails/I18nMissingKey", range(0, 6, 14), json!({ "key": "a.titel", "locale": "en", "suggest": ".title" }));
+        let double =
+            diagnostic("Rails/MissingTranslation", range(0, 6, 14), json!({ "key": "a.titel", "locale": "en", "suggest": ".title" }));
         assert_eq!(fixed("<%= t(\".titel\") %>", &[double]), [("Use `.title`".into(), true, "<%= t(\".title\") %>".into())]);
-        let single = diagnostic("Rails/I18nMissingKey", range(0, 6, 14), json!({ "suggest": ".title" }));
+        let single = diagnostic("Rails/MissingTranslation", range(0, 6, 14), json!({ "suggest": ".title" }));
         assert_eq!(fixed("<%= t('.titel') %>", &[single])[0].2, "<%= t('.title') %>");
         let controller = diagnostic("Stimulus/UnknownController", range(0, 22, 27), json!({ "controller": "serch", "suggest": "search" }));
         assert_eq!(
@@ -266,7 +267,7 @@ mod tests {
         let key = |flagged: &str, suggest: &str| {
             let text = format!("<%= t(\"{flagged}\") %>");
             let end = 7 + flagged.chars().count() as u32;
-            fixed(&text, &[diagnostic("Rails/I18nMissingKey", range(0, 6, end + 1), json!({ "suggest": suggest }))])[0].1
+            fixed(&text, &[diagnostic("Rails/MissingTranslation", range(0, 6, end + 1), json!({ "suggest": suggest }))])[0].1
         };
         assert!(!key(".x", ".a"), "too short");
         assert!(!key(".ab", ".ac"), "a third of a short name");
@@ -285,13 +286,12 @@ mod tests {
     fn nothing_is_replaced_without_a_name_to_use() {
         let none = |code: &str, data: serde_json::Value| fixed("<%= t(\".titel\") %>", &[diagnostic(code, range(0, 6, 14), data)]);
         assert!(none("Rails/UnknownRoute", json!({})).is_empty());
-        assert!(none("Rails/I18nMissingKey", json!({ "suggest": null })).is_empty());
+        assert!(none("Rails/MissingTranslation", json!({ "suggest": null })).is_empty());
         assert!(none("Stimulus/UnknownController", json!({ "suggest": null })).is_empty());
         assert!(none("Stimulus/UnknownTargetOrAction", json!({ "controller": "search" })).is_empty());
         // The key isn't a string literal there: no quote to keep.
-        assert!(
-            fixed("<%= t(:titel) %>", &[diagnostic("Rails/I18nMissingKey", range(0, 6, 12), json!({ "suggest": ".title" }))]).is_empty()
-        );
+        assert!(fixed("<%= t(:titel) %>", &[diagnostic("Rails/MissingTranslation", range(0, 6, 12), json!({ "suggest": ".title" }))])
+            .is_empty());
         assert!(none("Html/ImgAlt", json!({})).is_empty());
         assert!(none("Turbo/PermanentRequiresId", json!(null)).is_empty());
     }
@@ -323,7 +323,7 @@ mod tests {
     }
 
     fn missing_key(key: &str) -> Diagnostic {
-        diagnostic("Rails/I18nMissingKey", Range::default(), json!({ "key": key, "locale": "en", "suggest": null }))
+        diagnostic("Rails/MissingTranslation", Range::default(), json!({ "key": key, "locale": "en", "suggest": null }))
     }
 
     /// The files an action edits, with what the edit made of each one's text, and the files it creates.
@@ -423,7 +423,7 @@ mod tests {
         let (root, view) = app(&[("config/application.rb", ""), ("config/locales/en.yml", "en:\n  users:\n    index: { title: Users }\n")]);
         let project = Project::unknown();
         assert!(add_translation(&project, &view, &missing_key("users.index.heading"), true).is_none());
-        let other_locale = diagnostic("Rails/I18nMissingKey", Range::default(), json!({ "key": "a.b", "locale": "fr" }));
+        let other_locale = diagnostic("Rails/MissingTranslation", Range::default(), json!({ "key": "a.b", "locale": "fr" }));
         assert!(add_translation(&project, &view, &other_locale, true).is_none());
         std::fs::remove_dir_all(root).unwrap();
     }

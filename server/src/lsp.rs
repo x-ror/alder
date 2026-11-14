@@ -2,7 +2,7 @@ mod complete;
 mod fixes;
 mod locals;
 
-use crate::checks::{diagnostics_in, Doc, STRICT_LOCALS, UNRESOLVED_RENDER};
+use crate::checks::{diagnostics_in, Doc, DIAGNOSTIC_SOURCE, STRICT_LOCALS, UNRESOLVED_RENDER};
 use crate::code_context;
 use crate::code_context::{block_locals, code_at, line_roles, render_filter};
 use crate::completion::helpers_for;
@@ -1183,7 +1183,8 @@ impl ConfigReports {
             for problem in &file.problems {
                 let (line, col) = (problem.range.start.line + 1, problem.range.start.character + 1);
                 client.log_message(MessageType::WARNING, format!("{shown}:{line}:{col}: {}", problem.message)).await;
-                diagnostics.push(Diagnostic { source: Some(SERVER_NAME.into()), ..util::warning(problem.range, problem.message.clone()) });
+                diagnostics
+                    .push(Diagnostic { source: Some(DIAGNOSTIC_SOURCE.into()), ..util::warning(problem.range, problem.message.clone()) });
             }
             let Some(uri) = util::file_uri(&file.path) else { continue };
             client.publish_diagnostics(uri.clone(), diagnostics, None).await;

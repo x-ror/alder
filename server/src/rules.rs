@@ -172,7 +172,7 @@ pub const RULES: &[Rule] = &[
     lint("Rails/RenderInLoop", "A partial rendered once per item inside a loop.", TEMPLATES),
     lint("Rails/OutputControlFlow", "Control flow in an output tag.", &[Erb]),
     lint("Rails/UnsafeOutput", "Output that skips Rails' HTML escaping.", TEMPLATES),
-    lint("Rails/I18nMissingKey", "A lazy translation key with no entry in `config/locales`.", TEMPLATES),
+    lint("Rails/MissingTranslation", "A lazy translation key with no entry in `config/locales`.", TEMPLATES),
     lint("Rails/UnknownRoute", "A `*_path` or `*_url` helper that the app's routes don't define.", TEMPLATES),
     lint("Turbo/PermanentRequiresId", "An element with `data-turbo-permanent` and no `id`.", TEMPLATES),
     lint("Stimulus/UnknownController", "A `data-controller` name that no Stimulus controller has.", TEMPLATES),

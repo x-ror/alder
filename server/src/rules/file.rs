@@ -1,6 +1,6 @@
 //! `.ruby-templates.toml`, read against the rule registry. A part that can't be read is dropped with a `Problem`; the rest is kept.
 
-use super::{by_name, departments, ChoiceOption, CountOption, Kind, ListOption, Rule};
+use super::{by_name, departments, ChoiceOption, CountOption, ListOption, Rule};
 use crate::glob::Glob;
 use crate::util::LineIndex;
 use std::ops::Range as Span;
@@ -12,12 +12,14 @@ use tower_lsp_server::ls_types::Range;
 pub const FILE_NAME: &str = ".ruby-templates.toml";
 
 /// The language tables, and the keys each takes.
-const LANGUAGE_TABLES: [(&str, &[&str]); 4] = [
-    ("erb", &["format.enabled", "format.align_comments", "diagnostics.enabled", "disabled_diagnostics"]),
-    ("haml", &["format.enabled", "diagnostics.enabled", "disabled_diagnostics"]),
-    ("slim", &["extra_engines", "format.enabled", "diagnostics.enabled", "disabled_diagnostics"]),
-    ("jbuilder", &["disabled_diagnostics"]),
+const LANGUAGE_TABLES: [(&str, &[&str]); 3] = [
+    ("erb", &["format.enabled", "format.align_comments", "diagnostics.enabled"]),
+    ("haml", &["format.enabled", "diagnostics.enabled"]),
+    ("slim", &["extra_engines", "format.enabled", "diagnostics.enabled"]),
 ];
+/// A key older versions took; it gets a problem that names the replacement.
+const REMOVED_DISABLED_DIAGNOSTICS: &str = "disabled_diagnostics";
+const SWITCH_RULE_OFF: &str = "switch a rule off with `[Html.ImgAlt] enabled = false`, or `exclude = [\"**/*.haml\"]` for some files";
 const RULE_KEYS: [&str; 3] = ["enabled", "include", "exclude"];
 
 #[derive(Debug)]
@@ -39,14 +41,12 @@ pub struct RuleTable {
     pub lists: Vec<(&'static str, Vec<String>)>,
 }
 
-/// One of `[erb]`, `[haml]`, `[slim]` (Skim too), `[jbuilder]`.
+/// One of `[erb]`, `[haml]`, `[slim]` (Skim too).
 #[derive(Debug, Default)]
 pub struct LanguageTable {
     pub format_enabled: Option<bool>,
     pub align_comments: Option<bool>,
     pub diagnostics_enabled: Option<bool>,
-    /// Rule names.
-    pub disabled_diagnostics: Option<Vec<String>>,
     pub extra_engines: Option<Vec<String>>,
 }
 
@@ -113,11 +113,13 @@ impl Reader<'_> {
             } else if let Some((section, allowed)) = LANGUAGE_TABLES.iter().find(|(section, _)| *section == name) {
                 let language = self.language(section, allowed, value);
                 file.languages.push((section, language));
+            } else if name == "jbuilder" {
+                self.problem(key.span(), format!("`[jbuilder]` is removed; {SWITCH_RULE_OFF}"));
             } else if name.starts_with(|c: char| c.is_ascii_uppercase()) || name.contains('/') {
                 self.department(file, key, value);
             } else {
                 let message = format!(
-                    "unknown key `{name}`; it takes root, exclude, the tables [erb], [haml], [slim] and [jbuilder], and a department such as [Html]"
+                    "unknown key `{name}`; it takes root, exclude, the tables [erb], [haml] and [slim], and a department such as [Html]"
                 );
                 self.problem(key.span(), message);
             }
@@ -128,6 +130,10 @@ impl Reader<'_> {
         let mut language = LanguageTable::default();
         let Some(table) = self.as_table(section, value) else { return language };
         for (path, key, value) in leaves(table, allowed) {
+            if path == REMOVED_DISABLED_DIAGNOSTICS {
+                self.problem(key.span(), format!("`{path}` is removed; {SWITCH_RULE_OFF}"));
+                continue;
+            }
             if !allowed.contains(&path.as_str()) {
                 let home = LANGUAGE_TABLES.iter().find(|(_, keys)| keys.contains(&path.as_str()));
                 let message = match home {
@@ -142,7 +148,7 @@ impl Reader<'_> {
                 "format.align_comments" => language.align_comments = self.boolean(&path, value),
                 "diagnostics.enabled" => language.diagnostics_enabled = self.boolean(&path, value),
                 "extra_engines" => language.extra_engines = self.strings(&path, value).map(|v| v.into_iter().map(|(s, _)| s).collect()),
-                _ => language.disabled_diagnostics = self.rule_names(&path, value),
+                _ => {}
             }
         }
         language
@@ -281,25 +287,6 @@ impl Reader<'_> {
         }
         Some(globs)
     }
-
-    /// Rule names; anything else is reported and dropped.
-    fn rule_names(&mut self, name: &str, value: Value) -> Option<Vec<String>> {
-        let mut names = Vec::new();
-        for (rule_name, span) in self.strings(name, value)? {
-            match by_name(&rule_name) {
-                Some(rule) if rule.kind == Kind::Lint => names.push(rule.name.to_string()),
-                Some(rule) => self.problem(
-                    span,
-                    format!("`{}` formats, it has no diagnostic; switch it in [{}]", rule.name, rule.name.replace('/', ".")),
-                ),
-                None if rule_name.contains('-') => {
-                    self.problem(span, format!("unknown rule `{rule_name}`; diagnostics are named by rule (`Html/ImgAlt`) since 0.11"))
-                }
-                None => self.problem(span, format!("unknown rule `{rule_name}`")),
-            }
-        }
-        Some(names)
-    }
 }
 
 /// The entries of `table` with tables flattened one level, as `format.enabled` is written under `[erb]`.
@@ -344,7 +331,6 @@ exclude = ["vendor/**", "tmp/**"]
 format.enabled = false
 format.align_comments = true
 diagnostics.enabled = true
-disabled_diagnostics = ["Html/ImgAlt", "Html/UnclosedElement"]
 
 [slim]
 extra_engines = ["mjml"]
@@ -362,7 +348,6 @@ exclude = ["**/*.haml"]
         assert!(file.root && file.exclude.as_ref().is_some_and(|globs| globs.len() == 2));
         let erb = &file.languages.iter().find(|(name, _)| *name == "erb").unwrap().1;
         assert_eq!((erb.format_enabled, erb.align_comments, erb.diagnostics_enabled), (Some(false), Some(true), Some(true)));
-        assert_eq!(erb.disabled_diagnostics.as_deref(), Some(&["Html/ImgAlt".to_string(), "Html/UnclosedElement".to_string()][..]));
         assert_eq!(file.languages.iter().find(|(name, _)| *name == "slim").unwrap().1.extra_engines, Some(vec!["mjml".to_string()]));
         assert_eq!(file.departments, [("Html", false)]);
         let (rule, table) = &file.rules[0];
@@ -409,16 +394,19 @@ colour = 1
     }
 
     #[test]
-    fn a_code_from_before_0_11_is_an_unknown_rule_that_says_so() {
-        let file = read("[erb]\ndisabled_diagnostics = [\"img-missing-alt\", \"Html/ImgAltt\"]\n");
+    fn disabled_diagnostics_is_removed_and_points_to_the_rule_tables() {
+        let file = read(
+            "[erb]\ndisabled_diagnostics = [\"Html/ImgAlt\"]\n[haml]\ndisabled_diagnostics = 3\n[jbuilder]\ndisabled_diagnostics = []\n",
+        );
+        let fix = "switch a rule off with `[Html.ImgAlt] enabled = false`, or `exclude = [\"**/*.haml\"]` for some files";
         assert_eq!(
             messages(&file),
             [
-                "2:25: unknown rule `img-missing-alt`; diagnostics are named by rule (`Html/ImgAlt`) since 0.11",
-                "2:44: unknown rule `Html/ImgAltt`"
+                format!("2:1: `disabled_diagnostics` is removed; {fix}"),
+                format!("4:1: `disabled_diagnostics` is removed; {fix}"),
+                format!("5:2: `[jbuilder]` is removed; {fix}"),
             ]
         );
-        assert_eq!(file.languages[0].1.disabled_diagnostics.as_deref(), Some(&[][..]));
     }
 
     #[test]
@@ -504,31 +492,21 @@ colour = 1
     }
 
     #[test]
-    fn a_formatting_rule_is_not_a_disabled_diagnostic() {
-        let file = read("[erb]\ndisabled_diagnostics = [\"Layout/EmptyLines\", \"Html/ImgAlt\"]\n");
-        assert_eq!(messages(&file), ["2:25: `Layout/EmptyLines` formats, it has no diagnostic; switch it in [Layout.EmptyLines]"]);
-        assert_eq!(file.languages[0].1.disabled_diagnostics.as_deref(), Some(&["Html/ImgAlt".to_string()][..]));
-    }
-
-    #[test]
     fn languages_take_their_own_keys() {
-        let file = read(
-            "[erb]\nextra_engines = [\"mjml\"]\nformat.enable = true\n[jbuilder]\nformat.enabled = false\n[haml]\ndisabled_diagnostics = [\"nope\", 3]\n[Nope]\n",
-        );
+        let file = read("[erb]\nextra_engines = [\"mjml\"]\nformat.enable = true\n[haml]\nformat.enabled = \"no\"\n[Nope]\n");
         assert_eq!(
             messages(&file),
             [
                 "2:1: `extra_engines` belongs in [slim]",
-                "3:8: unknown key `format.enable` in [erb]; it takes format.enabled, format.align_comments, diagnostics.enabled, disabled_diagnostics",
-                "5:8: `format.enabled` belongs in [erb]",
-                "7:24: `disabled_diagnostics` must be a list of strings",
-                "8:2: unknown department `Nope`; the departments are Syntax, Html, A11y, Rails, Turbo, Stimulus, Layout, Style",
+                "3:8: unknown key `format.enable` in [erb]; it takes format.enabled, format.align_comments, diagnostics.enabled",
+                "5:18: `format.enabled` must be true or false",
+                "6:2: unknown department `Nope`; the departments are Syntax, Html, A11y, Rails, Turbo, Stimulus, Layout, Style",
             ]
         );
         let empty_sub = read("[erb]\n[erb.unknown]\n");
         assert_eq!(
             messages(&empty_sub),
-            ["2:6: unknown key `unknown` in [erb]; it takes format.enabled, format.align_comments, diagnostics.enabled, disabled_diagnostics"]
+            ["2:6: unknown key `unknown` in [erb]; it takes format.enabled, format.align_comments, diagnostics.enabled"]
         );
     }
 

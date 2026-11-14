@@ -50,12 +50,20 @@ impl Severity {
         }
     }
 
-    /// The SARIF `level`, also used by the JSON lines.
-    fn level(self) -> &'static str {
+    /// The word the text and JSON lines use; the LSP's "Information".
+    pub fn word(self) -> &'static str {
         match self {
             Self::Error => "error",
             Self::Warning => "warning",
+            Self::Note => "info",
+        }
+    }
+
+    /// SARIF's `level` has no `info`.
+    fn level(self) -> &'static str {
+        match self {
             Self::Note => "note",
+            _ => self.word(),
         }
     }
 
@@ -101,11 +109,18 @@ impl Finding {
 }
 
 /// The 1-based line and character column of an LSP position in `text`; a leading byte order mark takes no column.
-fn character_position(text: &str, position: Position) -> (u32, u32) {
+pub fn character_position(text: &str, position: Position) -> (u32, u32) {
     let (_, line, byte) = util::line_at(text, position);
     let column = line[..byte].chars().count() as u32 + 1;
     let marked = position.line == 0 && text.starts_with(BYTE_ORDER_MARK);
     (position.line + 1, if marked { column.saturating_sub(1).max(1) } else { column })
+}
+
+/// `file:line:col: severity: message [Rule]`.
+pub fn text_line(shown: &Path, text: &str, (severity, rule, message): (Severity, Option<&str>, &str), range: Range) -> String {
+    let (line, column) = character_position(text, range.start);
+    let rule = rule.map(|rule| format!(" [{rule}]")).unwrap_or_default();
+    format!("{}:{line}:{column}: {}: {message}{rule}", shown.display(), severity.word())
 }
 
 /// Escapes a workflow command's message, or its property value when `property` (which also holds `:` and `,`).
@@ -146,7 +161,7 @@ pub fn json_line(finding: &Finding) -> String {
         "column": finding.column,
         "endLine": finding.end_line,
         "endColumn": finding.end_column,
-        "severity": finding.severity.level(),
+        "severity": finding.severity.word(),
         "rule": finding.rule,
         "message": finding.message,
     })
@@ -298,5 +313,19 @@ mod tests {
         assert_eq!(value["rule"], Value::Null);
         assert_eq!((value["line"].as_u64(), value["endColumn"].as_u64()), (Some(12), Some(18)));
         assert_eq!(value["severity"], "warning");
+        let note = Finding { severity: Severity::Note, ..finding(None, "m") };
+        let value: Value = serde_json::from_str(&json_line(&note)).unwrap();
+        assert_eq!(value["severity"], "info");
+        let log: Value = serde_json::from_str(&sarif(&[note])).unwrap();
+        assert_eq!(log["runs"][0]["results"][0]["level"], "note", "SARIF's own word");
+    }
+
+    #[test]
+    fn text_line_names_the_rule_and_counts_characters() {
+        let text = "<p>😀д<img></p>\n";
+        let range = Range::new(Position::new(0, 3 + 2 + 1), Position::new(0, 3 + 2 + 1 + 5));
+        let line = text_line(Path::new("a.erb"), text, (Severity::Note, Some("Html/ImgAlt"), "No alt"), range);
+        assert_eq!(line, "a.erb:1:6: info: No alt [Html/ImgAlt]");
+        assert_eq!(text_line(Path::new("a.erb"), text, (Severity::Error, None, "m"), range), "a.erb:1:6: error: m");
     }
 }

@@ -228,38 +228,6 @@ const onServerStarted = (listener) => {
 const notifyServer = (method, params) =>
   client?.isRunning() ? client.sendNotification(method, params) : undefined;
 
-/**
- * The server's formatting edits for `doc`: the whole document, or only the lines of `range`. `null` while the
- * server isn't running, when the request fails, or when the server leaves the file as it is (it logs why).
- */
-async function serverFormatEdits(doc, { tabSize, insertSpaces }, range) {
-  if (!client?.isRunning()) return null;
-  const c2p = client.code2ProtocolConverter;
-  // The file options vscode-languageclient sends with its own formatting requests: only those that are on.
-  const files = vscode.workspace.getConfiguration("files", doc);
-  const fileOptions = Object.fromEntries(
-    ["trimTrailingWhitespace", "insertFinalNewline", "trimFinalNewlines"]
-      .filter((key) => files.get(key) === true)
-      .map((key) => [key, true]),
-  );
-  const params = {
-    textDocument: { uri: c2p.asUri(doc.uri) },
-    options: { tabSize, insertSpaces, ...fileOptions },
-  };
-  try {
-    const edits = range
-      ? await client.sendRequest("textDocument/rangeFormatting", {
-          ...params,
-          range: c2p.asRange(range),
-        })
-      : await client.sendRequest("textDocument/formatting", params);
-    return edits && (await client.protocol2CodeConverter.asTextEdits(edits));
-  } catch (e) {
-    log(`formatting: ${e?.message ?? e}`);
-    return null;
-  }
-}
-
 /** Starts the server, restarting it on the restart command or a change to a setting it reads; returns its log. */
 function registerServer(context) {
   output = vscode.window.createOutputChannel("Ruby Templates", { log: true });
@@ -276,11 +244,4 @@ function registerServer(context) {
   void startClient(context);
 }
 
-export {
-  registerServer,
-  log,
-  serverFormatEdits,
-  stopClient,
-  onServerStarted,
-  notifyServer,
-};
+export { registerServer, log, stopClient, onServerStarted, notifyServer };

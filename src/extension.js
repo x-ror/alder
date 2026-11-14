@@ -6,7 +6,7 @@ import {
   toggleErbLineComment,
   wrapInErb,
 } from "./erbCommands.js";
-import { toggleActiveHamlLines, reindentActiveHaml } from "./hamlCommands.js";
+import { toggleActiveHamlLines } from "./hamlCommands.js";
 import { toggleSlimTag, wrapInSlim } from "./slimCommands.js";
 import { extractPartial } from "./extractPartial.js";
 import { switchRelated } from "./relatedFile.js";
@@ -25,7 +25,6 @@ const COMMANDS = {
   "rubyTemplates.extractPartial": extractPartial,
   "rubyTemplates.switchRelated": switchRelated,
   "rubyTemplates.toggleHamlPrefix": toggleActiveHamlLines,
-  "rubyTemplates.reindentHaml": reindentActiveHaml,
   "rubyTemplates.toggleSlimTag": toggleSlimTag,
   "rubyTemplates.wrapInSlim": wrapInSlim,
   // The former Slim-only id, kept for keybindings that still name it.

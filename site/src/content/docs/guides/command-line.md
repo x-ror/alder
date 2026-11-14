@@ -13,6 +13,8 @@ The same checks and formatter run outside the editor, from npm, with no gems to 
 npm install --save-dev @x-ror/ruby-templates
 ```
 
+`npx ruby-templates --version` prints the version and `--help`, also after `check` or `format`, the usage; both exit with 0.
+
 ## Check templates
 
 ```sh
@@ -22,11 +24,11 @@ npx ruby-templates check app/views
 `check` prints the diagnostics (errors and warnings) of ERB, Haml, Slim, Jbuilder and Builder templates, one per line with the file, line and column. Jbuilder and Builder views are plain Ruby: `check` reports their partial and `locals:` problems, as the editor does, and leaves their Ruby syntax errors to Ruby LSP or `ruby -c`:
 
 ```text
-app/views/users/index.html.erb:4:3: error: unexpected end-of-input, assuming it is closing the parent top level context
-app/views/users/index.html.erb:3:5: warning: `<img>` without `alt`: the alt attribute must be specified (HTML 4.8.4.4.1)
+app/views/users/index.html.erb:4:3: error: unexpected end-of-input, assuming it is closing the parent top level context [Syntax/Ruby]
+app/views/users/index.html.erb:3:5: warning: `<img>` without `alt`: the alt attribute must be specified (HTML 4.8.4.4.1) [Html/ImgAlt]
 ```
 
-It exits with 1 if there are any, or if a `.ruby-templates.toml` has a problem (printed the same way, once per file). The checks are the ones described in [Errors as you type](/vscode-ruby-templates/guides/checks/); the command line checker reads ERB as Erubi does, so `erb-percent` `%` lines are not modelled.
+The rule at the end is the name to use in a [`.ruby-templates.toml`](/vscode-ruby-templates/reference/rules/#configuration); a problem in the file itself ends in `[Config/Invalid]`. It exits with 1 if there are any, or if a `.ruby-templates.toml` has a problem (printed the same way, once per file). The checks are the ones described in [Errors as you type](/vscode-ruby-templates/guides/checks/); the command line checker reads ERB as Erubi does, so `erb-percent` `%` lines are not modelled.
 
 ## Format templates
 
@@ -86,12 +88,12 @@ Each step fails the job when the command exits with a non-zero code.
 
 | Format   | Output                                                                                                            |
 | -------- | ----------------------------------------------------------------------------------------------------------------- |
-| `text`   | `file:line:column: severity: message`, the default                                                                |
+| `text`   | `file:line:column: severity: message [Rule]`, the default                                                         |
 | `github` | GitHub Actions workflow commands, which annotate the files of a pull request                                      |
 | `sarif`  | One SARIF 2.1.0 log, for code scanning                                                                            |
 | `json`   | One JSON object per line, with `file`, `line`, `column`, `endLine`, `endColumn`, `severity`, `rule` and `message` |
 
-In `github`, `sarif` and `json` the paths are relative to the current folder, so run the command from the repository root for GitHub to find the files; SARIF carries absolute `file:` URIs, which code scanning maps to the repository. Columns count characters from 1, as GitHub shows them, and a leading byte order mark takes none; `text` keeps the editor's UTF-16 columns. These formats also carry the rule: `Html/ImgAlt` is the `title` of an annotation, the `rule` of a JSON line, and a SARIF rule with its summary and a link to the [diagnostics reference](/vscode-ruby-templates/reference/diagnostics/). A problem in a `.ruby-templates.toml` has the rule `Config/Invalid`. Errors are `error`, warnings `warning` and the Rails `info` diagnostics `notice` (`note` in SARIF and JSON). A problem in a `.ruby-templates.toml` is reported the same way, against that file, before the results of the first template that uses it.
+In `github`, `sarif` and `json` the paths are relative to the current folder, so run the command from the repository root for GitHub to find the files; SARIF carries absolute `file:` URIs, which code scanning maps to the repository. Columns count characters from 1 in every format, as GitHub shows them, and a leading byte order mark takes none. Every format carries the rule: `Html/ImgAlt` is the `title` of an annotation, the `rule` of a JSON line, and a SARIF rule with its summary and a link to the [diagnostics reference](/vscode-ruby-templates/reference/diagnostics/). A problem in a `.ruby-templates.toml` has the rule `Config/Invalid`. Errors are `error`, warnings `warning` and information (such as `Rails/InstanceVariableInPartial`) `info`, in `text` and `json`; GitHub and SARIF use their own words for it, `notice` and `note`. A problem in a `.ruby-templates.toml` is reported the same way, against that file, before the results of the first template that uses it.
 
 Annotations on the pull request:
 

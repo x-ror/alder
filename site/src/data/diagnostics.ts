@@ -686,7 +686,7 @@ export const diagnostics: Diagnostic[] = [
     column: 5,
   },
   {
-    code: "Rails/I18nMissingKey",
+    code: "Rails/MissingTranslation",
     languages: ["erb", "haml", "slim"],
     summary: "A lazy translation key with no entry in `config/locales`.",
     explanation:

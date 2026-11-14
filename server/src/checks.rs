@@ -27,6 +27,8 @@ use tower_lsp_server::ls_types::{Diagnostic, Uri};
 /// Diagnostic codes every language shares, with `ruby::generated::RUBY_SYNTAX`.
 pub(crate) const UNRESOLVED_RENDER: &str = "Rails/MissingPartial";
 pub(crate) const STRICT_LOCALS: &str = "Rails/StrictLocals";
+/// The `source` of every diagnostic, template or config problem.
+pub const DIAGNOSTIC_SOURCE: &str = "ruby-templates";
 /// Layouts take what the controller sets; their partials are the page's frame.
 const LAYOUTS_FOLDER: &str = "layouts";
 const ELEMENT_LINTS: [&str; 7] = [
@@ -121,7 +123,7 @@ pub(crate) fn diagnostics_in(
     // Rails escapes nothing in a text or other non-HTML template, so nothing is left unescaped.
     out.retain(|d| (html || util::code(d) != Some(unsafe_output::UNSAFE_OUTPUT)) && util::code(d).is_none_or(|code| rules.reports(code)));
     for d in &mut out {
-        d.source = Some(doc.lang.diagnostic_source().into());
+        d.source = Some(DIAGNOSTIC_SOURCE.into());
     }
     out
 }
@@ -148,7 +150,7 @@ fn view_lints_root(rules: &ResolvedRules, project: &Project, path: &Path) -> Opt
         attribute_lints::PERMANENT_REQUIRES_ID,
         attribute_lints::UNKNOWN_CONTROLLER,
         attribute_lints::UNKNOWN_TARGET_OR_ACTION,
-        missing_translation::I18N_MISSING_KEY,
+        missing_translation::MISSING_TRANSLATION,
         unknown_route::UNKNOWN_ROUTE,
     ];
     let views_root = paths::views_root(path)?;
@@ -203,7 +205,7 @@ fn reference_diagnostics(
         .file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| name.split('.').skip(1).any(|segment| paths::is_locale(segment) && !project.is_format(segment)));
-    if rules.reports(missing_translation::I18N_MISSING_KEY) && !localized {
+    if rules.reports(missing_translation::MISSING_TRANSLATION) && !localized {
         if let Some(catalog) = i18n::catalog(project, path) {
             out.extend(missing_translation::diagnostics(&doc.text, path, project, &catalog, tree.compiled, &tree.root));
         }
@@ -881,11 +883,11 @@ mod tests {
         let view = "app/views/users/index.html.erb";
         let options = Options::default();
         i18n::clear_catalogs();
-        assert_eq!(codes(view, &routes, &options), ["Rails/I18nMissingKey", "Rails/UnknownRoute"]);
-        assert_eq!(codes(view, &[], &options), ["Rails/I18nMissingKey"], "routes not sent");
+        assert_eq!(codes(view, &routes, &options), ["Rails/MissingTranslation", "Rails/UnknownRoute"]);
+        assert_eq!(codes(view, &[], &options), ["Rails/MissingTranslation"], "routes not sent");
         assert!(codes("lib/templates/index.html.erb", &routes, &options).is_empty(), "not a view");
         let off = Options::from_init(Some(
-            &serde_json::json!({ "erb": { "disabledDiagnostics": ["Rails/UnknownRoute", "Rails/I18nMissingKey"] } }),
+            &serde_json::json!({ "erb": { "disabledDiagnostics": ["Rails/UnknownRoute", "Rails/MissingTranslation"] } }),
         ))
         .0;
         assert!(codes(view, &routes, &off).is_empty());
@@ -910,21 +912,21 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_source_is_the_file_language() {
+    fn diagnostic_source_is_the_tool_for_every_language() {
         let root = std::env::temp_dir().join(format!("rt-source-{}", std::process::id()));
         let views = root.join("app/views/users");
         std::fs::create_dir_all(&views).unwrap();
         std::fs::write(root.join("Gemfile.lock"), format!("{GEM_LOCK}    actionview (8.0.2)\n")).unwrap();
         let render = "<%= render \"users/gone\" %>";
         let cases = [
-            ("a.html.erb", TemplateLang::Erb, "<% end %>\n<div>\n", "erb"),
-            ("b.html.erb", TemplateLang::Erb, render, "erb"),
-            ("c.haml", TemplateLang::Haml, "%p hi\n  %b x\n= render \"users/gone\"\n", "haml"),
-            ("d.slim", TemplateLang::Slim, "p\n   a\n  b\n= render \"users/gone\"\n", "slim"),
-            ("e.skim", TemplateLang::Skim, "p\n   a\n  b\n", "slim"),
-            ("f.jbuilder", TemplateLang::Ruby, "json.partial! \"users/gone\"\n", "ruby"),
+            ("a.html.erb", TemplateLang::Erb, "<% end %>\n<div>\n"),
+            ("b.html.erb", TemplateLang::Erb, render),
+            ("c.haml", TemplateLang::Haml, "%p hi\n  %b x\n= render \"users/gone\"\n"),
+            ("d.slim", TemplateLang::Slim, "p\n   a\n  b\n= render \"users/gone\"\n"),
+            ("e.skim", TemplateLang::Skim, "p\n   a\n  b\n"),
+            ("f.jbuilder", TemplateLang::Ruby, "json.partial! \"users/gone\"\n"),
         ];
-        for (name, lang, text, source) in cases {
+        for (name, lang, text) in cases {
             let uri = crate::util::file_uri(views.join(name)).unwrap();
             let found = diagnostics(
                 &uri,
@@ -933,14 +935,14 @@ mod tests {
             );
             assert!(!found.is_empty(), "{name}");
             for d in found {
-                assert_eq!(d.source.as_deref(), Some(source), "{name}: {}", d.message);
+                assert_eq!(d.source.as_deref(), Some(DIAGNOSTIC_SOURCE), "{name}: {}", d.message);
             }
         }
         let uri = crate::util::file_uri(views.join("g.html.erb")).unwrap();
         let html = Doc { lang: TemplateLang::Erb, text: "<div>\n".into(), plain_erb: false, percent_lines: false, version: 0 };
         let found = diagnostics(&uri, &html, &Options::default());
         assert_eq!(found.iter().filter_map(util::code).collect::<Vec<_>>(), [tags::code::UNCLOSED_ELEMENT]);
-        assert_eq!(found[0].source.as_deref(), Some("erb"));
+        assert_eq!(found[0].source.as_deref(), Some("ruby-templates"));
         std::fs::remove_dir_all(&root).unwrap();
     }
 

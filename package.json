@@ -471,10 +471,6 @@
         "title": "Ruby Templates: Toggle Haml Line Prefix (- / = / -#)"
       },
       {
-        "command": "rubyTemplates.reindentHaml",
-        "title": "Ruby Templates: Re-indent Haml (Document or Selection)"
-      },
-      {
         "command": "rubyTemplates.convertToSlim",
         "title": "Ruby Templates: Convert ERB/Haml → Slim"
       },
@@ -624,10 +620,6 @@
         {
           "command": "rubyTemplates.toggleHamlPrefix",
           "when": "editorLangId == haml"
-        },
-        {
-          "command": "rubyTemplates.reindentHaml",
-          "when": "editorLangId == haml"
         }
       ]
     },
@@ -725,7 +717,7 @@
               "Rails/RenderInLoop",
               "Rails/OutputControlFlow",
               "Rails/UnsafeOutput",
-              "Rails/I18nMissingKey",
+              "Rails/MissingTranslation",
               "Rails/UnknownRoute",
               "Turbo/PermanentRequiresId",
               "Stimulus/UnknownController",
@@ -773,7 +765,7 @@
               "Rails/UnusedBlockArgument",
               "Rails/RenderInLoop",
               "Rails/UnsafeOutput",
-              "Rails/I18nMissingKey",
+              "Rails/MissingTranslation",
               "Rails/UnknownRoute",
               "Turbo/PermanentRequiresId",
               "Stimulus/UnknownController",
@@ -829,7 +821,7 @@
               "Rails/UnusedBlockArgument",
               "Rails/RenderInLoop",
               "Rails/UnsafeOutput",
-              "Rails/I18nMissingKey",
+              "Rails/MissingTranslation",
               "Rails/UnknownRoute",
               "Turbo/PermanentRequiresId",
               "Stimulus/UnknownController",
