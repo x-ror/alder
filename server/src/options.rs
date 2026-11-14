@@ -1,13 +1,14 @@
-//! `initializationOptions`, from the `rubyTemplates.{slim,erb,haml,jbuilder}.*` settings.
+//! `initializationOptions`, from the `rubyTemplates.{slim,erb,haml,jbuilder,liquid}.*` settings.
 
 use crate::lang::TemplateLang;
 
 /// The settings sections with a `disabledDiagnostics` list, and the languages each covers.
-const SECTIONS: [(&str, &[TemplateLang]); 4] = [
+const SECTIONS: [(&str, &[TemplateLang]); 5] = [
     ("slim", &[TemplateLang::Slim, TemplateLang::Skim]),
     ("erb", &[TemplateLang::Erb]),
     ("haml", &[TemplateLang::Haml]),
     ("jbuilder", &[TemplateLang::Ruby]),
+    ("liquid", &[TemplateLang::Liquid]),
 ];
 /// The sections whose `diagnostics.enabled` and `format.enabled` switch their languages off.
 const SWITCHED_SECTIONS: [&str; 3] = ["erb", "haml", "slim"];

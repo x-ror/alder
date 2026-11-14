@@ -26,6 +26,7 @@ Editor settings for one template language use its language id, such as `[erb]`, 
 | `rubyTemplates.erb.disabledDiagnostics`      | `[]`    | Built-in ERB diagnostics to turn off, by rule name.                                          |
 | `rubyTemplates.haml.disabledDiagnostics`     | `[]`    | Built-in Haml diagnostics to turn off, by rule name.                                         |
 | `rubyTemplates.jbuilder.disabledDiagnostics` | `[]`    | Built-in diagnostics to turn off in Jbuilder and Builder views, by rule name.                |
+| `rubyTemplates.liquid.disabledDiagnostics`   | `[]`    | Built-in Liquid diagnostics to turn off, by rule name.                                       |
 | `rubyTemplates.slim.disabledDiagnostics`     | `[]`    | Built-in Slim diagnostics to turn off, by rule name.                                         |
 | `rubyTemplates.erb.diagnostics.enabled`      | `true`  | Show the language server's diagnostics in ERB files. Turn off to silence them all.           |
 | `rubyTemplates.haml.diagnostics.enabled`     | `true`  | Show the language server's diagnostics in Haml files. Turn off to silence them all.          |

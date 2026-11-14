@@ -22,7 +22,7 @@ The file name picks the language id, which decides the comment syntax and the `[
 | `.md.erb`                                                                                                                                           | `erb-markdown`                   | `<!-- -->`      | Markdown + Ruby   | none             | no         |
 | `.rb.erb`                                                                                                                                           | `erb-ruby`                       | `#`             | Ruby              | none             | no         |
 | `.yml.erb`, `.yaml.erb`                                                                                                                             | `erb-yaml`                       | `#`             | YAML + Ruby       | none             | no         |
-| `.liquid`, `.html.liquid`                                                                                                                           | `liquid` (experimental)          | `{% comment %}` | HTML + Liquid     | none             | no         |
+| `.liquid`, `.html.liquid`                                                                                                                           | `liquid`                         | `{% comment %}` | HTML + Liquid     | `Syntax/Liquid*` | no         |
 
 Every ERB row gets the ERB and Ruby checks and, under `app/views`, the `render` checks (`unresolved-render`, `strict-locals`). Only HTML hosts add the HTML ones (unclosed or unbalanced tags, missing `alt`, duplicate `id`), linked tag renaming and attribute completion. Any other bare `.erb` (`nginx.conf.erb`) gets the ERB and Ruby checks only.
 
@@ -80,9 +80,7 @@ Items: <%= @items.size %>
 
 ## Liquid
 
-Liquid support is experimental and not covered by the 1.0 stability guarantees: the `liquid` language id, its file extensions and its grammar may change in a minor release.
-
-`liquid` (Shopify themes, Jekyll) is highlighting, comment toggling, bracket and `{{ }}` / `{% %}` auto-closing and indentation only: none of the Rails lookups or checks apply to it.
+`liquid` (Shopify themes, Jekyll, the `liquid` gem) has highlighting, comment toggling, bracket and `{{ }}` / `{% %}` auto-closing, indentation, navigation to the files `render` and `include` name, and a check of its tags. None of the Rails lookups or checks apply to it, and it is not formatted.
 
 ```liquid title="_includes/card.html.liquid"
 {% if page.author %}
@@ -97,5 +95,22 @@ Plain `.html` files are not claimed, so Jekyll includes need an association:
   "files.associations": { "**/_includes/**/*.html": "liquid" }
 }
 ```
+
+With the association, an include opens as Liquid, with its own navigation and checks.
+
+### Navigation and completion
+
+Go to Definition, Ctrl/Cmd+click links and hover work on the name in `{% render 'card' %}`, `{% include 'card' %}`, `{% include_relative 'card.html' %}` and Jekyll's unquoted `{% include footer.html %}`. Completion offers the names inside the quotes. A dynamic name (`{{ var }}`, a variable) is left alone. Where the name is looked up:
+
+| Tag                                       | Where                                                                                                                                      |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `include` under a Jekyll site             | `_includes/<name>`; the site is the nearest folder above the file with a `_config.yml` (or `.yaml`, `.toml`)                               |
+| `include_relative`                        | `<name>`, relative to the file                                                                                                             |
+| `render` and `include` in a Shopify theme | `snippets/<name>.liquid`; the theme is the nearest folder above the file with `snippets/` and `layout/` (or `config/settings_schema.json`) |
+| `render`, and `include` without Jekyll    | `_<name>.liquid` or `_<name>.html.liquid` in the file's folder, as the `liquid` gem looks it up; `shared/card` is `shared/_card.liquid`    |
+
+### Checks
+
+The language server reports, as errors, the tags that stop a template from rendering: a `{{` or `{%` that is never closed (`Syntax/LiquidUnclosedTag`; Jekyll front matter, `{% raw %}`, `{% comment %}` and `{% doc %}` are not read), a block tag (`if`, `unless`, `for`, `case`, `capture`, `comment`, `raw`, `tablerow`, `form`, `paginate`, `highlight`, also on the lines of a `{% liquid %}` tag) without its end tag (`Syntax/LiquidUnclosedBlock`), an end tag with nothing to close (`Syntax/LiquidStrayEndTag`) and an end tag for another block (`Syntax/LiquidMismatchedEndTag`). `{% comment %}` and `{% raw %}` are not read as tags, and tags you register yourself are left alone. `ruby-templates check` reports them too, and `rubyTemplates.liquid.disabledDiagnostics` turns them off. See [Diagnostics](/vscode-ruby-templates/reference/diagnostics/).
 
 If Shopify's Liquid extension also contributes `liquid`, disable one of the two for the workspace: VS Code uses one grammar per language id.

@@ -16,6 +16,7 @@ mod helpers;
 mod html;
 mod lang;
 mod line_length;
+mod liquid;
 mod lsp;
 mod nested_interactive;
 mod options;

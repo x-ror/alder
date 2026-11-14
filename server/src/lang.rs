@@ -14,7 +14,7 @@ pub enum TemplateLang {
     Skim,
     /// Jbuilder and Builder views: plain Ruby, attached through the `ruby` language id.
     Ruby,
-    /// Liquid (Rails `liquid` gem, Jekyll): highlighted only, none of the Rails features apply.
+    /// Liquid (Rails `liquid` gem, Jekyll, Shopify): its own file lookups and tag checks; none of the Rails features apply.
     Liquid,
 }
 
