@@ -20,7 +20,7 @@ These may change in any release:
 - Which cases a rule reports, within its documented purpose: fixing false positives or catching more of the same problem is a fix.
 - `--verbose` output.
 - The language server protocol between the extension and its server: `initializationOptions`, custom requests and notifications such as `rubyTemplates/routes`, and `Diagnostic.data`. The server ships inside the extension, and other editors are not supported yet.
-- Experimental features: [Liquid](/vscode-ruby-templates/guides/file-types/#liquid), and anything a page labels experimental.
+- Experimental features: anything a page labels experimental.
 
 ## Rules in minor versions
 

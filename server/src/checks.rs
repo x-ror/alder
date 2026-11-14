@@ -7,6 +7,7 @@ use crate::erb::{html_lint, tags};
 use crate::haml;
 use crate::lang::{haml_html_host, html_host, is_partial, slim_html_host, TemplateLang};
 use crate::line_length;
+use crate::liquid;
 use crate::rails::project::{Framework, Project, Projects};
 use crate::rails::render_call::HamlPipes;
 use crate::rails::{
@@ -77,8 +78,13 @@ pub(crate) fn diagnostics_in(
 ) -> Vec<Diagnostic> {
     // Thor templates (`*.html.erb.tt`, `*.haml.tt`) mix the generator's ERB with the template's own tags or
     // lines, and their partials live outside app/views, so no check applies.
-    if doc.lang == TemplateLang::Liquid || uri.path().as_str().to_ascii_lowercase().ends_with(".tt") || !rules.diagnostics_enabled() {
+    if uri.path().as_str().to_ascii_lowercase().ends_with(".tt") || !rules.diagnostics_enabled() {
         return vec![];
+    }
+    // Liquid has none of the Rails lookups, so only its own tags are checked.
+    if doc.lang == TemplateLang::Liquid {
+        let reported = liquid::diagnostics(&doc.text).into_iter().filter(|d| util::code(d).is_none_or(|code| rules.reports(code)));
+        return reported.map(|d| Diagnostic { source: Some(DIAGNOSTIC_SOURCE.into()), ..d }).collect();
     }
     let path = util::file_path(uri);
     let project = path.as_deref().map(|path| Project::memoized(projects, path, None));
@@ -686,9 +692,13 @@ mod tests {
         let items = |lang: &str| {
             manifest["contributes"]["configuration"]["properties"][format!("rubyTemplates.{lang}.disabledDiagnostics")]["items"].clone()
         };
-        for (section, lang) in
-            [("erb", TemplateLang::Erb), ("haml", TemplateLang::Haml), ("slim", TemplateLang::Slim), ("jbuilder", TemplateLang::Ruby)]
-        {
+        for (section, lang) in [
+            ("erb", TemplateLang::Erb),
+            ("haml", TemplateLang::Haml),
+            ("slim", TemplateLang::Slim),
+            ("jbuilder", TemplateLang::Ruby),
+            ("liquid", TemplateLang::Liquid),
+        ] {
             let items = items(section);
             let listed: BTreeSet<&str> = items["enum"].as_array().unwrap().iter().map(|c| c.as_str().unwrap()).collect();
             let lints = || crate::rules::RULES.iter().filter(|rule| rule.kind == crate::rules::Kind::Lint);
@@ -711,6 +721,7 @@ mod tests {
             include_str!("rails/unknown_route.rs"),
             include_str!("haml/indent.rs"),
             include_str!("slim/indent.rs"),
+            include_str!("liquid.rs"),
         ] {
             assert!(!literal.is_match(src.split("#[cfg(test)]").next().unwrap()), "coded(…, \"literal\")");
         }

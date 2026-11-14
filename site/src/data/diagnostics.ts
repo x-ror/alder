@@ -3,13 +3,14 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export type Language = "erb" | "haml" | "slim" | "jbuilder";
+export type Language = "erb" | "haml" | "slim" | "jbuilder" | "liquid";
 
 export const LANGUAGE_NAMES: Record<Language, string> = {
   erb: "ERB",
   haml: "Haml",
   slim: "Slim",
   jbuilder: "Jbuilder",
+  liquid: "Liquid",
 };
 
 export interface Diagnostic {
@@ -475,6 +476,76 @@ export const diagnostics: Diagnostic[] = [
     message: "Expected tag",
     line: 1,
     column: 9,
+  },
+  {
+    code: "Syntax/LiquidUnclosedTag",
+    languages: ["liquid"],
+    summary: "A `{{` or `{%` with no `}}` or `%}` after it.",
+    explanation:
+      "Liquid reads the rest of the template as part of the output or tag, so it fails to render (\"Variable '{{' was not properly terminated\", \"Tag '{%' was not properly terminated\"). Checking stops at the first one, since what follows is inside it. Not reported inside `{% raw %}` and `{% comment %}`, whose content is not parsed.",
+    example: {
+      file: "_includes/card.html",
+      lang: "liquid",
+      code: `<h2>{{ page.title</h2>
+<p>{{ page.excerpt</p>
+`,
+    },
+    message: "`{{` is never closed",
+    line: 1,
+    column: 5,
+  },
+  {
+    code: "Syntax/LiquidUnclosedBlock",
+    languages: ["liquid"],
+    summary: "A block tag such as `if` or `for` with no end tag.",
+    explanation:
+      "Liquid raises \"'if' tag was never closed\" and renders nothing. Reported on the opening tag, for `if`, `unless`, `for`, `case`, `capture`, `comment`, `raw`, `tablerow`, `form`, `paginate` and `highlight`, also inside a multi-line `{% liquid %}` tag. A block left open by an end tag for an outer block is reported here too. Tags the app registers itself are not checked.",
+    example: {
+      file: "_includes/card.html",
+      lang: "liquid",
+      code: `{% if page.author %}
+  <p>{{ page.author }}</p>
+<p>{{ page.date }}</p>
+`,
+    },
+    message: "`if` is never closed; add `endif`",
+    line: 1,
+    column: 1,
+  },
+  {
+    code: "Syntax/LiquidStrayEndTag",
+    languages: ["liquid"],
+    summary: "An end tag with no open block to close.",
+    explanation:
+      "Liquid raises \"Unknown tag 'endif'\": the tag closes nothing. Often the opening tag was deleted or sits in another file; Liquid reads each template on its own.",
+    example: {
+      file: "_includes/card.html",
+      lang: "liquid",
+      code: `<p>{{ page.author }}</p>
+{% endif %}
+`,
+    },
+    message: "`endif` has no open `if` tag to close",
+    line: 2,
+    column: 1,
+  },
+  {
+    code: "Syntax/LiquidMismatchedEndTag",
+    languages: ["liquid"],
+    summary: "An end tag that doesn't match the innermost open block.",
+    explanation:
+      "Liquid raises \"'endfor' is not a valid delimiter for if tags. use endif\". When the end tag belongs to an outer block, the blocks inside it are reported as `Syntax/LiquidUnclosedBlock` instead; otherwise the end tag is taken for a typo and closes the innermost block.",
+    example: {
+      file: "_includes/card.html",
+      lang: "liquid",
+      code: `{% if page.tags %}
+  <p>{{ page.tags }}</p>
+{% endfor %}
+`,
+    },
+    message: "`endfor` doesn't close the open `if` tag; Liquid expects `endif`",
+    line: 3,
+    column: 1,
   },
   {
     code: "Syntax/Ruby",

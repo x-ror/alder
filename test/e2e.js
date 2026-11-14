@@ -330,18 +330,66 @@ const check = (label, actual, expected) => {
     [],
   );
   check(
-    "document links: none in liquid",
+    "document links: none for a liquid render without a _card.liquid",
     (
       await send("textDocument/documentLink", {
         textDocument: { uri: liquidUri },
       })
-    ).result ?? null,
-    null,
+    ).result,
+    [],
   );
   check(
-    "hover: none on a liquid render",
-    (await req("textDocument/hover", liquidUri, 0, 14)).result ?? null,
-    null,
+    "hover: a liquid render without a _card.liquid finds nothing",
+    (await req("textDocument/hover", liquidUri, 0, 14)).result.contents.value,
+    "**Render** `card`\n\nNo matching file found.",
+  );
+  const site = path.join(root, "site");
+  fs.mkdirSync(path.join(site, "_includes"), { recursive: true });
+  fs.writeFileSync(path.join(site, "_config.yml"), "title: x\n");
+  fs.writeFileSync(path.join(site, "_includes", "footer.html"), "<footer />\n");
+  fs.writeFileSync(path.join(site, "_includes", "nav.html"), "<nav />\n");
+  fs.writeFileSync(path.join(site, "_card.liquid"), "<p>{{ card }}</p>\n");
+  const pageUri = fileUri(path.join(site, "page.html.liquid"));
+  await send(
+    "textDocument/didOpen",
+    {
+      textDocument: {
+        uri: pageUri,
+        languageId: "liquid",
+        version: 1,
+        text: "{% render 'card' %}\n{% include footer.html %}\n{% include 'n",
+      },
+    },
+    true,
+  );
+  check(
+    "definition: liquid render finds _card.liquid",
+    targets(await req("textDocument/definition", pageUri, 0, 14)),
+    ["/site/_card.liquid"],
+  );
+  check(
+    "definition: jekyll include finds _includes/footer.html",
+    targets(await req("textDocument/definition", pageUri, 1, 15)),
+    ["/site/_includes/footer.html"],
+  );
+  check(
+    "document links: liquid render and include",
+    (
+      await send("textDocument/documentLink", {
+        textDocument: { uri: pageUri },
+      })
+    ).result.map((l) => rel(l.target)),
+    ["/site/_card.liquid", "/site/_includes/footer.html"],
+  );
+  check(
+    "hover: jekyll include lists its file",
+    (await req("textDocument/hover", pageUri, 1, 15)).result.contents.value,
+    "**Include** `footer.html`\n\n- `_includes/footer.html`",
+  );
+  check(
+    "completion: jekyll include names",
+    labels(await req("textDocument/completion", pageUri, 2, 14)),
+    ["nav.html"],
   );
   await send(
     "textDocument/didOpen",
@@ -639,6 +687,15 @@ const check = (label, actual, expected) => {
     "erb-percent: % lines and <% else %> form one block",
     await diagnosticsFor("file:///v/mixed.html.erb", "erb-percent", mixed),
     [],
+  );
+  check(
+    "liquid: an unclosed if is an error with its code",
+    await diagnosticsFor(
+      "file:///v/card.html.liquid",
+      "liquid",
+      "<p>{{ a }}</p>\n{% if a %}\n  b\n",
+    ),
+    ["1:Syntax/LiquidUnclosedBlock"],
   );
   check(
     "erb: the same text has a stray else",

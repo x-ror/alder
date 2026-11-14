@@ -138,11 +138,18 @@ try {
   );
   r = run(["check", liquid]);
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
-  assert.strictEqual(r.stdout, "", "Liquid has no checks");
+  assert.strictEqual(r.stdout, "", "balanced Liquid has nothing to report");
   r = run(["format", liquid]);
   assert.strictEqual(r.status, 0, r.stderr);
   assert.strictEqual(r.stdout, fs.readFileSync(liquid, "utf8"), "kept as is");
   assert.match(r.stderr, /card\.liquid: left unchanged: /);
+  fs.writeFileSync(liquid, "<p>ok</p>\n{% if a %}\n  x\n");
+  r = run(["check", liquid]);
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+  assert.match(
+    r.stdout,
+    /card\.liquid:2:1: error: `if` is never closed; add `endif` \[Syntax\/LiquidUnclosedBlock\]/,
+  );
   fs.unlinkSync(liquid);
 
   // Ruby 3.3 rejects a line that starts with `&&`; the latest grammar, used without a project Ruby, takes it.

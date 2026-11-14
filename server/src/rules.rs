@@ -5,7 +5,7 @@ pub mod resolve;
 
 use crate::lang::TemplateLang;
 use crate::line_length::LINE_LENGTH;
-use TemplateLang::{Erb, Haml, Ruby, Slim};
+use TemplateLang::{Erb, Haml, Liquid, Ruby, Slim};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -150,6 +150,10 @@ pub const RULES: &[Rule] = &[
     lint("Syntax/UnclosedAttribute", "An attribute list or value that is never closed.", HAML_SLIM),
     lint("Syntax/BadDedent", "A line un-indented to a level no open line has.", &[Slim]),
     lint("Syntax/UnknownEngine", "An embedded engine Slim doesn't know.", &[Slim]),
+    lint("Syntax/LiquidUnclosedTag", "A `{{` or `{%` with no `}}` or `%}` after it.", &[Liquid]),
+    lint("Syntax/LiquidUnclosedBlock", "A block tag such as `if` or `for` with no end tag.", &[Liquid]),
+    lint("Syntax/LiquidStrayEndTag", "An end tag with no open block to close.", &[Liquid]),
+    lint("Syntax/LiquidMismatchedEndTag", "An end tag that doesn't match the innermost open block.", &[Liquid]),
     lint("Html/UnexpectedCloseTag", "An end tag with no open element of that name.", &[Erb]),
     lint("Html/MismatchedCloseTag", "An end tag that doesn't close the innermost open element.", &[Erb]),
     lint("Html/UnclosedElement", "An element whose end tag never comes.", &[Erb]),
@@ -264,6 +268,7 @@ mod tests {
             include_str!("erb/output_control_flow.rs"),
             include_str!("haml/indent.rs"),
             include_str!("slim/indent.rs"),
+            include_str!("liquid.rs"),
             include_str!("ruby/generated.rs"),
         ];
         let declared: HashSet<&str> = sources.iter().flat_map(|src| re.captures_iter(src).map(|c| c.get(1).unwrap().as_str())).collect();

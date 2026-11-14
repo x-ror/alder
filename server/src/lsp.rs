@@ -9,6 +9,7 @@ use crate::completion::helpers_for;
 use crate::erb::output_control_flow::OUTPUT_CONTROL_FLOW;
 use crate::erb::tags;
 use crate::lang::{file_name, is_partial, TemplateLang};
+use crate::liquid;
 use crate::options::Options;
 use crate::rails::controllers::Target;
 use crate::rails::output_lints::{output_marker_edit, SILENT_HELPER, SILENT_RENDER};
@@ -340,6 +341,11 @@ impl LanguageServer for Backend {
     async fn goto_definition(&self, p: GotoDefinitionParams) -> Result<Option<GotoDefinitionResponse>> {
         let uri = p.text_document_position_params.text_document.uri;
         let pos = p.text_document_position_params.position;
+        if let Some((path, doc)) = self.liquid_doc(&uri) {
+            let (_, line, col) = util::line_at(&doc.text, pos);
+            let found = liquid::ref_at(line, col).map(|r| liquid::resolve(&path, &r)).unwrap_or_default();
+            return Ok(locations_response(found.into_iter().filter_map(file_location).collect()));
+        }
         if self.is_liquid(&uri) {
             return Ok(None);
         }
@@ -403,6 +409,16 @@ impl LanguageServer for Backend {
 
     async fn document_link(&self, p: DocumentLinkParams) -> Result<Option<Vec<DocumentLink>>> {
         let uri = p.text_document.uri;
+        if let Some((path, doc)) = self.liquid_doc(&uri) {
+            let mut links = Vec::new();
+            for (i, (_, line)) in util::lines_with_offsets(&doc.text).enumerate() {
+                for r in liquid::refs(line) {
+                    let range = util::span_range(i, line, r.start, r.end);
+                    links.extend(liquid::resolve(&path, &r).first().and_then(|target| file_link(range, target, &path)));
+                }
+            }
+            return Ok(Some(links));
+        }
         if self.is_liquid(&uri) {
             return Ok(None);
         }
@@ -439,6 +455,10 @@ impl LanguageServer for Backend {
     async fn hover(&self, p: HoverParams) -> Result<Option<Hover>> {
         let uri = p.text_document_position_params.text_document.uri;
         let pos = p.text_document_position_params.position;
+        if let Some((path, doc)) = self.liquid_doc(&uri) {
+            let (_, line, col) = util::line_at(&doc.text, pos);
+            return Ok(liquid::ref_at(line, col).and_then(|r| markdown_hover(liquid::hover(&path, &r))));
+        }
         if self.is_liquid(&uri) {
             return Ok(None);
         }
@@ -845,6 +865,14 @@ impl LanguageServer for Backend {
     async fn completion(&self, p: CompletionParams) -> Result<Option<CompletionResponse>> {
         let uri = p.text_document_position.text_document.uri;
         let pos = p.text_document_position.position;
+        if let Some((path, doc)) = self.liquid_doc(&uri) {
+            let (_, line, col) = util::line_at(&doc.text, pos);
+            let Some((tag, prefix)) = liquid::name_prefix(line, col) else { return Ok(None) };
+            let names = off_server_task(move || liquid::candidates(&path, tag)).await?;
+            let named = names.into_iter().filter(|(name, _)| name.starts_with(&prefix));
+            let items = named.map(|(name, file)| util::completion_item(name, CompletionItemKind::FILE, file_name_of(&file))).collect();
+            return Ok(Some(CompletionResponse::Array(items)));
+        }
         if self.is_liquid(&uri) {
             return Ok(None);
         }
@@ -908,9 +936,15 @@ impl Backend {
         }
     }
 
-    /// Liquid is highlighted only: every Rails lookup would misfire on it.
+    /// Liquid has its own lookups and none of Rails': every Rails one would misfire on it.
     fn is_liquid(&self, uri: &Uri) -> bool {
         self.docs.get(uri).is_some_and(|doc| doc.lang == TemplateLang::Liquid)
+    }
+
+    /// The path and a copy of the open Liquid file at `uri`.
+    fn liquid_doc(&self, uri: &Uri) -> Option<(PathBuf, Doc)> {
+        let doc = self.docs.get(uri).filter(|doc| doc.lang == TemplateLang::Liquid).map(|doc| doc.clone())?;
+        Some((util::file_path(uri)?, doc))
     }
 
     /// A copy of the open template at `uri`, so no `docs` guard is held across an `.await` (it would block the next
