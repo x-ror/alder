@@ -10,7 +10,7 @@ use ruby_prism::{CallNode, Node, Visit};
 use std::path::Path;
 use tower_lsp_server::ls_types::Diagnostic;
 
-pub(crate) const I18N_MISSING_KEY: &str = "Rails/I18nMissingKey";
+pub(crate) const MISSING_TRANSLATION: &str = "Rails/MissingTranslation";
 
 const TRANSLATIONS: [&[u8]; 2] = [b"t", b"translate"];
 /// Options that make the key resolve somewhere else, or not need an entry.
@@ -46,7 +46,7 @@ pub(crate) fn diagnostics(
             let hint = near.as_deref().map(|near| format!("; did you mean `{near}`?")).unwrap_or_default();
             let locale = catalog.default_locale();
             let message = format!("Translation `{full}` is missing in the `{locale}` locale{hint}");
-            let found = util::coded(util::warning(index.range(start, end), message), I18N_MISSING_KEY);
+            let found = util::coded(util::warning(index.range(start, end), message), MISSING_TRANSLATION);
             Some(util::with_data(found, serde_json::json!({ "key": full, "locale": locale, "suggest": near })))
         })
         .collect()

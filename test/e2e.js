@@ -916,7 +916,7 @@ const check = (label, actual, expected) => {
         ?.params.diagnostics.map((d) => d.source),
     ),
   ];
-  check("erb diagnostics source", sources(uri), ["erb"]);
+  check("diagnostics source", sources(uri), ["ruby-templates"]);
 
   const strictUri = fileUri(path.join(views, "strict", "show.html.erb"));
   await send(
@@ -1323,7 +1323,7 @@ const check = (label, actual, expected) => {
     },
     true,
   );
-  check("haml diagnostics source", sources(hamlUri), ["haml"]);
+  check("haml diagnostics source", sources(hamlUri), ["ruby-templates"]);
 
   await new Promise((r) => setTimeout(r, 200));
   const slimDiag = notes.find(
@@ -1347,7 +1347,7 @@ const check = (label, actual, expected) => {
       "8:1 Syntax/Ruby",
     ],
   );
-  check("slim diagnostics source", sources(slimUri), ["slim"]);
+  check("slim diagnostics source", sources(slimUri), ["ruby-templates"]);
 
   // Haml's Ruby is checked once Haml accepts the template: an error in code, and a `rescue` inside an `if`.
   const hamlRubyUri = fileUri(path.join(views, "users", "ruby.html.haml"));
@@ -3228,6 +3228,16 @@ const check = (label, actual, expected) => {
     ],
   );
   check(
+    "toml: problems have the rule as code",
+    rulesPublished(tomlUri)?.map((d) => d.code),
+    ["Config/Invalid"],
+  );
+  check(
+    "toml: problems have the tool as source",
+    rulesPublished(tomlUri)?.map((d) => d.source),
+    ["ruby-templates"],
+  );
+  check(
     "toml: problems are logged",
     rulesServer.notes.some(
       (n) =>
@@ -3407,8 +3417,8 @@ const check = (label, actual, expected) => {
   check(
     "quick fixes: a missing key is replaced or added to the default locale's file",
     [
-      edited(await withFiles.actions("Rails/I18nMissingKey", 1)),
-      edited(await withFiles.actions("Rails/I18nMissingKey", 2)),
+      edited(await withFiles.actions("Rails/MissingTranslation", 1)),
+      edited(await withFiles.actions("Rails/MissingTranslation", 2)),
     ],
     [
       [

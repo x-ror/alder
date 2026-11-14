@@ -73,7 +73,7 @@ Here the `render` passes the `user:` the partial declares. A `render` of `users/
 
 How partials are looked up in engines, packs, components and gems, and when the missing-partial check stays off, is described in [Compatibility](/vscode-ruby-templates/guides/compatibility/#partials-and-formats).
 
-The [rules reference](/vscode-ruby-templates/reference/rules/) also covers the checks that are planned, such as a `render` in a tag that outputs nothing, and unsafe output.
+The [rules reference](/vscode-ruby-templates/reference/rules/) lists every check, such as a `render` in a tag that outputs nothing, and unsafe output.
 
 ## Turning checks off
 

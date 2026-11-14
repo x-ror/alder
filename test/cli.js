@@ -225,6 +225,32 @@ try {
   assert.strictEqual(r.stdout, "div\n    p\n");
   assert.match(r.stderr, /\.editorconfig: ignored max_line_length = 100/);
 
+  const version = run(["--version"]);
+  assert.strictEqual(version.status, 0);
+  assert.match(version.stdout, /^ruby-templates \d+\.\d+\.\d+\S*\n$/);
+  assert.strictEqual(run(["-V"]).stdout, version.stdout);
+  for (const args of [
+    ["--help"],
+    ["check", "--help"],
+    ["format", "-h"],
+    ["format", "--check", "--help"],
+  ]) {
+    const help = run(args);
+    assert.strictEqual(help.status, 0, `help: ${args.join(" ")}`);
+    assert.match(help.stdout, /^Usage:/);
+  }
+
+  assert.strictEqual(
+    run(["check", "--format", "-h"]).status,
+    2,
+    "-h is the value of --format",
+  );
+  const lsBin = path.join(path.dirname(bin), `ruby-templates-ls${exe}`);
+  if (fs.existsSync(lsBin)) {
+    const ls = spawnSync(lsBin, ["--version"], { encoding: "utf8" });
+    assert.match(ls.stdout, /^ruby-templates-ls \d+\.\d+\.\d+\S*\n$/);
+  }
+
   for (const args of [
     [],
     ["lint"],
@@ -302,8 +328,23 @@ try {
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
   assert.match(
     r.stdout,
-    /_card\.html\.erb:1:\d+: info: `@user` is read in a partial/,
+    /_card\.html\.erb:1:\d+: info: `@user` is read in a partial.* \[Rails\/InstanceVariableInPartial\]\n/,
   );
+  // One word for the lowest severity in text and JSON; GitHub and SARIF keep their own.
+  const card = path.join(app, "app/views/users/_card.html.erb");
+  const severities = {
+    json: JSON.parse(run(["check", card, "--format", "json"]).stdout).severity,
+    github: run(["check", card, "--format", "github"]).stdout.match(
+      /^::(\w+) /,
+    )[1],
+    sarif: JSON.parse(run(["check", card, "--format", "sarif"]).stdout).runs[0]
+      .results[0].level,
+  };
+  assert.deepStrictEqual(severities, {
+    json: "info",
+    github: "notice",
+    sarif: "note",
+  });
   assert.doesNotMatch(r.stdout, /_form|show\.html\.slim/);
   assert.strictEqual(
     run(["check", generator]).status,
@@ -383,6 +424,13 @@ try {
   const problem =
     /\.ruby-templates\.toml:1:7: warning: unknown rule `Html\/ImgAltt`/g;
   assert.strictEqual(r.stdout.match(problem)?.length, 1, "printed once");
+  fs.writeFileSync(toml, '[erb]\ndisabled_diagnostics = ["Html/ImgAlt"]\n');
+  r = run(["check", noAlt, inner]);
+  assert.strictEqual(r.status, 1, "the removed key is a finding");
+  assert.match(
+    r.stdout,
+    /\.ruby-templates\.toml:2:1: warning: `disabled_diagnostics` is removed; switch a rule off with `\[Html\.ImgAlt\] enabled = false`.* \[Config\/Invalid\]\n/,
+  );
   fs.writeFileSync(toml, "[Html.ImgAlt\n");
   r = run(["check", clean, path.join(project, "messy.html.erb")]);
   assert.strictEqual(r.status, 1, "invalid TOML is a finding");
@@ -782,9 +830,9 @@ try {
   assert.strictEqual(r.status, 1);
   assert.strictEqual(
     r.stdout,
-    `.ruby-templates.toml:1:13: warning: ${tomlProblem}\n` +
-      `${path.join("app", "views", "a b.html.erb")}:1:11: warning: ${imgAlt}\n`,
-    "text keeps UTF-16 columns and the platform's separators",
+    `.ruby-templates.toml:1:13: warning: ${tomlProblem} [Config/Invalid]\n` +
+      `${path.join("app", "views", "a b.html.erb")}:1:10: warning: ${imgAlt} [Html/ImgAlt]\n`,
+    "text names the rule, counts characters like the other formats, and keeps the platform's separators",
   );
   r = checkCi("github");
   assert.strictEqual(r.status, 1);

@@ -471,10 +471,6 @@
         "title": "Ruby Templates: Toggle Haml Line Prefix (- / = / -#)"
       },
       {
-        "command": "rubyTemplates.reindentHaml",
-        "title": "Ruby Templates: Re-indent Haml (Document or Selection)"
-      },
-      {
         "command": "rubyTemplates.convertToSlim",
         "title": "Ruby Templates: Convert ERB/Haml → Slim"
       },
@@ -624,10 +620,6 @@
         {
           "command": "rubyTemplates.toggleHamlPrefix",
           "when": "editorLangId == haml"
-        },
-        {
-          "command": "rubyTemplates.reindentHaml",
-          "when": "editorLangId == haml"
         }
       ]
     },
@@ -725,7 +717,7 @@
               "Rails/RenderInLoop",
               "Rails/OutputControlFlow",
               "Rails/UnsafeOutput",
-              "Rails/I18nMissingKey",
+              "Rails/MissingTranslation",
               "Rails/UnknownRoute",
               "Turbo/PermanentRequiresId",
               "Stimulus/UnknownController",
@@ -736,7 +728,7 @@
           },
           "default": [],
           "uniqueItems": true,
-          "description": "Built-in ERB diagnostics to turn off, by rule name (`Department/Name`). The `.ruby-templates.toml` file overrides this list."
+          "description": "Built-in ERB diagnostics to turn off, by rule name (`Department/Name`). A rule a `.ruby-templates.toml` switches with `enabled` follows the file."
         },
         "rubyTemplates.haml.disabledDiagnostics": {
           "type": "array",
@@ -773,7 +765,7 @@
               "Rails/UnusedBlockArgument",
               "Rails/RenderInLoop",
               "Rails/UnsafeOutput",
-              "Rails/I18nMissingKey",
+              "Rails/MissingTranslation",
               "Rails/UnknownRoute",
               "Turbo/PermanentRequiresId",
               "Stimulus/UnknownController",
@@ -783,7 +775,7 @@
           },
           "default": [],
           "uniqueItems": true,
-          "description": "Built-in Haml diagnostics to turn off, by rule name (`Department/Name`). The `.ruby-templates.toml` file overrides this list."
+          "description": "Built-in Haml diagnostics to turn off, by rule name (`Department/Name`). A rule a `.ruby-templates.toml` switches with `enabled` follows the file."
         },
         "rubyTemplates.jbuilder.disabledDiagnostics": {
           "type": "array",
@@ -797,7 +789,7 @@
           },
           "default": [],
           "uniqueItems": true,
-          "description": "Built-in diagnostics to turn off in Jbuilder and Builder views, by rule name (`Department/Name`). The `.ruby-templates.toml` file overrides this list."
+          "description": "Built-in diagnostics to turn off in Jbuilder and Builder views, by rule name (`Department/Name`). A rule a `.ruby-templates.toml` switches with `enabled` follows the file."
         },
         "rubyTemplates.slim.disabledDiagnostics": {
           "type": "array",
@@ -829,7 +821,7 @@
               "Rails/UnusedBlockArgument",
               "Rails/RenderInLoop",
               "Rails/UnsafeOutput",
-              "Rails/I18nMissingKey",
+              "Rails/MissingTranslation",
               "Rails/UnknownRoute",
               "Turbo/PermanentRequiresId",
               "Stimulus/UnknownController",
@@ -839,7 +831,7 @@
           },
           "default": [],
           "uniqueItems": true,
-          "description": "Built-in Slim diagnostics to turn off, by rule name (`Department/Name`). The `.ruby-templates.toml` file overrides this list."
+          "description": "Built-in Slim diagnostics to turn off, by rule name (`Department/Name`). A rule a `.ruby-templates.toml` switches with `enabled` follows the file."
         },
         "rubyTemplates.erb.diagnostics.enabled": {
           "type": "boolean",

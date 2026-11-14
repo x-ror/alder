@@ -15,7 +15,6 @@ Run any command from the Command Palette (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>
 | Wrap Selection in ERB / Slim Output      | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>W</kbd> | <kbd>Cmd</kbd>+<kbd>Alt</kbd>+<kbd>W</kbd> | `foo` → `<%= foo %>`, `= foo` or `#{foo}`                                            |
 | Extract Selection to Partial             | none                                        | none                                       | Moves the selection into `_name.html.erb` (or Haml, Slim) and leaves a `render`      |
 | Switch to Related File                   | none                                        | none                                       | View ↔ other formats ↔ controller action; ViewComponent class ↔ template ↔ preview   |
-| Re-indent Haml (Document or Selection)   | none                                        | none                                       | Re-indents a Haml document or the selection                                          |
 
 In ERB, <kbd>Ctrl</kbd>+<kbd>/</kbd> (<kbd>Cmd</kbd>+<kbd>/</kbd> on macOS) is bound to the extension's line comment toggle, which follows the file's host language; see [Comment toggling](/vscode-ruby-templates/guides/file-types/#comment-toggling).
 

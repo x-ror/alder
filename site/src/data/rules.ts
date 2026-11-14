@@ -1,5 +1,4 @@
-// The formatting and lint rules: the ones the extension has today and the ones planned. Names, options and the
-// config file are a draft. `checklist()` turns the list into a Markdown task list for a tracking issue:
+// The formatting and lint rules, with their options and examples. `checklist()` turns the list into a Markdown task list for a tracking issue:
 //   cd site && bun -e 'import { checklist } from "./src/data/rules.ts"; console.log(checklist())'
 import { diagnostics, LANGUAGE_NAMES, type Language } from "./diagnostics";
 
@@ -1817,19 +1816,19 @@ enabled = false`,
     ],
   },
   {
-    name: "Rails/I18nMissingKey",
+    name: "Rails/MissingTranslation",
     summary:
       'A lazy translation key, such as `t(".title")`, with no entry in `config/locales`.',
     languages: ["erb", "haml", "slim"],
     type: "warning",
     safe: true,
     status: "available",
-    code: "Rails/I18nMissingKey",
+    code: "Rails/MissingTranslation",
     today:
       'A literal lazy key (`t(".title")`, `translate`, with or without parentheses) is turned into its full key as Rails does (`users/_form` gives `users.form.title`, a layout keeps its folder) and must be in the default locale of the YAML files under config/locales: `config.i18n.default_locale`, `en` without one. Absolute keys (`t("users.index.title")`) are not checked, since gems supply keys such as `date.formats` and `helpers.submit.create`; nor is a key with `default:`, `scope:` or `locale:`, a key with interpolation, or one in a view named for a gem in the Gemfile.lock (`devise/sessions/new`, a copy of the gem\'s view). The closest key of the view within two edits is offered. Nothing is reported without a config/application.rb or a locale file for the default locale, when the app has Ruby locale files, adds to `I18n.load_path`, sets `I18n.backend` (also `config.i18n.load_path`, `railties_load_path`) or uses a gem that keeps translations in a store (`i18n-active_record`, `redis-i18n`). Quick fixes: "Use `.title`" replaces the key with the closest one, and "Add `users.index.title` to config/locales/en.yml" inserts it with an empty value below its closest group in the default locale\'s file, or into `config/locales/<locale>.yml`, which is created when it is absent and the editor can create files. The file is edited as text, so its comments, quotes and line endings stay, and nothing is offered where the key can\'t be placed with certainty: a flow mapping, an alias, an anchor or a merge key on the way, a list, or a value where the group should be. Rails projects only, in templates under app/views.',
     setting: {
       label: "Turn it off",
-      code: `[Rails.I18nMissingKey]
+      code: `[Rails.MissingTranslation]
 enabled = false`,
     },
     examples: [
@@ -1845,7 +1844,7 @@ enabled = false`,
             line: 1,
             column: 11,
             message: I18N_MESSAGE,
-            code: "Rails/I18nMissingKey",
+            code: "Rails/MissingTranslation",
           },
         ],
       },
@@ -1860,7 +1859,7 @@ enabled = false`,
             line: 1,
             column: 8,
             message: I18N_MESSAGE,
-            code: "Rails/I18nMissingKey",
+            code: "Rails/MissingTranslation",
           },
         ],
       },
@@ -1875,7 +1874,7 @@ enabled = false`,
             line: 1,
             column: 8,
             message: I18N_MESSAGE,
-            code: "Rails/I18nMissingKey",
+            code: "Rails/MissingTranslation",
           },
         ],
       },

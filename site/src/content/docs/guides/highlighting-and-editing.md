@@ -1,13 +1,13 @@
 ---
 title: Highlighting and editing
-description: Syntax highlighting, semantic colours, tag closing, linked editing, snippets and Emmet for ERB, Haml, Slim, Skim and Liquid.
+description: Syntax highlighting, semantic colours, tag closing, linked editing, snippets and Emmet for ERB, Haml, Slim, Skim and Liquid (experimental).
 sidebar:
   order: 4
 ---
 
 ## Syntax highlighting
 
-Full syntax highlighting for ERB (`.html.erb`, `.erubi`, `.js.erb`, `.css.erb`, `.json.erb`, `.yml.erb`, …), Haml, Slim, Skim and Liquid, including embedded JavaScript, CSS, SCSS, CoffeeScript and Markdown blocks. Every code example on this site is highlighted with the extension's own grammars.
+Full syntax highlighting for ERB (`.html.erb`, `.erubi`, `.js.erb`, `.css.erb`, `.json.erb`, `.yml.erb`, …), Haml, Slim, Skim and Liquid (experimental), including embedded JavaScript, CSS, SCSS, CoffeeScript and Markdown blocks. Every code example on this site is highlighted with the extension's own grammars.
 
 ```slim title="app/views/users/show.html.slim"
 .card

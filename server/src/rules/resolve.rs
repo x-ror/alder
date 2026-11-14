@@ -106,19 +106,18 @@ impl ResolvedRules {
         let excluded_by = nearest(&files, |f| f.exclude.as_ref().map(|globs| (f, globs)))
             .filter(|(file, globs)| matches_any(file, globs, template))
             .map(|(file, _)| file.path.clone());
-        let disabled = in_lists(|t| t.disabled_diagnostics.as_ref()).unwrap_or_else(|| {
-            let codes = editor.disabled(lang).iter();
-            let lint_name = |code: &String| match by_name(code) {
-                Some(rule) => (rule.kind == Kind::Lint).then(|| rule.name.to_string()),
-                None => Some(code.clone()),
-            };
-            codes.filter_map(lint_name).collect()
-        });
+        let disabled_by_editor = |code: &String| match by_name(code) {
+            Some(rule) => {
+                let enabled_by_file = file_setting(&files, rule, rule.is_on_by_default(lang)) == Some(true);
+                (rule.kind == Kind::Lint && !enabled_by_file).then(|| rule.name.to_string())
+            }
+            None => Some(code.clone()),
+        };
         let off: HashSet<String> = RULES
             .iter()
             .filter(|rule| !rule_on(&files, template, lang, rule, rule.is_on_by_default(lang)))
             .map(|rule| rule.name.to_string())
-            .chain(disabled)
+            .chain(editor.disabled(lang).iter().filter_map(disabled_by_editor))
             .collect();
         let trailing_empty_lines_with_final_newline =
             by_name(TRAILING_EMPTY_LINES).is_some_and(|rule| rule_on(&files, template, lang, rule, true));
@@ -255,8 +254,7 @@ fn section(lang: TemplateLang) -> Option<&'static str> {
         TemplateLang::Erb => Some("erb"),
         TemplateLang::Haml => Some("haml"),
         TemplateLang::Slim | TemplateLang::Skim => Some("slim"),
-        TemplateLang::Ruby => Some("jbuilder"),
-        TemplateLang::Liquid => None,
+        TemplateLang::Ruby | TemplateLang::Liquid => None,
     }
 }
 
@@ -315,12 +313,24 @@ fn style(files: &[Arc<ConfigFile>], off: &HashSet<String>, name: &str) -> Option
     enabled_choice(files, off, name).map(|word| if word == EMPTY_LINES_STYLE { Style::EmptyLines } else { Style::NoEmptyLines })
 }
 
-/// The nearest file that sets the rule's `enabled` or its department's decides, the rule's beating the department's within
-/// that file; unset means the rule's default. Then the rule's `include` and `exclude`.
+/// What the nearest file that sets the rule's `enabled` or its department's says, the rule's beating the department's within
+/// that file; `None` when no file does. A department's `enabled = true` only counts for a rule that is on by default (it cancels
+/// an outer `false`), so a rule that is off by default needs its own switch.
+fn file_setting(files: &[Arc<ConfigFile>], rule: &Rule, default_on: bool) -> Option<bool> {
+    let department = |file: &ConfigFile| {
+        file.departments
+            .iter()
+            .find(|(d, _)| *d == rule.department())
+            .map(|&(_, enabled)| enabled)
+            .filter(|&enabled| !enabled || default_on)
+    };
+    nearest(files, |f| rule_table(f, rule).and_then(|table| table.enabled).or_else(|| department(f)))
+}
+
+/// The files' setting, else the rule's default, then the rule's `include` and `exclude`.
 /// `default_on` is what a rule the config doesn't mention is.
 fn rule_on(files: &[Arc<ConfigFile>], template: &Path, lang: TemplateLang, rule: &Rule, default_on: bool) -> bool {
-    let department = |file: &ConfigFile| file.departments.iter().find(|(d, _)| *d == rule.department()).map(|&(_, enabled)| enabled);
-    let enabled = nearest(files, |f| rule_table(f, rule).and_then(|table| table.enabled).or_else(|| department(f))).unwrap_or(default_on);
+    let enabled = file_setting(files, rule, default_on).unwrap_or(default_on);
     let included =
         nearest(files, |f| Some((f, rule_table(f, rule)?.include.as_ref()?))).is_none_or(|(f, globs)| matches_any(f, globs, template));
     let excluded =
@@ -387,14 +397,17 @@ mod tests {
 
     #[test]
     fn nested_files_override_key_by_key() {
-        let outer = "[erb]\nformat.enabled = false\ndisabled_diagnostics = [\"Html/DuplicateId\"]\n[Html.ImgAlt]\nenabled = false\n";
-        let inner = "[erb]\ndisabled_diagnostics = [\"Html/UnclosedElement\"]\n[Html.ImgAlt]\nenabled = true\n";
+        let outer = "[erb]\nformat.enabled = false\n[Html.DuplicateId]\nenabled = false\n[Html.ImgAlt]\nenabled = false\n";
+        let inner = "[Html.UnclosedElement]\nenabled = false\n[Html.ImgAlt]\nenabled = true\n";
         let files =
             [(".ruby-templates.toml", outer), ("app/views/.ruby-templates.toml", inner), ("app/views/a.html.erb", ""), ("b.html.erb", "")];
         let project = Project::new("nested", &files);
         let inner_rules = project.erb("app/views/a.html.erb");
         assert!(inner_rules.reports(IMG), "the nearest file wins the rule");
-        assert!(!inner_rules.reports("Html/UnclosedElement") && inner_rules.reports("Html/DuplicateId"), "lists are replaced");
+        assert!(
+            !inner_rules.reports("Html/UnclosedElement") && !inner_rules.reports("Html/DuplicateId"),
+            "a rule the nearest file leaves out comes from the one above"
+        );
         assert!(!inner_rules.format_enabled(), "a key the nearest file leaves out comes from the one above");
         let outer_rules = project.erb("b.html.erb");
         assert!(!outer_rules.reports(IMG) && !outer_rules.reports("Html/DuplicateId") && outer_rules.reports("Html/UnclosedElement"));
@@ -470,7 +483,7 @@ mod tests {
     #[test]
     fn the_file_beats_the_editor_which_applies_where_the_file_is_silent() {
         let toml =
-            "[erb]\nformat.enabled = true\nformat.align_comments = false\ndisabled_diagnostics = []\n[slim]\nextra_engines = [\"mjml\"]\n";
+            "[erb]\nformat.enabled = true\nformat.align_comments = false\n[Html.ImgAlt]\nenabled = true\n[slim]\nextra_engines = [\"mjml\"]\n";
         let project =
             Project::new("editor", &[(".ruby-templates.toml", toml), ("a.html.erb", ""), ("b.html.slim", ""), ("c.html.haml", "")]);
         let settings = editor(serde_json::json!({
@@ -487,6 +500,41 @@ mod tests {
         assert!(!haml.diagnostics_enabled() && !haml.reports("Syntax/Template"));
         let without = Project::new("editor-only", &[("a.html.erb", "")]).resolve("a.html.erb", TemplateLang::Erb, &settings);
         assert!(!without.format_enabled() && !without.reports(IMG) && without.format_settings(Settings::default(), false).align_comments);
+    }
+
+    #[test]
+    fn a_department_switch_only_restores_the_defaults() {
+        let files = [
+            (
+                ".ruby-templates.toml",
+                "[Html]\nenabled = false\n[Layout]\nenabled = false\n[Layout.ElementContentOnOwnLine]\nenabled = true\n",
+            ),
+            ("on/.ruby-templates.toml", "[Html]\nenabled = true\n[Layout]\nenabled = true\n"),
+            ("on/a.html.erb", ""),
+            ("a.html.erb", ""),
+        ];
+        let project = Project::new("dept-true", &files);
+        let on = project.erb("on/a.html.erb");
+        assert!(on.reports(IMG), "on by default: back on");
+        assert!(on.format_settings(Settings::default(), false).trailing_whitespace);
+        let own_line = |file: &str| project.erb(file).format_settings(Settings::default(), false).content_on_own_line.is_some();
+        assert!(own_line("on/a.html.erb"), "an outer rule's own switch isn't cancelled by the department's true");
+        let off = Project::new("dept-true-off", &[(".ruby-templates.toml", "[Layout]\nenabled = true\n"), ("a.html.erb", "")]);
+        let settings = off.erb("a.html.erb").format_settings(Settings::default(), false);
+        assert_eq!((settings.content_on_own_line, settings.attributes_per_line, off.erb("a.html.erb").line_length()), (None, None, None));
+        assert!(!project.erb("a.html.erb").reports(IMG));
+    }
+
+    #[test]
+    fn the_file_enabling_a_rule_beats_the_editors_list_of_disabled_ones() {
+        let toml = "[Html.ImgAlt]\nenabled = true\n[Html]\nenabled = true\n";
+        let project = Project::new("editor-list", &[(".ruby-templates.toml", toml), ("a.html.erb", "")]);
+        let settings =
+            editor(serde_json::json!({ "erb": { "disabledDiagnostics": ["Html/ImgAlt", "Html/DuplicateId", "Html/AnchorHref"] } }));
+        let rules = project.resolve("a.html.erb", TemplateLang::Erb, &settings);
+        assert!(rules.reports(IMG) && rules.reports("Html/DuplicateId"), "the rule's or the department's enabled = true");
+        let silent = Project::new("editor-list-silent", &[("a.html.erb", "")]).resolve("a.html.erb", TemplateLang::Erb, &settings);
+        assert!(!silent.reports(IMG) && !silent.reports("Html/DuplicateId"));
     }
 
     #[test]
@@ -525,7 +573,7 @@ mod tests {
         assert_eq!((settings.max_empty_lines, settings.trailing_empty_lines), (Some(1), false), "max defaults to 1");
 
         let files = [
-            (".ruby-templates.toml", "[Layout]\nenabled = true\n[Layout.EmptyLines]\nmax = 3\n"),
+            (".ruby-templates.toml", "[Layout]\nenabled = true\n[Layout.EmptyLines]\nenabled = true\nmax = 3\n"),
             ("inner/.ruby-templates.toml", "[Layout.EmptyLines]\nmax = 0\nexclude = [\"**/*.slim\"]\n"),
             ("a.html.erb", ""),
             ("inner/a.html.erb", ""),
@@ -534,10 +582,10 @@ mod tests {
         let nested = Project::new("format-rules-nested", &files);
         let max =
             |file: &str, lang| nested.resolve(file, lang, &Options::default()).format_settings(Settings::default(), false).max_empty_lines;
-        assert_eq!(max("a.html.erb", TemplateLang::Erb), Some(3), "the department switch turns a formatting rule on");
+        assert_eq!(max("a.html.erb", TemplateLang::Erb), Some(3), "the rule's own switch turns a formatting rule on");
         assert_eq!(max("inner/a.html.erb", TemplateLang::Erb), Some(0), "the nearest file sets max");
         assert_eq!(max("inner/b.html.slim", TemplateLang::Slim), None, "its exclude");
-        let toml = "[Layout]\nenabled = true\n[Layout.EmptyLinesAroundBranches]\nstyle = \"empty_lines\"\n[Layout.EmptyLinesAroundElementBody]\nenabled = false\n";
+        let toml = "[Layout.EmptyLinesAroundBlockBody]\nenabled = true\n[Layout.EmptyLinesAroundBranches]\nenabled = true\nstyle = \"empty_lines\"\n[Layout.EmptyLinesAroundElementBody]\nenabled = false\n";
         let around = Project::new("format-rules-around", &[(".ruby-templates.toml", toml), ("a.html.haml", "")]);
         let settings = around.resolve("a.html.haml", TemplateLang::Haml, &Options::default()).format_settings(Settings::default(), false);
         let styles = (settings.around_block_body, settings.around_element_body, settings.around_branches);
@@ -572,7 +620,7 @@ mod tests {
         let own_limit = Project::new("per-line-set", &[(".ruby-templates.toml", limit), ("a.html.erb", "")]);
         assert_eq!(per_line(&own_limit), Some(60));
         let disabled = editor(serde_json::json!({ "erb": { "disabledDiagnostics": ["Layout/LineLength"] } }));
-        assert_eq!(set.resolve("a.html.erb", TemplateLang::Erb, &disabled).line_length(), None);
+        assert_eq!(set.resolve("a.html.erb", TemplateLang::Erb, &disabled).line_length(), Some(80), "the file enables it");
     }
 
     #[test]

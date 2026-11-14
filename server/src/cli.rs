@@ -29,6 +29,7 @@ const WORKER_STACK: usize = 8 << 20;
 
 const HELP: &str = "\
 Usage:
+  ruby-templates --version
   ruby-templates check [--format text|github|sarif|json] <files|dirs>...
   ruby-templates format [--check | --write] [--format text|github] [--verbose] [--align-comments] <files|dirs>...
   ruby-templates format [--check] [--format text|github] [--verbose] [--align-comments] --stdin-filepath <path> [-]
@@ -52,9 +53,9 @@ format  re-indents HTML ERB, Haml and Slim templates and fixes trailing whitespa
         the result goes to stdout.
         --align-comments moves the lines inside ERB comments with the line the comment opens on.
 
---format picks how check prints: text (the default), github (workflow commands that annotate a pull request), sarif
+--format picks how check prints: text (the default; file:line:col: severity: message [Rule]), github (workflow commands that annotate a pull request), sarif
 (SARIF 2.1.0 for code scanning) or json (one object per line). With format --check, github prints a warning per file that
-would change. In github, sarif and json the columns count characters and start at 1.
+would change. Columns count characters and start at 1. Severities are error, warning and info, as GitHub's notice and SARIF's note.
 
 Both read .ruby-templates.toml files, from the file's folder up. Exit codes: 0 ok, 1 diagnostics (errors or
 warnings), a problem in a .ruby-templates.toml, or files that would change, 2 usage or I/O error, a formatter bug,
@@ -63,6 +64,10 @@ or (for check) a named file that isn't a template.
 
 pub fn run(args: &[String]) -> i32 {
     match args.split_first() {
+        Some((command, rest)) if matches!(command.as_str(), "check" | "format") && asks_for_help(rest) => {
+            print!("{HELP}");
+            OK
+        }
         Some((command, rest)) if command == "check" => match CheckArgs::parse(rest) {
             Ok(parsed) => check(&parsed.paths, parsed.format),
             Err(message) => usage(&message),
@@ -71,12 +76,29 @@ pub fn run(args: &[String]) -> i32 {
             Ok(parsed) => format_command(&parsed),
             Err(message) => usage(&message),
         },
-        Some((flag, _)) if flag == "--help" || flag == "-h" || flag == "help" => {
+        Some((flag, _)) if is_help(flag) || flag == "help" => {
             print!("{HELP}");
+            OK
+        }
+        Some((flag, _)) if flag == "--version" || flag == "-V" => {
+            println!("ruby-templates {}", env!("CARGO_PKG_VERSION"));
             OK
         }
         _ => usage("expected a command"),
     }
+}
+
+/// `--help` or `-h`, unless it is the value of an option.
+fn asks_for_help(args: &[String]) -> bool {
+    let values = args.iter().scan(false, |after_option, arg| {
+        let is_value = std::mem::replace(after_option, matches!(arg.as_str(), "--format" | "--stdin-filepath"));
+        Some((arg, is_value))
+    });
+    values.into_iter().any(|(arg, is_value)| !is_value && is_help(arg))
+}
+
+fn is_help(arg: &str) -> bool {
+    arg == "--help" || arg == "-h"
 }
 
 fn usage(message: &str) -> i32 {
@@ -226,7 +248,7 @@ struct Source<'a> {
     text: &'a str,
 }
 
-/// Prints diagnostics as `file:line:col: severity: message`; 1 when one is a warning or an error, 2
+/// Prints diagnostics as `file:line:col: severity: message [Rule]`; 1 when one is a warning or an error, 2
 /// for a file that can't be read or isn't a template.
 fn check(paths: &[PathBuf], format: Format) -> i32 {
     let files = template_files(paths);
@@ -271,13 +293,7 @@ struct Rendered {
 impl Rendered {
     fn add(&mut self, output: Output, source: &Source, (severity, rule, message): (Severity, Option<&str>, &str), range: Range) {
         if output.format == Format::Text {
-            let name = match severity {
-                Severity::Error => "error",
-                Severity::Warning => "warning",
-                Severity::Note => "info",
-            };
-            let (line, col) = (range.start.line + 1, range.start.character + 1);
-            let _ = writeln!(self.stdout, "{}:{line}:{col}: {name}: {message}", source.shown.display());
+            let _ = writeln!(self.stdout, "{}", report::text_line(source.shown, source.text, (severity, rule, message), range));
             return;
         }
         let relative = relative_path(source.path, output.cwd);
@@ -309,8 +325,7 @@ impl Checked {
 }
 
 fn render_config_problems(file: &ConfigFile, output: Output) -> Rendered {
-    // Only the formats that show columns need the file's text.
-    let text = if output.format == Format::Text { String::new() } else { std::fs::read_to_string(&file.path).unwrap_or_default() };
+    let text = std::fs::read_to_string(&file.path).unwrap_or_default();
     let shown = shown_path(&file.path, output.cwd);
     let source = Source { shown, path: &file.path, text: &text };
     let mut rendered = Rendered::default();
@@ -371,13 +386,6 @@ fn relative_path(path: &Path, cwd: Option<&Path>) -> PathBuf {
     let real = crate::util::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     let from_cwd = cwd.and_then(|cwd| real.strip_prefix(cwd).ok()).unwrap_or(&real);
     from_cwd.components().filter(|part| *part != Component::CurDir).collect()
-}
-
-fn print_problems(file: &ConfigFile, cwd: Option<&Path>, out: &mut String) {
-    for problem in &file.problems {
-        let (line, col) = (problem.range.start.line + 1, problem.range.start.character + 1);
-        let _ = writeln!(out, "{}:{line}:{col}: warning: {}", shown_path(&file.path, cwd).display(), problem.message);
-    }
 }
 
 /// Prints each file's result in walk order as it arrives; the worst exit code, `USAGE` once stdout is closed.
@@ -462,9 +470,7 @@ fn print_verbose(shown: &str, settings: &format::Settings, notes: &[String], (ru
     notes.iter().for_each(|note| eprintln!("{shown}: {note}"));
     for file in rules.files() {
         eprintln!("{shown}: read {}", shown_path(&file.path, cwd).display());
-        let mut problems = String::new();
-        print_problems(file, cwd, &mut problems);
-        eprint!("{problems}");
+        eprint!("{}", render_config_problems(file, Output { format: Format::Text, cwd }).stdout);
     }
 }
 
@@ -474,9 +480,7 @@ fn report_config_problems(file: &ConfigFile, args: &FormatArgs, cwd: Option<&Pat
         print!("{}", render_config_problems(file, Output { format: Format::Github, cwd }).stdout);
         return;
     }
-    let mut problems = String::new();
-    print_problems(file, cwd, &mut problems);
-    eprint!("{problems}");
+    eprint!("{}", render_config_problems(file, Output { format: Format::Text, cwd }).stdout);
 }
 
 fn format_text(
@@ -586,6 +590,14 @@ mod tests {
         {
             assert!(FormatArgs::parse(&args(bad)).is_err(), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn help_is_not_an_option_value() {
+        assert!(asks_for_help(&args(&["--format", "json", "-h"])));
+        assert!(asks_for_help(&args(&["--help"])));
+        assert!(!asks_for_help(&args(&["--format", "-h"])));
+        assert!(!asks_for_help(&args(&["--stdin-filepath", "--help", "-"])));
     }
 
     #[test]

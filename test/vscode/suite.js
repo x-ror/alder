@@ -221,7 +221,7 @@ const checks = {
     const served = () =>
       vscode.languages
         .getDiagnostics(editor.document.uri)
-        .filter((d) => d.source === "erb");
+        .filter((d) => d.source === "ruby-templates");
     const key = "erb.diagnostics.enabled";
     const global = vscode.ConfigurationTarget.Global;
     try {
@@ -483,18 +483,6 @@ const checks = {
       "rubyTemplates.toggleHamlPrefix",
     );
     assert.strictEqual(text, "= foo\n-# bar\n- baz\n%p\n");
-  },
-
-  async "reindent Haml command"() {
-    const editor = await open("app/views/users/reindent.html.haml");
-    try {
-      editor.options = { tabSize: 2, insertSpaces: true };
-      select(editor, 0, 0, 0, 0);
-      await vscode.commands.executeCommand("rubyTemplates.reindentHaml");
-      assert.strictEqual(editor.document.getText(), "%div\n  %p\n    %b x\n");
-    } finally {
-      await revert(editor);
-    }
   },
 
   async "Haml Format Document reindents"() {

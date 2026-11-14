@@ -38,7 +38,7 @@ const codeParts = (text: string) => backtickParts(text);
   <div class="rules__scroll" tabindex="0" role="region" aria-label="Summary of all rules">
     <table class="rules__table">
       <caption class="rules__caption">
-        {rules.length} rules: {countOf("available")} available, {countOf("partial")} partial, {countOf("planned")} planned
+        {rules.length} rules{countOf("partial") + countOf("planned") > 0 && `: ${countOf("available")} available, ${countOf("partial")} partial, ${countOf("planned")} planned`}
       </caption>
       <thead>
         <tr>

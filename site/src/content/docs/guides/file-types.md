@@ -22,7 +22,7 @@ The file name picks the language id, which decides the comment syntax and the `[
 | `.md.erb`                                                                                                                                           | `erb-markdown`                   | `<!-- -->`      | Markdown + Ruby   | none             | no         |
 | `.rb.erb`                                                                                                                                           | `erb-ruby`                       | `#`             | Ruby              | none             | no         |
 | `.yml.erb`, `.yaml.erb`                                                                                                                             | `erb-yaml`                       | `#`             | YAML + Ruby       | none             | no         |
-| `.liquid`, `.html.liquid`                                                                                                                           | `liquid`                         | `{% comment %}` | HTML + Liquid     | none             | no         |
+| `.liquid`, `.html.liquid`                                                                                                                           | `liquid` (experimental)          | `{% comment %}` | HTML + Liquid     | none             | no         |
 
 Every ERB row gets the ERB and Ruby checks and, under `app/views`, the `render` checks (`unresolved-render`, `strict-locals`). Only HTML hosts add the HTML ones (unclosed or unbalanced tags, missing `alt`, duplicate `id`), linked tag renaming and attribute completion. Any other bare `.erb` (`nginx.conf.erb`) gets the ERB and Ruby checks only.
 
@@ -79,6 +79,8 @@ Items: <%= @items.size %>
 ```
 
 ## Liquid
+
+Liquid support is experimental and not covered by the 1.0 stability guarantees: the `liquid` language id, its file extensions and its grammar may change in a minor release.
 
 `liquid` (Shopify themes, Jekyll) is highlighting, comment toggling, bracket and `{{ }}` / `{% %}` auto-closing and indentation only: none of the Rails lookups or checks apply to it.
 
