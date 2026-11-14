@@ -1,10 +1,10 @@
 //! Liquid (Jekyll, the `liquid` gem): the files `render` and `include` name, and unbalanced tags.
 
-use crate::rails::paths::files_under;
 use crate::util::{coded, error, slash_path, LineIndex};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::LazyLock;
 use tower_lsp_server::ls_types::Diagnostic;
+use walkdir::WalkDir;
 
 /// Stable diagnostic codes.
 pub mod code {
@@ -14,15 +14,18 @@ pub mod code {
     pub const MISMATCHED_END_TAG: &str = "Syntax/LiquidMismatchedEndTag";
 }
 
-const JEKYLL_CONFIG: &str = "_config.yml";
+const JEKYLL_CONFIGS: [&str; 3] = ["_config.yml", "_config.yaml", "_config.toml"];
 const JEKYLL_INCLUDES: &str = "_includes";
-/// The suffixes of a partial `render` finds next to the template: `_card.liquid`, `_card.html.liquid`.
-const PARTIAL_SUFFIXES: [&str; 2] = [".html.liquid", ".liquid"];
+const SHOPIFY_SNIPPETS: &str = "snippets";
+/// The suffixes of a partial `render` finds next to the template, the gem's own first: `_card.liquid`, `_card.html.liquid`.
+const PARTIAL_SUFFIXES: [&str; 2] = [".liquid", ".html.liquid"];
+/// Folders completion doesn't walk into, besides the hidden ones.
+const SKIPPED_FOLDERS: [&str; 3] = ["node_modules", "_site", "vendor"];
 /// How deep below the template's folder completion looks for partials.
 const COMPLETION_DEPTH: usize = 3;
 
 /// Tags that open a block; an unknown `endfoo` belongs to a custom tag the app registers and is left alone.
-const BLOCKS: &[&str] = &["if", "unless", "for", "case", "capture", "comment", "raw", "tablerow", "form", "paginate", "highlight"];
+const BLOCKS: &[&str] = &["if", "unless", "for", "case", "capture", "comment", "raw", "doc", "tablerow", "form", "paginate", "highlight"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tag {
@@ -88,17 +91,37 @@ pub fn name_prefix(line: &str, col: usize) -> Option<(Tag, String)> {
 
 /// The nearest folder above `current` with a Jekyll `_config.yml`.
 fn jekyll_root(current: &Path) -> Option<&Path> {
-    current.ancestors().skip(1).find(|dir| dir.join(JEKYLL_CONFIG).is_file())
+    current.ancestors().skip(1).find(|dir| JEKYLL_CONFIGS.iter().any(|config| dir.join(config).is_file()))
+}
+
+/// The nearest folder above `current` that is a Shopify theme: `snippets/` next to `layout/` or `config/settings_schema.json`.
+fn shopify_root(current: &Path) -> Option<&Path> {
+    let is_theme = |dir: &&Path| {
+        dir.join(SHOPIFY_SNIPPETS).is_dir() && (dir.join("layout").is_dir() || dir.join("config/settings_schema.json").is_file())
+    };
+    current.ancestors().skip(1).find(is_theme)
+}
+
+/// The files under `root` down to `depth`, leaving out hidden and dependency folders and links.
+fn files_below(root: &Path, depth: usize) -> Vec<PathBuf> {
+    let wanted = |entry: &walkdir::DirEntry| {
+        let name = entry.file_name().to_string_lossy();
+        entry.depth() == 0 || !(name.starts_with('.') || SKIPPED_FOLDERS.contains(&name.as_ref()))
+    };
+    let walk = WalkDir::new(root).min_depth(1).max_depth(depth).into_iter().filter_entry(wanted);
+    walk.flatten().filter(|entry| entry.file_type().is_file()).map(walkdir::DirEntry::into_path).collect()
 }
 
 /// The files the reference stands for: Jekyll's `_includes/<name>` and the file next to the template for
 /// `include_relative`; otherwise the `liquid` gem's `_<name>.liquid` next to the template.
 pub fn resolve(current: &Path, r: &LiquidRef) -> Vec<PathBuf> {
     let name = Path::new(&r.name);
-    let Some(dir) = current.parent().filter(|_| !name.is_absolute()) else { return vec![] };
-    let named = match (r.tag, jekyll_root(current)) {
-        (Tag::IncludeRelative, _) => vec![dir.join(name)],
-        (Tag::Include, Some(root)) => vec![root.join(JEKYLL_INCLUDES).join(name)],
+    let outside = name.is_absolute() || name.components().any(|part| part == Component::ParentDir);
+    let Some(dir) = current.parent().filter(|_| !outside) else { return vec![] };
+    let named = match (r.tag, jekyll_root(current), shopify_root(current)) {
+        (Tag::IncludeRelative, ..) => vec![dir.join(name)],
+        (Tag::Include, Some(root), _) => vec![root.join(JEKYLL_INCLUDES).join(name)],
+        (_, _, Some(root)) => vec![root.join(SHOPIFY_SNIPPETS).join(name).with_extension("liquid")],
         _ => {
             let Some(file) = name.file_name().and_then(|file| file.to_str()) else { return vec![] };
             PARTIAL_SUFFIXES.iter().map(|suffix| dir.join(name.with_file_name(format!("_{file}{suffix}")))).collect()
@@ -110,18 +133,18 @@ pub fn resolve(current: &Path, r: &LiquidRef) -> Vec<PathBuf> {
 /// The names the reference's quotes can hold, with the file each stands for.
 pub fn candidates(current: &Path, tag: Tag) -> Vec<(String, PathBuf)> {
     let Some(dir) = current.parent() else { return vec![] };
-    let (root, partials) = match (tag, jekyll_root(current)) {
-        (Tag::IncludeRelative, _) => (dir.to_path_buf(), false),
-        (Tag::Include, Some(root)) => (root.join(JEKYLL_INCLUDES), false),
-        _ => (dir.to_path_buf(), true),
+    let (root, naming): (PathBuf, fn(&str) -> Option<String>) = match (tag, jekyll_root(current), shopify_root(current)) {
+        (Tag::IncludeRelative, ..) => (dir.to_path_buf(), |relative| Some(relative.to_string())),
+        (Tag::Include, Some(root), _) => (root.join(JEKYLL_INCLUDES), |relative| Some(relative.to_string())),
+        (_, _, Some(root)) => (root.join(SHOPIFY_SNIPPETS), |relative| relative.strip_suffix(".liquid").map(str::to_string)),
+        _ => (dir.to_path_buf(), partial_name),
     };
     let depth = if root == dir { COMPLETION_DEPTH } else { usize::MAX };
-    let mut named: Vec<(String, PathBuf)> = files_under(&root, depth)
+    let mut named: Vec<(String, PathBuf)> = files_below(&root, depth)
         .into_iter()
         .filter(|file| file != current)
         .filter_map(|file| {
-            let relative = slash_path(file.strip_prefix(&root).ok()?);
-            let name = if partials { partial_name(&relative)? } else { relative };
+            let name = naming(&slash_path(file.strip_prefix(&root).ok()?))?;
             Some((name, file))
         })
         .collect();
@@ -132,7 +155,7 @@ pub fn candidates(current: &Path, tag: Tag) -> Vec<(String, PathBuf)> {
 /// `shared/_card.liquid` is `shared/card`.
 fn partial_name(relative: &str) -> Option<String> {
     let (folder, file) = relative.rsplit_once('/').map_or(("", relative), |(folder, file)| (folder, file));
-    let stem = PARTIAL_SUFFIXES.iter().find_map(|suffix| file.strip_suffix(suffix))?.strip_prefix('_')?;
+    let stem = PARTIAL_SUFFIXES.iter().rev().find_map(|suffix| file.strip_suffix(suffix))?.strip_prefix('_')?;
     Some(if folder.is_empty() { stem.to_string() } else { format!("{folder}/{stem}") })
 }
 
@@ -153,6 +176,14 @@ struct Verbatim {
     end: &'static str,
     /// Comments nest: Liquid counts the `{% comment %}` inside one.
     nested: usize,
+    /// The comment a `{% raw %}` inside it returns to.
+    outer: Option<Box<Verbatim>>,
+}
+
+impl Verbatim {
+    fn new(end: &'static str) -> Self {
+        Verbatim { end, nested: 0, outer: None }
+    }
 }
 
 struct OpenBlock {
@@ -171,22 +202,31 @@ struct Scanner {
 impl Scanner {
     /// A tag called `name` whose `{% … %}`, or statement of a `{% liquid %}`, spans `start..end`.
     fn tag(&mut self, name: &str, start: usize, end: usize) {
-        if let Some(verbatim) = &mut self.verbatim {
+        if let Some(mut verbatim) = self.verbatim.take() {
             if name == "comment" && verbatim.end == "endcomment" {
                 verbatim.nested += 1;
+            } else if name == "raw" && verbatim.end == "endcomment" {
+                verbatim = Verbatim { outer: Some(Box::new(verbatim)), ..Verbatim::new("endraw") };
             } else if name == verbatim.end && verbatim.nested > 0 {
                 verbatim.nested -= 1;
             } else if name == verbatim.end {
-                self.verbatim = None;
-                self.stack.pop();
+                match verbatim.outer {
+                    Some(outer) => verbatim = *outer,
+                    None => {
+                        self.stack.pop();
+                        return;
+                    }
+                }
             }
+            self.verbatim = Some(verbatim);
             return;
         }
         if let Some(block) = BLOCKS.iter().find(|block| **block == name) {
             self.stack.push(OpenBlock { name: block, start, end });
             self.verbatim = match *block {
-                "comment" => Some(Verbatim { end: "endcomment", nested: 0 }),
-                "raw" => Some(Verbatim { end: "endraw", nested: 0 }),
+                "comment" => Some(Verbatim::new("endcomment")),
+                "raw" => Some(Verbatim::new("endraw")),
+                "doc" => Some(Verbatim::new("enddoc")),
                 _ => None,
             };
         } else if let Some(block) = name.strip_prefix("end").filter(|block| BLOCKS.contains(block)) {
@@ -230,6 +270,16 @@ fn next_opener(text: &str, from: usize) -> Option<usize> {
     None
 }
 
+/// Where Jekyll's front matter ends: after the closing `---` (or `...`) line of one that opens the file; 0 without it.
+fn front_matter_end(text: &str) -> usize {
+    let bom = if text.starts_with('\u{feff}') { '\u{feff}'.len_utf8() } else { 0 };
+    let mut lines = crate::util::lines_with_offsets(&text[bom..]);
+    if lines.next().is_none_or(|(_, line)| line.trim_end() != "---") {
+        return 0;
+    }
+    lines.find(|(_, line)| matches!(line.trim_end(), "---" | "...")).map_or(0, |(offset, line)| bom + offset + line.len())
+}
+
 fn word_at(text: &str) -> &str {
     let end = text.find(|c: char| !(c.is_ascii_alphanumeric() || c == '_')).unwrap_or(text.len());
     &text[..end]
@@ -238,7 +288,7 @@ fn word_at(text: &str) -> &str {
 /// Tags and outputs that are never closed, block tags without their end tag and end tags without their block.
 pub fn diagnostics(text: &str) -> Vec<Diagnostic> {
     let mut scanner = Scanner { stack: vec![], verbatim: None, found: vec![] };
-    let mut at = 0;
+    let mut at = front_matter_end(text);
     while let Some(open) = next_opener(text, at) {
         let is_tag = text[open..].starts_with("{%");
         if !is_tag && scanner.verbatim.is_some() {
@@ -256,6 +306,8 @@ pub fn diagnostics(text: &str) -> Vec<Diagnostic> {
         if !is_tag {
             continue;
         }
+        // Liquid reads a tag from the last `{%` before its `%}`, which matters where `{%` is text (in a raw).
+        let open = if scanner.verbatim.is_some() { open + text[open..close].rfind("{%").unwrap_or(0) } else { open };
         let body = &text[open + 2..close];
         let inner = body.strip_prefix('-').unwrap_or(body);
         let name = word_at(inner.trim_start());
@@ -417,6 +469,72 @@ mod tests {
         assert_eq!(found("{%- liquid\n  endfor\n-%}"), [at(code::STRAY_END_TAG, 1, 2)]);
         assert_eq!(found("{% liquid\n  comment\n    if a\n  endcomment\n%}"), []);
         assert_eq!(found("{% liquid if a %}{% endif %}"), []);
+    }
+
+    #[test]
+    fn verbatim_blocks_hide_what_liquid_does_not_read() {
+        for text in [
+            "{% raw %}Use {% to open a tag{% endraw %}",
+            "{% comment %}{% raw %}{% endcomment %}{% endraw %}{% endcomment %}",
+            "{% doc %}{% if a %} {{ x {% enddoc %}",
+            "---\ntitle: Using {% raw %} in posts\n---\n<p>{{ a }}</p>",
+            "\u{feff}---\r\ntitle: {{ x\r\n...\r\n{% if a %}{% endif %}",
+        ] {
+            assert_eq!(found(text), [], "{text:?}");
+        }
+        assert_eq!(found("---\ntitle: x\n---\n{% endif %}"), [at(code::STRAY_END_TAG, 3, 0)]);
+        assert_eq!(found("---\n{% endif %}"), [at(code::STRAY_END_TAG, 1, 0)], "front matter that never closes is text");
+    }
+
+    #[test]
+    fn shopify_snippets_are_found_by_name() {
+        let root = temp("shopify");
+        write_files(
+            &root,
+            &[
+                ("layout/theme.liquid", ""),
+                ("snippets/product-card.liquid", ""),
+                ("snippets/icons/star.liquid", ""),
+                ("sections/main.liquid", ""),
+            ],
+        );
+        let main = root.join("sections/main.liquid");
+        assert_eq!(lookup(&main, "{% render 'product-card' %}"), [root.join("snippets/product-card.liquid")]);
+        assert_eq!(lookup(&main, "{% include 'icons/star' %}"), [root.join("snippets/icons/star.liquid")]);
+        let named: Vec<_> = candidates(&main, Tag::Render).into_iter().map(|(name, _)| name).collect();
+        assert_eq!(named, ["icons/star", "product-card"]);
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn names_stay_inside_the_site_and_completion_skips_dependencies() {
+        let root = temp("scope");
+        write_files(
+            &root,
+            &[
+                ("_config.toml", ""),
+                ("_includes/a.html", ""),
+                ("secret.txt", ""),
+                ("blog/post.md", ""),
+                ("blog/node_modules/x.js", ""),
+                ("blog/.git/HEAD", ""),
+                ("blog/_site/y.html", ""),
+                ("blog/side.html", ""),
+                ("_x.liquid", ""),
+                ("_x.html.liquid", ""),
+            ],
+        );
+        let post = root.join("blog/post.md");
+        assert_eq!(lookup(&post, "{% include a.html %}"), [root.join("_includes/a.html")]);
+        assert!(lookup(&post, "{% include ../secret.txt %}").is_empty());
+        assert!(lookup(&post, "{% include_relative ../secret.txt %}").is_empty());
+        let relative: Vec<_> = candidates(&post, Tag::IncludeRelative).into_iter().map(|(name, _)| name).collect();
+        assert_eq!(relative, ["side.html"]);
+        let plain = temp("order");
+        write_files(&plain, &[("p.liquid", ""), ("_x.liquid", ""), ("_x.html.liquid", "")]);
+        assert_eq!(lookup(&plain.join("p.liquid"), "{% render 'x' %}"), [plain.join("_x.liquid"), plain.join("_x.html.liquid")]);
+        std::fs::remove_dir_all(&root).unwrap();
+        std::fs::remove_dir_all(&plain).unwrap();
     }
 
     #[test]

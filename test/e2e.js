@@ -386,6 +386,34 @@ const check = (label, actual, expected) => {
     (await req("textDocument/hover", pageUri, 1, 15)).result.contents.value,
     "**Include** `footer.html`\n\n- `_includes/footer.html`",
   );
+  const theme = path.join(root, "theme");
+  fs.mkdirSync(path.join(theme, "snippets"), { recursive: true });
+  fs.mkdirSync(path.join(theme, "layout"), { recursive: true });
+  fs.mkdirSync(path.join(theme, "sections"), { recursive: true });
+  fs.writeFileSync(path.join(theme, "snippets", "product-card.liquid"), "");
+  const sectionUri = fileUri(path.join(theme, "sections", "main.liquid"));
+  await send(
+    "textDocument/didOpen",
+    {
+      textDocument: {
+        uri: sectionUri,
+        languageId: "liquid",
+        version: 1,
+        text: "{% render 'product-card' %}\n{% render 'p",
+      },
+    },
+    true,
+  );
+  check(
+    "definition: shopify render finds snippets/product-card.liquid",
+    targets(await req("textDocument/definition", sectionUri, 0, 14)),
+    ["/theme/snippets/product-card.liquid"],
+  );
+  check(
+    "completion: shopify snippet names",
+    labels(await req("textDocument/completion", sectionUri, 1, 12)),
+    ["product-card"],
+  );
   check(
     "completion: jekyll include names",
     labels(await req("textDocument/completion", pageUri, 2, 14)),

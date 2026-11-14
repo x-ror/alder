@@ -102,14 +102,15 @@ With the association, an include opens as Liquid, with its own navigation and ch
 
 Go to Definition, Ctrl/Cmd+click links and hover work on the name in `{% render 'card' %}`, `{% include 'card' %}`, `{% include_relative 'card.html' %}` and Jekyll's unquoted `{% include footer.html %}`. Completion offers the names inside the quotes. A dynamic name (`{{ var }}`, a variable) is left alone. Where the name is looked up:
 
-| Tag                                    | Where                                                                                                                                   |
-| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `include` under a Jekyll site          | `_includes/<name>`; the site is the nearest folder above the file with a `_config.yml`                                                  |
-| `include_relative`                     | `<name>`, relative to the file                                                                                                          |
-| `render`, and `include` without Jekyll | `_<name>.liquid` or `_<name>.html.liquid` in the file's folder, as the `liquid` gem looks it up; `shared/card` is `shared/_card.liquid` |
+| Tag                                       | Where                                                                                                                                      |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `include` under a Jekyll site             | `_includes/<name>`; the site is the nearest folder above the file with a `_config.yml` (or `.yaml`, `.toml`)                               |
+| `include_relative`                        | `<name>`, relative to the file                                                                                                             |
+| `render` and `include` in a Shopify theme | `snippets/<name>.liquid`; the theme is the nearest folder above the file with `snippets/` and `layout/` (or `config/settings_schema.json`) |
+| `render`, and `include` without Jekyll    | `_<name>.liquid` or `_<name>.html.liquid` in the file's folder, as the `liquid` gem looks it up; `shared/card` is `shared/_card.liquid`    |
 
 ### Checks
 
-The language server reports, as errors, the tags that stop a template from rendering: a `{{` or `{%` that is never closed (`Syntax/LiquidUnclosedTag`), a block tag (`if`, `unless`, `for`, `case`, `capture`, `comment`, `raw`, `tablerow`, `form`, `paginate`, `highlight`, also on the lines of a `{% liquid %}` tag) without its end tag (`Syntax/LiquidUnclosedBlock`), an end tag with nothing to close (`Syntax/LiquidStrayEndTag`) and an end tag for another block (`Syntax/LiquidMismatchedEndTag`). `{% comment %}` and `{% raw %}` are not read as tags, and tags you register yourself are left alone. `ruby-templates check` reports them too, and `rubyTemplates.liquid.disabledDiagnostics` turns them off. See [Diagnostics](/vscode-ruby-templates/reference/diagnostics/).
+The language server reports, as errors, the tags that stop a template from rendering: a `{{` or `{%` that is never closed (`Syntax/LiquidUnclosedTag`; Jekyll front matter, `{% raw %}`, `{% comment %}` and `{% doc %}` are not read), a block tag (`if`, `unless`, `for`, `case`, `capture`, `comment`, `raw`, `tablerow`, `form`, `paginate`, `highlight`, also on the lines of a `{% liquid %}` tag) without its end tag (`Syntax/LiquidUnclosedBlock`), an end tag with nothing to close (`Syntax/LiquidStrayEndTag`) and an end tag for another block (`Syntax/LiquidMismatchedEndTag`). `{% comment %}` and `{% raw %}` are not read as tags, and tags you register yourself are left alone. `ruby-templates check` reports them too, and `rubyTemplates.liquid.disabledDiagnostics` turns them off. See [Diagnostics](/vscode-ruby-templates/reference/diagnostics/).
 
 If Shopify's Liquid extension also contributes `liquid`, disable one of the two for the workspace: VS Code uses one grammar per language id.
