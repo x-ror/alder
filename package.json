@@ -728,7 +728,7 @@
           },
           "default": [],
           "uniqueItems": true,
-          "description": "Built-in ERB diagnostics to turn off, by rule name (`Department/Name`). The `.ruby-templates.toml` file overrides this list."
+          "description": "Built-in ERB diagnostics to turn off, by rule name (`Department/Name`). A rule a `.ruby-templates.toml` switches with `enabled` follows the file."
         },
         "rubyTemplates.haml.disabledDiagnostics": {
           "type": "array",
@@ -775,7 +775,7 @@
           },
           "default": [],
           "uniqueItems": true,
-          "description": "Built-in Haml diagnostics to turn off, by rule name (`Department/Name`). The `.ruby-templates.toml` file overrides this list."
+          "description": "Built-in Haml diagnostics to turn off, by rule name (`Department/Name`). A rule a `.ruby-templates.toml` switches with `enabled` follows the file."
         },
         "rubyTemplates.jbuilder.disabledDiagnostics": {
           "type": "array",
@@ -789,7 +789,7 @@
           },
           "default": [],
           "uniqueItems": true,
-          "description": "Built-in diagnostics to turn off in Jbuilder and Builder views, by rule name (`Department/Name`). The `.ruby-templates.toml` file overrides this list."
+          "description": "Built-in diagnostics to turn off in Jbuilder and Builder views, by rule name (`Department/Name`). A rule a `.ruby-templates.toml` switches with `enabled` follows the file."
         },
         "rubyTemplates.slim.disabledDiagnostics": {
           "type": "array",
@@ -831,7 +831,7 @@
           },
           "default": [],
           "uniqueItems": true,
-          "description": "Built-in Slim diagnostics to turn off, by rule name (`Department/Name`). The `.ruby-templates.toml` file overrides this list."
+          "description": "Built-in Slim diagnostics to turn off, by rule name (`Department/Name`). A rule a `.ruby-templates.toml` switches with `enabled` follows the file."
         },
         "rubyTemplates.erb.diagnostics.enabled": {
           "type": "boolean",

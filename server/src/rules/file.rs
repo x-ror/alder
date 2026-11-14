@@ -19,6 +19,10 @@ const LANGUAGE_TABLES: [(&str, &[&str]); 3] = [
 ];
 /// A key older versions took; it gets a problem that names the replacement.
 const REMOVED_DISABLED_DIAGNOSTICS: &str = "disabled_diagnostics";
+/// Old rule names, for the problem that names the new one; they don't resolve.
+const RENAMED_RULES: [(&str, &str); 1] = [("Rails/I18nMissingKey", "Rails/MissingTranslation")];
+const SWITCH_RULE_OFF_JBUILDER: &str =
+    "switch a rule off with `[Rails.MissingPartial] enabled = false`, or `exclude = [\"**/*.jbuilder\", \"**/*.builder\"]` for some files";
 const SWITCH_RULE_OFF: &str = "switch a rule off with `[Html.ImgAlt] enabled = false`, or `exclude = [\"**/*.haml\"]` for some files";
 const RULE_KEYS: [&str; 3] = ["enabled", "include", "exclude"];
 
@@ -114,7 +118,7 @@ impl Reader<'_> {
                 let language = self.language(section, allowed, value);
                 file.languages.push((section, language));
             } else if name == "jbuilder" {
-                self.problem(key.span(), format!("`[jbuilder]` is removed; {SWITCH_RULE_OFF}"));
+                self.problem(key.span(), format!("`[jbuilder]` is removed; {SWITCH_RULE_OFF_JBUILDER}"));
             } else if name.starts_with(|c: char| c.is_ascii_uppercase()) || name.contains('/') {
                 self.department(file, key, value);
             } else {
@@ -175,7 +179,10 @@ impl Reader<'_> {
                         let rule_table = self.rule_table(&format!("{department}.{sub_name}"), rule, value);
                         file.rules.push((rule, rule_table));
                     }
-                    None => self.problem(sub.span(), format!("unknown rule `{full}`")),
+                    None => {
+                        let renamed = RENAMED_RULES.iter().find(|(old, _)| *old == full).map(|(_, new)| format!("; renamed `{new}`"));
+                        self.problem(sub.span(), format!("unknown rule `{full}`{}", renamed.unwrap_or_default()));
+                    }
                 }
             } else {
                 let message =
@@ -404,8 +411,17 @@ colour = 1
             [
                 format!("2:1: `disabled_diagnostics` is removed; {fix}"),
                 format!("4:1: `disabled_diagnostics` is removed; {fix}"),
-                format!("5:2: `[jbuilder]` is removed; {fix}"),
+                "5:2: `[jbuilder]` is removed; switch a rule off with `[Rails.MissingPartial] enabled = false`, or `exclude = [\"**/*.jbuilder\", \"**/*.builder\"]` for some files".to_string(),
             ]
+        );
+    }
+
+    #[test]
+    fn a_renamed_rule_names_its_new_name() {
+        let file = read("[Rails.I18nMissingKey]\nenabled = false\n[Rails.Nope]\n");
+        assert_eq!(
+            messages(&file),
+            ["1:8: unknown rule `Rails/I18nMissingKey`; renamed `Rails/MissingTranslation`", "3:8: unknown rule `Rails/Nope`"]
         );
     }
 

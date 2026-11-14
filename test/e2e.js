@@ -3228,6 +3228,11 @@ const check = (label, actual, expected) => {
     ],
   );
   check(
+    "toml: problems have the rule as code",
+    rulesPublished(tomlUri)?.map((d) => d.code),
+    ["Config/Invalid"],
+  );
+  check(
     "toml: problems have the tool as source",
     rulesPublished(tomlUri)?.map((d) => d.source),
     ["ruby-templates"],

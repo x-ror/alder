@@ -24,7 +24,7 @@ use crate::rules::resolve::{resolve, Configs, ResolvedRules};
 use crate::slim;
 use crate::slim::hover;
 use crate::util::{file_location, line_location};
-use crate::{config, erb, format, haml, helpers, outline, partial_rename, ruby, semantic_tokens, signature_help, util};
+use crate::{config, erb, format, haml, helpers, outline, partial_rename, report, ruby, semantic_tokens, signature_help, util};
 use dashmap::mapref::entry::Entry;
 use dashmap::{DashMap, DashSet};
 use haml::indent::LineRole;
@@ -1178,13 +1178,13 @@ impl ConfigReports {
             if file.problems.is_empty() || !self.logged.insert(file.path.clone()) {
                 continue;
             }
-            let shown = file.path.display();
+            let text = std::fs::read_to_string(&file.path).unwrap_or_default();
             let mut diagnostics = Vec::new();
             for problem in &file.problems {
-                let (line, col) = (problem.range.start.line + 1, problem.range.start.character + 1);
-                client.log_message(MessageType::WARNING, format!("{shown}:{line}:{col}: {}", problem.message)).await;
-                diagnostics
-                    .push(Diagnostic { source: Some(DIAGNOSTIC_SOURCE.into()), ..util::warning(problem.range, problem.message.clone()) });
+                let found = (report::Severity::Warning, Some(report::CONFIG_PROBLEM), problem.message.as_str());
+                client.log_message(MessageType::WARNING, report::text_line(&file.path, &text, found, problem.range)).await;
+                let diagnostic = util::coded(util::warning(problem.range, problem.message.clone()), report::CONFIG_PROBLEM);
+                diagnostics.push(Diagnostic { source: Some(DIAGNOSTIC_SOURCE.into()), ..diagnostic });
             }
             let Some(uri) = util::file_uri(&file.path) else { continue };
             client.publish_diagnostics(uri.clone(), diagnostics, None).await;

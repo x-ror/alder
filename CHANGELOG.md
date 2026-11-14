@@ -13,7 +13,7 @@
 - **Breaking:** the `rubyTemplates.reindentHaml` command is removed; Format Document and Format Selection do the same.
 - Liquid is documented as experimental: the `liquid` language id, its extensions and its grammar are outside the 1.0 stability guarantees.
 - The rules reference and the guides no longer describe shipped rules as a draft, a roadmap or planned, and no longer mention `ruby-templates-ls --check`.
-- `ruby-templates --version` (or `-V`) prints the version and exits 0; `ruby-templates --help`, `check --help` and `format --help` exit 0 instead of 2.
+- `ruby-templates --version` and `ruby-templates-ls --version` (or `-V`) print the version and exit 0 (the language server no longer starts for them); `ruby-templates --help`, `check --help` and `format --help` exit 0 instead of 2.
 - `ruby-templates check` is faster on apps with many locale files or a large `app/javascript` (one template: about 700 ms to 45 ms on an app with 500 locale files, 700 scripts and `config.i18n.fallbacks = true`): `Rails/MissingTranslation` reads the default locale's files, once, and the other locales only when a key is missing there; the Stimulus check runs its patterns only over scripts that can register controllers.
 - `Rails/MissingPartial` finds a partial in the format of the template that renders it, whichever gem or initializer registered that format: `index.mobile.haml` renders `_card.mobile.haml` (`mobile-fu`'s `:mobile`, a custom `.amp`) without a report.
 - `Rails/UnsafeOutput` no longer reports a safe call with a trailing `if` or `unless` (`== render "a" if x`, `<%== render "a" unless x %>`, `!= render "a" if x`).

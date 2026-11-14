@@ -64,7 +64,7 @@ or (for check) a named file that isn't a template.
 
 pub fn run(args: &[String]) -> i32 {
     match args.split_first() {
-        Some((command, rest)) if matches!(command.as_str(), "check" | "format") && rest.iter().any(|arg| is_help(arg)) => {
+        Some((command, rest)) if matches!(command.as_str(), "check" | "format") && asks_for_help(rest) => {
             print!("{HELP}");
             OK
         }
@@ -86,6 +86,15 @@ pub fn run(args: &[String]) -> i32 {
         }
         _ => usage("expected a command"),
     }
+}
+
+/// `--help` or `-h`, unless it is the value of an option.
+fn asks_for_help(args: &[String]) -> bool {
+    let values = args.iter().scan(false, |after_option, arg| {
+        let is_value = std::mem::replace(after_option, matches!(arg.as_str(), "--format" | "--stdin-filepath"));
+        Some((arg, is_value))
+    });
+    values.into_iter().any(|(arg, is_value)| !is_value && is_help(arg))
 }
 
 fn is_help(arg: &str) -> bool {
@@ -581,6 +590,14 @@ mod tests {
         {
             assert!(FormatArgs::parse(&args(bad)).is_err(), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn help_is_not_an_option_value() {
+        assert!(asks_for_help(&args(&["--format", "json", "-h"])));
+        assert!(asks_for_help(&args(&["--help"])));
+        assert!(!asks_for_help(&args(&["--format", "-h"])));
+        assert!(!asks_for_help(&args(&["--stdin-filepath", "--help", "-"])));
     }
 
     #[test]

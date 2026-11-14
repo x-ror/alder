@@ -240,6 +240,17 @@ try {
     assert.match(help.stdout, /^Usage:/);
   }
 
+  assert.strictEqual(
+    run(["check", "--format", "-h"]).status,
+    2,
+    "-h is the value of --format",
+  );
+  const lsBin = path.join(path.dirname(bin), `ruby-templates-ls${exe}`);
+  if (fs.existsSync(lsBin)) {
+    const ls = spawnSync(lsBin, ["--version"], { encoding: "utf8" });
+    assert.match(ls.stdout, /^ruby-templates-ls \d+\.\d+\.\d+\S*\n$/);
+  }
+
   for (const args of [
     [],
     ["lint"],
