@@ -64,6 +64,7 @@ impl Outline<'_> {
                 alternate.iter().for_each(|block| self.block(block));
             }
             NodeKind::When { block: Some(block), .. }
+            | NodeKind::EachOf { block, .. }
             | NodeKind::While { block, .. }
             | NodeKind::Case { block, .. }
             | NodeKind::Include { block, .. } => self.block(block),

@@ -5,7 +5,7 @@ sidebar:
   order: 10
 ---
 
-What the grammars highlight and what the language server parses. The server follows Erubi as Rails configures it, Haml 7.5 and Slim 5.2. Pug (highlighted by VS Code itself, parsed as Pug 2.0.4 parses it) and Liquid are described under [File types](/vscode-ruby-templates/guides/file-types/).
+What the grammars highlight and what the language server parses. The server follows Erubi as Rails configures it, Haml 7.5 and Slim 5.2. Pug (highlighted by VS Code itself, parsed as Pug 3.0.4 parses it) and Liquid are described under [File types](/vscode-ruby-templates/guides/file-types/).
 
 ## ERB
 

@@ -1,8 +1,7 @@
-// Pug oracle: runs templates through Pug 2.0.4's own lexer, comment stripper and parser in Node, with the implied `.pug`
+// Pug oracle: runs templates through Pug 3.0.4's own lexer, comment stripper and parser in Node, with the implied `.pug`
 // (what `pug.compile` does before linking) and records the first error, or an outline of the AST, for `server/src/pug/parser.rs` to match.
 //   node test/oracle/pug.js           checks test/oracle/pug_cases.json against Pug (UPDATE=1 rewrites it), then
 //                                     records Pug's own test templates and runs the Rust comparison on them
-// PUG_PATH: a directory where `pug` 2.0.x resolves (`npm install pug@2.0.4` there). Without it the oracle is skipped.
 // `bun test/oracle.js pug` imports the helpers below to compare Pug with `ruby-templates check`.
 import { spawnSync } from "child_process";
 import fs from "fs";
@@ -11,7 +10,7 @@ import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 
-export const VERSION = "2.0.4";
+export const VERSION = "3.0.4";
 export const casesFile = path.join(import.meta.dirname, "pug_cases.json");
 const manifest = path.join(
   import.meta.dirname,
@@ -32,25 +31,16 @@ const upstreamDirs = [
 ];
 
 export const loadPug = () => {
-  if (!process.env.PUG_PATH) return undefined;
-  const fromPath = createRequire(
-    path.join(path.resolve(process.env.PUG_PATH), "noop.js"),
-  );
-  let pugJson;
-  try {
-    pugJson = fromPath.resolve("pug/package.json");
-  } catch {
-    return undefined;
-  }
+  const fromRepo = createRequire(import.meta.url);
+  const pugJson = fromRepo.resolve("pug/package.json");
   const { version } = JSON.parse(fs.readFileSync(pugJson, "utf8"));
-  if (!version.startsWith("2.0.")) return undefined;
   // The lexer and parser Pug itself loads, at the versions it pins.
   const fromPug = createRequire(pugJson);
   // pug-parser warns about style (several attribute lists, `.jade`), which isn't an error.
   console.warn = () => {};
   return {
     version,
-    pug: fromPath("pug"),
+    pug: fromRepo("pug"),
     lex: fromPug("pug-lexer"),
     strip: fromPug("pug-strip-comments"),
     parse: fromPug("pug-parser"),
@@ -122,6 +112,10 @@ const outline = (node, out = []) => {
       walk(node.block);
       if (node.alternate) out.push(`else@${node.alternate.line}`);
       walk(node.alternate);
+      break;
+    case "EachOf":
+      out.push(`each ${node.val} of ${node.obj}${at}`);
+      walk(node.block);
       break;
     case "Case":
       out.push(`case ${node.expr}${at}`);
@@ -293,14 +287,8 @@ const checkUpstream = (pug) => {
   return test.status === 0;
 };
 
-export const INSTALL_HINT = `set PUG_PATH to a directory where pug ${VERSION} is installed (npm install pug@${VERSION})`;
-
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
   const pug = loadPug();
-  if (!pug) {
-    console.log(`pug oracle skipped: ${INSTALL_HINT}`);
-    process.exit(0);
-  }
   console.log(`pug ${pug.version}`);
   const recordedAgree = checkRecorded(pug);
   const upstreamAgree = process.env.UPDATE || checkUpstream(pug);

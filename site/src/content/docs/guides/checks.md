@@ -5,7 +5,7 @@ sidebar:
   order: 2
 ---
 
-The language server checks every template as you type and reports problems in the editor and the _Problems_ panel. The checks follow Erubi, Rails, Haml 7, Slim 5 and Pug 2.0.4, and Haml, Slim, Pug and Rails errors use those projects' own messages. No gems or npm packages are needed. Liquid's tag checks are described under [File types](/vscode-ruby-templates/guides/file-types/#liquid).
+The language server checks every template as you type and reports problems in the editor and the _Problems_ panel. The checks follow Erubi, Rails, Haml 7, Slim 5 and Pug 3, and Haml, Slim, Pug and Rails errors use those projects' own messages. No gems or npm packages are needed. Liquid's tag checks are described under [File types](/vscode-ruby-templates/guides/file-types/#liquid).
 
 Every check has a code. The [diagnostics reference](/vscode-ruby-templates/reference/diagnostics/) lists each code with what it means.
 
@@ -55,7 +55,7 @@ Slim engines your app registers itself (for example `mjml:`) can be accepted wit
 
 ## Pug
 
-Pug templates get the first error Pug 2 raises, the checks on what they include and extend, and the HTML rules that need no Ruby (`alt`, duplicate ids, links, nested interactive content, iframe titles, link text, content in a void element). Their code is JavaScript, so none of the Rails checks run on them; see [File types](/vscode-ruby-templates/guides/file-types/#pug).
+Pug templates get the first error Pug raises, the checks on what they include and extend, and the HTML rules that need no Ruby (`alt`, duplicate ids, links, nested interactive content, iframe titles, link text, content in a void element). Their code is JavaScript, so none of the Rails checks run on them; see [File types](/vscode-ruby-templates/guides/file-types/#pug).
 
 ## Rails checks
 

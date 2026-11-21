@@ -622,15 +622,16 @@ export const diagnostics: Diagnostic[] = [
     summary:
       "A keyword such as `each`, `case` or `include` without the expression or path it needs, or with one it can't take.",
     explanation:
-      "Pug raises `PUG:MALFORMED_EACH` (`each user of users`, or `- each` with a dash), `PUG:NO_CASE_EXPRESSION`, `PUG:NO_WHEN_EXPRESSION`, `PUG:NO_WHILE_EXPRESSION`, `PUG:NO_INCLUDE_PATH`, `PUG:NO_EXTENDS_PATH`, `PUG:MALFORMED_INCLUDE`, `PUG:MALFORMED_EXTENDS`, `PUG:DEFAULT_WITH_EXPRESSION` and `PUG:ELSE_CONDITION` (`else x`, where `else if x` was meant).",
+      "Pug raises `PUG:MALFORMED_EACH` (`each user from users`, or `- each` with a dash), `PUG:MALFORMED_EACH_OF_LVAL` (an `each … of` whose variable is neither a name nor a `[key, value]` pair; Pug tries `each … of` first, so `each offer in offers` is one, as ` of` starts `offers`), `PUG:NO_CASE_EXPRESSION`, `PUG:NO_WHEN_EXPRESSION`, `PUG:NO_WHILE_EXPRESSION`, `PUG:NO_INCLUDE_PATH`, `PUG:NO_EXTENDS_PATH`, `PUG:MALFORMED_INCLUDE`, `PUG:MALFORMED_EXTENDS`, `PUG:DEFAULT_WITH_EXPRESSION` and `PUG:ELSE_CONDITION` (`else x`, where `else if x` was meant).",
     example: {
       file: "app/assets/templates/users/list.jst.pug",
       lang: "pug",
-      code: `each user of users
+      code: `each user from users
   li= user.name
 `,
     },
-    message: "malformed each",
+    message:
+      "This `each` has a syntax error. `each` statements should be of the form: `each VARIABLE_NAME of JS_EXPRESSION`",
     line: 1,
     column: 5,
   },
@@ -658,7 +659,7 @@ export const diagnostics: Diagnostic[] = [
     languages: ["pug"],
     summary: "Any other error the Pug parser raises.",
     explanation:
-      "Pug 2's lexer and parser errors that belong to no other code, such as `PUG:UNEXPECTED_TEXT`, `PUG:INVALID_TOKEN`, `PUG:MIXIN_WITHOUT_BODY` and `PUG:BLOCK_OUTISDE_MIXIN` (an anonymous `block` outside a mixin), with Pug's message. A few templates make Pug itself throw a JavaScript error (a `#` with nothing after it, a lone `.` under a tag); that error's message is reported. The JavaScript in `- code`, `#{}` and attribute values is not checked, so Pug's `PUG:SYNTAX_ERROR` is never reported.",
+      "Pug's lexer and parser errors that belong to no other code, such as `PUG:UNEXPECTED_TEXT`, `PUG:INVALID_TOKEN`, `PUG:MIXIN_WITHOUT_BODY` and `PUG:BLOCK_OUTISDE_MIXIN` (an anonymous `block` outside a mixin), with Pug's message. A few templates make Pug itself throw a JavaScript error (a `#` with nothing after it, a lone `.` under a tag); that error's message is reported. The JavaScript in `- code`, `#{}` and attribute values is not checked, so Pug's `PUG:SYNTAX_ERROR` is never reported.",
     example: {
       file: "app/assets/templates/users/badge.jst.pug",
       lang: "pug",

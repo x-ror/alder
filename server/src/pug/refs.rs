@@ -1,4 +1,4 @@
-//! The files a Pug template names with `include` and `extends`, found as Pug 2 finds them, and the checks that follow
+//! The files a Pug template names with `include` and `extends`, found as Pug 3 finds them, and the checks that follow
 //! them: `pug.compile` adds `.pug` to a path without an extension, and pug-load reads a relative path from the template's
 //! folder and an absolute one from `basedir`, here the app's asset root.
 

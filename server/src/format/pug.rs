@@ -270,6 +270,7 @@ mod tests {
             fmt("p= x \t\nif x  \n  p.  \n    a\neach i in xs  \n  span\nwhile x  \n  i\ncase x  \n  when 1  \n    b\nblock content  \n//- c  \n\n  \n"),
             "p= x\nif x\n  p.\n    a\neach i in xs\n  span\nwhile x\n  i\ncase x\n  when 1\n    b\nblock content\n//- c\n\n\n"
         );
+        assert_eq!(fmt("each x of xs  \n    span\n"), "each x of xs\n  span\n");
         // Pug joins `-` lines into one piece of JavaScript: these spaces are in a string.
         let literal = "- var a = `x  \n- y`\np= a\n";
         assert_eq!(fmt(literal), literal);

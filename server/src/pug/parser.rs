@@ -1,4 +1,4 @@
-//! Port of `pug-parser` 5.0.1 (Pug 2.0.4), run as Pug runs it: after `pug-strip-comments` 1.0.4 with Pug's defaults,
+//! Port of `pug-parser` 6.0.0 (Pug 3.0.4), run as Pug runs it: after `pug-strip-comments` 2.0.0 with Pug's defaults,
 //! which drop `//-` comments and their bodies, and with `.pug` implied for a path without an extension, as `pug.compile`
 //! gives it (the path keeps its written form here). The AST has Pug's nodes, each with the line and column of the token
 //! that starts it (1-based, columns in UTF-16 code units); `#[...]` in text is spliced into the text's nodes.
@@ -47,6 +47,12 @@ pub enum NodeKind {
         key: Option<String>,
         block: Block,
         alternate: Option<Block>,
+    },
+    /// `each val of obj`, which takes no `else`.
+    EachOf {
+        obj: String,
+        val: String,
+        block: Block,
     },
     /// Its block holds `When` nodes.
     Case {
@@ -349,6 +355,7 @@ impl Parser {
                 Ok(self.parse_text_block()?.map(Expr::Block))
             }
             Kind::Each { .. } => one(self.parse_each()?),
+            Kind::EachOf { .. } => one(self.parse_each_of()?),
             Kind::Code { .. } => one(self.parse_code(false)?),
             Kind::BlockCode => one(self.parse_block_code()?),
             Kind::If(_) => one(self.parse_conditional()?),
@@ -623,6 +630,13 @@ impl Parser {
             None => None,
         };
         Ok(node(&token, NodeKind::Each { obj: code.clone(), val: val.clone(), key: key.clone(), block, alternate }))
+    }
+
+    fn parse_each_of(&mut self) -> Result<Node, Error> {
+        let token = self.expect("eachOf")?;
+        let Kind::EachOf { val, code } = &token.kind else { unreachable!() };
+        let block = self.block()?;
+        Ok(node(&token, NodeKind::EachOf { obj: code.clone(), val: val.clone(), block }))
     }
 
     fn file_reference(&mut self) -> Result<FileReference, Error> {
@@ -961,6 +975,10 @@ mod tests {
                     outline(alternate, out);
                 }
             }
+            NodeKind::EachOf { obj, val, block } => {
+                out.push(format!("each {val} of {obj}{at}"));
+                outline(block, out);
+            }
             NodeKind::Case { expr, block } => {
                 out.push(format!("case {expr}{at}"));
                 outline(block, out);
@@ -1032,12 +1050,19 @@ mod tests {
         (error.code, error.message, error.line, error.column)
     }
 
-    /// Each code Pug 2.0.4's lexer and parser raise, with its message and position as Pug reports them.
+    /// Each code Pug 3.0.4's lexer and parser raise, with its message and position as Pug reports them.
     #[test]
     fn errors_at_pug_positions() {
         let class_message = "\" x\" is not a valid class name.  Class names can only contain \"_\", \"-\", a-z and 0-9, and must contain at least one of \"_\", or a-z";
         let dashed_each =
             "Pug each and for should no longer be prefixed with a dash (\"-\"). They are pug keywords and not part of JavaScript.";
+        let dashed_each_of =
+            "Pug each and for should not be prefixed with a dash (\"-\"). They are pug keywords and not part of JavaScript.";
+        let malformed = |keyword: &str| {
+            format!("This `{keyword}` has a syntax error. `{keyword}` statements should be of the form: `{keyword} VARIABLE_NAME of JS_EXPRESSION`")
+        };
+        let (malformed_each, malformed_for) = (malformed("each"), malformed("for"));
+        let each_of_value = "The value variable for each must either be a valid identifier (e.g. `item`) or a pair of identifiers in square brackets (e.g. `[key, value]`).";
         let after_tag = "Unexpected token `slash` expected `text`, `interpolated-code`, `code`, `:`, `newline` or `eos`";
         let cases: &[(&str, &str, &str, usize, usize)] = &[
             ("div\n    p\n  a", "PUG:INCONSISTENT_INDENTATION", "Inconsistent indentation. Expecting either 0 or 4 spaces/tabs.", 3, 1),
@@ -1060,8 +1085,16 @@ mod tests {
             ("default x", "PUG:DEFAULT_WITH_EXPRESSION", "default should not have an expression", 1, 8),
             ("else x", "PUG:ELSE_CONDITION", "`else` cannot have a condition, perhaps you meant `else if`", 1, 6),
             ("while", "PUG:NO_WHILE_EXPRESSION", "missing expression for while", 1, 6),
-            ("each x\n  p", "PUG:MALFORMED_EACH", "malformed each", 1, 5),
+            ("each x\n  p", "PUG:MALFORMED_EACH", &malformed_each, 1, 5),
+            ("for\n  p", "PUG:MALFORMED_EACH", &malformed_for, 1, 4),
             ("- for x, i in y", "PUG:MALFORMED_EACH", dashed_each, 1, 1),
+            ("- each x of y", "PUG:MALFORMED_EACH", dashed_each_of, 1, 1),
+            // `each … of` is tried first, and finds ` of` in `offers`.
+            ("each offer in offers\n  li= offer", "PUG:MALFORMED_EACH_OF_LVAL", each_of_value, 1, 21),
+            ("each k, v of m\n  p", "PUG:MALFORMED_EACH_OF_LVAL", each_of_value, 1, 15),
+            ("each 😀 of y\n  p", "PUG:MALFORMED_EACH_OF_LVAL", each_of_value, 1, 13),
+            ("each x of y", "PUG:INVALID_TOKEN", "expected \"indent\", but got \"eos\"", 1, 12),
+            ("each x of y\n  p\nelse\n  p", "PUG:INVALID_TOKEN", "unexpected token \"else\"", 3, 1),
             ("p(a!x)", "PUG:INVALID_KEY_CHARACTER", "Unexpected character x expected `=`", 1, 4),
             ("p(a!)", "PUG:INVALID_KEY_CHARACTER", "Unexpected character undefined expected `=`", 1, 4),
             ("case x\n  p", "PUG:INVALID_TOKEN", "Unexpected token \"tag\", expected \"when\", \"default\" or \"newline\"", 2, 3),
@@ -1134,6 +1167,31 @@ mod tests {
     }
 
     #[test]
+    fn each_of_takes_a_name_or_a_pair() {
+        let mut got = Vec::new();
+        outline(&parse("each x of list\n  p= x\nfor [k, v] of map\n  i\neach  y of z\n  b").unwrap(), &mut got);
+        assert_eq!(
+            got,
+            [
+                "each x of list@1:1",
+                "p ()@2:3",
+                "code= inline \"x\"@2:4",
+                "each [k, v] of map@3:1",
+                "i ()@4:3",
+                "each  y of z@5:1",
+                "b ()@6:3"
+            ]
+        );
+    }
+
+    #[test]
+    fn an_escaped_interpolation_keeps_its_mark() {
+        let mut got = Vec::new();
+        outline(&parse("p \\!{a} \\#{b}").unwrap(), &mut got);
+        assert_eq!(got, ["p ()@1:1", "text \"!{a} #{b}\"@1:3"]);
+    }
+
+    #[test]
     fn else_if_chains_nest() {
         let block = parse("if a\n  p\nelse if b\n  i\nelse\n  b").unwrap();
         let NodeKind::Conditional(first) = &block.nodes[0].kind else { panic!("{block:?}") };
@@ -1143,7 +1201,7 @@ mod tests {
         assert!(matches!(&second.alternate, Some(Alternate::Else(block)) if block.nodes.len() == 1));
     }
 
-    /// `test/oracle/pug_cases.json`, as `node test/oracle/pug.js` recorded them from Pug 2.0.4.
+    /// `test/oracle/pug_cases.json`, as `node test/oracle/pug.js` recorded them from Pug 3.0.4.
     #[test]
     fn oracle_cases() {
         let cases: Vec<Value> = serde_json::from_str(include_str!("../../../test/oracle/pug_cases.json")).unwrap();

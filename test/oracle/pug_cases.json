@@ -461,7 +461,7 @@
     "source": "each",
     "error": {
       "code": "PUG:MALFORMED_EACH",
-      "message": "malformed each",
+      "message": "This `each` has a syntax error. `each` statements should be of the form: `each VARIABLE_NAME of JS_EXPRESSION`",
       "line": 1,
       "column": 5
     }
@@ -510,7 +510,7 @@
     "source": "each x\n  p",
     "error": {
       "code": "PUG:MALFORMED_EACH",
-      "message": "malformed each",
+      "message": "This `each` has a syntax error. `each` statements should be of the form: `each VARIABLE_NAME of JS_EXPRESSION`",
       "line": 1,
       "column": 5
     }
@@ -899,7 +899,7 @@
   {
     "source": "p \\!{not}",
     "error": null,
-    "outline": ["p ()@1:1", "text \"#{not}\"@1:3"]
+    "outline": ["p ()@1:1", "text \"!{not}\"@1:3"]
   },
   {
     "source": "p a #[strong b] c",
@@ -1283,5 +1283,193 @@
     "source": "mixin m\n  +m: block",
     "error": null,
     "outline": ["mixin m()@1:1", "+m() ()@2:3", "mixin-block@2:7"]
+  },
+  {
+    "source": "each x of list\n  li= x",
+    "error": null,
+    "outline": ["each x of list@1:1", "li ()@2:3", "code= inline \"x\"@2:5"]
+  },
+  {
+    "source": "for [k, v] of map\n  dt= k\n  dd= v",
+    "error": null,
+    "outline": [
+      "each [k, v] of map@1:1",
+      "dt ()@2:3",
+      "code= inline \"k\"@2:5",
+      "dd ()@3:3",
+      "code= inline \"v\"@3:5"
+    ]
+  },
+  {
+    "source": "each  x of y\n  p",
+    "error": null,
+    "outline": ["each  x of y@1:1", "p ()@2:3"]
+  },
+  {
+    "source": "each [a,b] of y\n  p",
+    "error": null,
+    "outline": ["each [a,b] of y@1:1", "p ()@2:3"]
+  },
+  {
+    "source": "each x of y\n  p\nelse\n  p",
+    "error": {
+      "code": "PUG:INVALID_TOKEN",
+      "message": "unexpected token \"else\"",
+      "line": 3,
+      "column": 1
+    }
+  },
+  {
+    "source": "each x of y",
+    "error": {
+      "code": "PUG:INVALID_TOKEN",
+      "message": "expected \"indent\", but got \"eos\"",
+      "line": 1,
+      "column": 12
+    }
+  },
+  {
+    "source": "each x of\n  p",
+    "error": {
+      "code": "PUG:MALFORMED_EACH",
+      "message": "This `each` has a syntax error. `each` statements should be of the form: `each VARIABLE_NAME of JS_EXPRESSION`",
+      "line": 1,
+      "column": 5
+    }
+  },
+  {
+    "source": "for\n  p",
+    "error": {
+      "code": "PUG:MALFORMED_EACH",
+      "message": "This `for` has a syntax error. `for` statements should be of the form: `for VARIABLE_NAME of JS_EXPRESSION`",
+      "line": 1,
+      "column": 4
+    }
+  },
+  {
+    "source": "for x\n  p",
+    "error": {
+      "code": "PUG:MALFORMED_EACH",
+      "message": "This `for` has a syntax error. `for` statements should be of the form: `for VARIABLE_NAME of JS_EXPRESSION`",
+      "line": 1,
+      "column": 4
+    }
+  },
+  {
+    "source": "each offer in offers\n  li= offer",
+    "error": {
+      "code": "PUG:MALFORMED_EACH_OF_LVAL",
+      "message": "The value variable for each must either be a valid identifier (e.g. `item`) or a pair of identifiers in square brackets (e.g. `[key, value]`).",
+      "line": 1,
+      "column": 21
+    }
+  },
+  {
+    "source": "each k, v of m\n  p",
+    "error": {
+      "code": "PUG:MALFORMED_EACH_OF_LVAL",
+      "message": "The value variable for each must either be a valid identifier (e.g. `item`) or a pair of identifiers in square brackets (e.g. `[key, value]`).",
+      "line": 1,
+      "column": 15
+    }
+  },
+  {
+    "source": "each [a b] of y\n  p",
+    "error": {
+      "code": "PUG:MALFORMED_EACH_OF_LVAL",
+      "message": "The value variable for each must either be a valid identifier (e.g. `item`) or a pair of identifiers in square brackets (e.g. `[key, value]`).",
+      "line": 1,
+      "column": 16
+    }
+  },
+  {
+    "source": "each 😀 of y\n  p",
+    "error": {
+      "code": "PUG:MALFORMED_EACH_OF_LVAL",
+      "message": "The value variable for each must either be a valid identifier (e.g. `item`) or a pair of identifiers in square brackets (e.g. `[key, value]`).",
+      "line": 1,
+      "column": 13
+    }
+  },
+  {
+    "source": "- each x of y",
+    "error": {
+      "code": "PUG:MALFORMED_EACH",
+      "message": "Pug each and for should not be prefixed with a dash (\"-\"). They are pug keywords and not part of JavaScript.",
+      "line": 1,
+      "column": 1
+    }
+  },
+  {
+    "source": "- for x of y",
+    "error": {
+      "code": "PUG:MALFORMED_EACH",
+      "message": "Pug each and for should not be prefixed with a dash (\"-\"). They are pug keywords and not part of JavaScript.",
+      "line": 1,
+      "column": 1
+    }
+  },
+  {
+    "source": "for (x of y)\n  p",
+    "error": {
+      "code": "PUG:SYNTAX_ERROR",
+      "message": "Syntax Error: Unexpected token",
+      "line": 1,
+      "column": 12
+    }
+  },
+  {
+    "source": "each x of y of z\n  p",
+    "error": {
+      "code": "PUG:SYNTAX_ERROR",
+      "message": "Syntax Error: Unexpected token",
+      "line": 1,
+      "column": 13
+    }
+  },
+  {
+    "source": "p \\!{a} \\#{b}",
+    "error": null,
+    "outline": ["p ()@1:1", "text \"!{a} #{b}\"@1:3"]
+  },
+  {
+    "source": "p.\n  \\!{raw} and #{x}",
+    "error": null,
+    "outline": [
+      "p. ()@1:1",
+      "text \"!{raw} and \"@2:3",
+      "code= inline \"x\"@2:15"
+    ]
+  },
+  {
+    "source": "ul\n  each x of xs\n    li\n      img= x",
+    "error": null,
+    "outline": [
+      "ul ()@1:1",
+      "each x of xs@2:3",
+      "li ()@3:5",
+      "img ()@4:7",
+      "code= inline \"x\"@4:10"
+    ]
+  },
+  {
+    "source": "keygen x\nmenuitem y",
+    "error": null,
+    "outline": [
+      "keygen ()@1:1",
+      "text \"x\"@1:8",
+      "menuitem ()@2:1",
+      "text \"y\"@2:10"
+    ]
+  },
+  {
+    "source": "each x of xs\n  mixin m\n    p\n  +m",
+    "error": null,
+    "outline": ["each x of xs@1:1", "mixin m()@2:3", "p ()@3:5", "+m() ()@4:3"]
+  },
+  {
+    "source": "each x of xs\n  extends layout",
+    "error": null,
+    "outline": ["each x of xs@1:1", "extends layout.pug@2:11@2:3"]
   }
 ]

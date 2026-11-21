@@ -16,7 +16,7 @@ Built for Rails developers who work in `app/views` every day, and for teams that
 - **No gems to install.** The checks and the formatter are a fast language server written in Rust and bundled with the extension. They follow Erubi, Rails, Haml 7 and Slim 5 and report errors with those projects' own messages.
 - **Rails-aware.** <kbd>F12</kbd> on `render "users/card"` opens the partial; completion knows your partials, ViewComponents, model columns, `*_path` helpers, `@ivars` from the controller and `t(".keys")`.
 - **Safe formatting.** It changes only whitespace and checks that the template still compiles to the same thing; if it is unsure, it leaves the file alone.
-- **Pug and Liquid.** Pug (`.pug`, `.jade`, `pug-rails` `.jst.pug`) keeps VS Code's own highlighting and gets snippets, Pug 2's syntax errors, the HTML checks, an outline, `include`/`extends` navigation, whitespace formatting and the editing commands. Liquid gets highlighting, navigation to the files `render` and `include` name, and a check of its tags.
+- **Pug and Liquid.** Pug (`.pug`, `.jade`, `pug-rails` `.jst.pug`) keeps VS Code's own highlighting and gets snippets, Pug 3's syntax errors, the HTML checks, an outline, `include`/`extends` navigation, whitespace formatting and the editing commands. Liquid gets highlighting, navigation to the files `render` and `include` name, and a check of its tags.
 - **Works with Ruby LSP.** Install both: Ruby LSP keeps your `.rb` files, this extension adds what templates need.
 
 ## Getting started

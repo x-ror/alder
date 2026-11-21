@@ -1,11 +1,11 @@
 // The Slim, Haml and Pug formatters must never change what the template compiles to: compile each fixture with the slim
-// or haml gem, or render it with `pug` from PUG_PATH, before and after formatting and compare. Skipped when one is missing.
+// or haml gem, or render it with `pug`, before and after formatting and compare. Slim and Haml are skipped without their gem.
 import assert from "assert";
 import { execFileSync, spawnSync } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { INSTALL_HINT, loadPug } from "./oracle/pug.js";
+import { loadPug } from "./oracle/pug.js";
 
 const cli =
   process.env.RUBY_TEMPLATES ??
@@ -120,9 +120,7 @@ function checkPug({ pug }) {
   console.log("pug formatting keeps rendered output ok");
 }
 
-const pug = loadPug();
-if (pug) checkPug(pug);
-else console.log(`pug formatting: skipped (${INSTALL_HINT})`);
+checkPug(loadPug());
 if (hasGem("slim")) checkSlim();
 else console.log("slim formatting: skipped (`ruby -rslim` unavailable)");
 if (hasGem("haml")) checkHaml();

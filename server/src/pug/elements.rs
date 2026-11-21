@@ -9,9 +9,9 @@ use crate::util::{coded, error, LineIndex};
 use std::ops::Range;
 use tower_lsp_server::ls_types::Diagnostic;
 
-/// `void-elements` 2.0.1, the tags pug-code-gen closes itself, outside an XML doctype.
-const VOID_ELEMENTS: [&str; 16] =
-    ["area", "base", "br", "col", "embed", "hr", "img", "input", "keygen", "link", "menuitem", "meta", "param", "source", "track", "wbr"];
+/// `void-elements` 3.1.0, the tags pug-code-gen closes itself, outside an XML doctype.
+const VOID_ELEMENTS: [&str; 14] =
+    ["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"];
 /// Keywords whose lines decide whether, or how often, the lines nested under them render.
 const CONTROL_FLOW: [&str; 13] =
     ["if", "unless", "else", "each", "for", "while", "case", "when", "default", "mixin", "block", "append", "prepend"];
@@ -257,7 +257,8 @@ mod tests {
         let message = "img is a self closing element: <img/> but contains nested content.".to_string();
         assert_eq!(found("p\n  img x\n  br\n    | y\n"), Some((1, 2, 5, message.clone())));
         assert_eq!(found("img= src\n"), Some((0, 0, 3, message.clone())));
-        assert_eq!(found("mixin m\n  img\n    p\n"), Some((1, 2, 5, message)));
+        assert_eq!(found("mixin m\n  img\n    p\n"), Some((1, 2, 5, message.clone())));
+        assert_eq!(found("each x of xs\n  img= x\n"), Some((1, 2, 5, message)));
         assert_eq!(found("foo/\n  p\n").map(|d| d.3), Some("foo is a self closing element: <foo/> but contains nested content.".into()));
         for fine in [
             "img\n",
@@ -268,6 +269,8 @@ mod tests {
             "doctype xml\nimg\n  p\n",
             "#{t}/\n  p\n",
             "script.\n  img x\n",
+            "keygen x\n",
+            "menuitem x\n",
         ] {
             assert_eq!(found(fine), None, "{fine:?}");
         }

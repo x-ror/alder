@@ -110,7 +110,7 @@ fn normalize_node(node: &mut Node) {
                 None => {}
             }
         }
-        NodeKind::While { test: js, block } | NodeKind::Case { expr: js, block } => {
+        NodeKind::While { test: js, block } | NodeKind::Case { expr: js, block } | NodeKind::EachOf { obj: js, block, .. } => {
             trim(js);
             normalize_block(block);
         }
@@ -174,6 +174,7 @@ fn push_node<'a>(node: &'a Node, out: &mut Vec<&'a Node>) {
             alternate.iter().for_each(|block| push_block(block, out));
         }
         NodeKind::When { block: Some(block), .. }
+        | NodeKind::EachOf { block, .. }
         | NodeKind::While { block, .. }
         | NodeKind::Case { block, .. }
         | NodeKind::NamedBlock { block, .. }
@@ -218,7 +219,8 @@ fn code_of(pug_code: &str) -> &'static str {
         | "PUG:DEFAULT_WITH_EXPRESSION"
         | "PUG:ELSE_CONDITION"
         | "PUG:NO_WHILE_EXPRESSION"
-        | "PUG:MALFORMED_EACH" => code::MALFORMED_KEYWORD,
+        | "PUG:MALFORMED_EACH"
+        | "PUG:MALFORMED_EACH_OF_LVAL" => code::MALFORMED_KEYWORD,
         "PUG:BLOCK_IN_BUFFERED_CODE" | "PUG:RAW_INCLUDE_BLOCK" => code::ILLEGAL_NESTING,
         _ => code::SYNTAX_ERROR,
     }
@@ -265,6 +267,9 @@ mod tests {
     #[test]
     fn errors_start_at_pugs_position_and_run_to_the_end_of_the_line() {
         use code::*;
+        let malformed_each =
+            "This `each` has a syntax error. `each` statements should be of the form: `each VARIABLE_NAME of JS_EXPRESSION`".to_string();
+        let each_of_value = "The value variable for each must either be a valid identifier (e.g. `item`) or a pair of identifiers in square brackets (e.g. `[key, value]`).";
         let cases = [
             ("div\n    p\n  a", at(2, 0, 2, INCONSISTENT_INDENT, "Inconsistent indentation. Expecting either 0 or 4 spaces/tabs.")),
             ("div\n\tp\n  a", at(2, 0, 2, INCONSISTENT_INDENT, "Invalid indentation, you can use tabs or spaces but not both")),
@@ -276,7 +281,8 @@ mod tests {
             ("p.1", at(0, 1, 3, INVALID_NAME, "Class names must contain at least one letter or underscore.")),
             ("p(id=\"b\")#a", at(0, 9, 11, DUPLICATE_ATTRIBUTE, "Duplicate attribute \"id\" is not allowed.")),
             ("case", at(0, 4, 4, MALFORMED_KEYWORD, "missing expression for case")),
-            ("each x\n  p", at(0, 4, 6, MALFORMED_KEYWORD, "malformed each")),
+            ("each x\n  p", at(0, 4, 6, MALFORMED_KEYWORD, &malformed_each)),
+            ("each item in offers\n  p", at(0, 19, 19, MALFORMED_KEYWORD, each_of_value)),
             ("= x\n  p", at(1, 0, 3, ILLEGAL_NESTING, "Buffered code cannot have a block attached to it")),
             ("p\n  ]", at(1, 2, 3, SYNTAX_ERROR, "unexpected text \"]\"")),
             ("mixin foo", at(0, 0, 9, SYNTAX_ERROR, "Mixin foo declared without body")),

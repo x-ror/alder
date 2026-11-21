@@ -196,12 +196,11 @@ const languages = {
     breakVariants: (source) => erbBreakVariants(source),
     breakSample: 10,
   },
-  // An npm package rather than a gem (PUG_PATH); errors only, until Pug has a formatter.
+  // A devDependency rather than a gem.
   pug: {
     gem: "pug",
     version: pugOracle.VERSION,
-    installed: () => Boolean(pugOracle.loadPug()),
-    installHint: pugOracle.INSTALL_HINT,
+    installed: () => true,
     report: () => pugReport(),
   },
 };
@@ -1447,7 +1446,7 @@ if (!lang) {
 }
 if (!(lang.installed ?? installed)(lang)) {
   console.log(
-    `skipped: ${lang.gem} ${lang.version}${lang.pins ? ` with ${lang.pins.map((p) => `${p.gem} ${p.version}`).join(", ")}` : ""} is not installed (${lang.installHint ?? `ruby -r${lang.gem}`}); see test/oracle/README.md`,
+    `skipped: ${lang.gem} ${lang.version}${lang.pins ? ` with ${lang.pins.map((p) => `${p.gem} ${p.version}`).join(", ")}` : ""} is not installed (ruby -r${lang.gem}); see test/oracle/README.md`,
   );
   process.exit(0);
 }

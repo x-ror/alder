@@ -22,6 +22,11 @@
     "prefix": "eachi",
     "body": ["each ${1:item}, ${2:index} in ${3:items}", "\t$0"]
   },
+  "each of": {
+    "prefix": "eachof",
+    "body": ["each ${1:item} of ${2:items}", "\t$0"],
+    "description": "each … of (an iterable: Array, Map, Set)"
+  },
   "while": { "prefix": "while", "body": ["while ${1:condition}", "\t$0"] },
   "if": { "prefix": "if", "body": ["if ${1:condition}", "\t$0"] },
   "if else": {

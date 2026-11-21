@@ -1032,6 +1032,7 @@
   },
   "devDependencies": {
     "@vscode/test-electron": "3.1.0",
+    "pug": "3.0.4",
     "tm-grammars": "1.32.22",
     "vscode-oniguruma": "^2.0.1",
     "vscode-textmate": "^9.3.2"

@@ -1,4 +1,4 @@
-//! Port of `pug-lexer` 4.1.0 (Pug 2.0.4) with the parts of `character-parser` 2.2.0 it uses to find where a
+//! Port of `pug-lexer` 5.0.1 (Pug 3.0.4) with the parts of `character-parser` 2.2.0 it uses to find where a
 //! bracketed expression, attribute value or interpolation ends. Lines and columns are Pug's: 1-based, columns in
 //! UTF-16 code units. `is-expression` isn't ported: the JavaScript isn't validated (`PUG:SYNTAX_ERROR`), and where
 //! Pug asks it whether an attribute value has ended, `looks_complete` answers.
@@ -59,6 +59,10 @@ regex!(WHILE_WORD, r"^while(?-u:\b)");
 regex!(EACH, r"^(?:each|for) +([a-zA-Z_$][A-Za-z0-9_$]*)(?: *, *([a-zA-Z_$][A-Za-z0-9_$]*))? * in *([^\n]+)");
 regex!(EACH_WORD, r"^(?:each|for)(?-u:\b)");
 regex!(EACH_DASHED, r"^- *(?:each|for) +([a-zA-Z_$][A-Za-z0-9_$]*)(?: *, *([a-zA-Z_$][A-Za-z0-9_$]*))? +in +([^\n]+)");
+// JavaScript's `.` in `(.*?)`: no line terminator.
+regex!(EACH_OF, r"^(?:each|for) ([^\n\r\u{2028}\u{2029}]*?) of *([^\n]+)");
+regex!(EACH_OF_VALUE, r"^(?:[a-zA-Z_$][A-Za-z0-9_$]*|\[ *[a-zA-Z_$][A-Za-z0-9_$]* *, *[a-zA-Z_$][A-Za-z0-9_$]* *\])$");
+regex!(EACH_OF_DASHED, r"^- *(?:each|for) +([a-zA-Z_$][A-Za-z0-9_$]*)(?: *, *([a-zA-Z_$][A-Za-z0-9_$]*))? +of +([^\n]+)");
 regex!(CODE, r"^(!?=|-)[ \t]*([^\n]+)");
 regex!(BLOCK_CODE, r"^-");
 regex!(ATTRIBUTES_BLOCK, r"^&attributes(?-u:\b)");
@@ -133,6 +137,11 @@ pub enum Kind {
         key: Option<String>,
         code: String,
     },
+    /// `each val of code`: `val` is an identifier or `[key, value]`, as written.
+    EachOf {
+        val: String,
+        code: String,
+    },
     While(String),
     Case(String),
     When(String),
@@ -187,6 +196,7 @@ impl Kind {
             Kind::ElseIf(_) => "else-if",
             Kind::Else => "else",
             Kind::Each { .. } => "each",
+            Kind::EachOf { .. } => "eachOf",
             Kind::While(_) => "while",
             Kind::Case(_) => "case",
             Kind::When(_) => "when",
@@ -326,6 +336,7 @@ impl Lexer {
             |l| Ok(l.mixin()),
             Lexer::call,
             Lexer::conditional,
+            Lexer::each_of,
             Lexer::each,
             Lexer::while_,
             |l| Ok(l.tag()),
@@ -693,8 +704,7 @@ impl Lexer {
         }
         if let Some(caps) = string_interpolation.filter(|_| string_at != NONE) {
             if caps.get(1).is_some() {
-                // Pug 2 writes an escaped `\!{` back as `#{` too.
-                let prefix = format!("{prefix}{}#{{", &value[..string_at]);
+                let prefix = format!("{prefix}{}{}{{", &value[..string_at], &caps[2]);
                 return self.add_text(make, &value[string_at + 3..], &prefix, escaped + 1);
             }
             let before = format!("{prefix}{}", &value[..string_at]);
@@ -1020,13 +1030,43 @@ impl Lexer {
             self.push(Kind::Each { val, key, code }, start);
             return Ok(true);
         }
+        let keyword = if self.rest().starts_with("each") { "each" } else { "for" };
         if self.scan(&EACH_WORD).is_some() {
-            return Err(self.error("PUG:MALFORMED_EACH", "malformed each"));
+            let message = format!(
+                "This `{keyword}` has a syntax error. `{keyword}` statements should be of the form: `{keyword} VARIABLE_NAME of JS_EXPRESSION`"
+            );
+            return Err(self.error("PUG:MALFORMED_EACH", message));
         }
         if EACH_DASHED.is_match(self.rest()) {
             return Err(self.error(
                 "PUG:MALFORMED_EACH",
                 "Pug each and for should no longer be prefixed with a dash (\"-\"). They are pug keywords and not part of JavaScript.",
+            ));
+        }
+        Ok(false)
+    }
+
+    /// `each item of list` and `for [key, value] of map`, tried before `each`: `each x in offers` is one too, with a value
+    /// Pug refuses.
+    fn each_of(&mut self) -> Result<bool, Error> {
+        let captured = EACH_OF.captures(self.rest()).map(|caps| (caps[0].to_string(), caps[1].to_string(), caps[2].to_string()));
+        if let Some((whole, val, code)) = captured {
+            self.consume(whole.len());
+            let start = self.pos();
+            self.column += units(&whole);
+            if !EACH_OF_VALUE.is_match(val.trim()) {
+                return Err(self.error(
+                    "PUG:MALFORMED_EACH_OF_LVAL",
+                    "The value variable for each must either be a valid identifier (e.g. `item`) or a pair of identifiers in square brackets (e.g. `[key, value]`).",
+                ));
+            }
+            self.push(Kind::EachOf { val, code }, start);
+            return Ok(true);
+        }
+        if EACH_OF_DASHED.is_match(self.rest()) {
+            return Err(self.error(
+                "PUG:MALFORMED_EACH",
+                "Pug each and for should not be prefixed with a dash (\"-\"). They are pug keywords and not part of JavaScript.",
             ));
         }
         Ok(false)
@@ -1616,7 +1656,7 @@ mod tests {
             .collect()
     }
 
-    /// pug-lexer 4.1.0's tokens for the same template.
+    /// pug-lexer 5.0.1's tokens for the same template.
     #[test]
     fn tokens_and_their_positions() {
         let expected = [
