@@ -78,6 +78,7 @@ function initializationOptions(config) {
     },
     pug: {
       disabledDiagnostics: config.get("pug.disabledDiagnostics", []),
+      ...switches("pug"),
     },
   };
 }
@@ -93,7 +94,7 @@ const SERVER_SETTINGS = [
   "liquid.disabledDiagnostics",
   "pug.disabledDiagnostics",
   "erb.format.alignComments",
-  ...["erb", "haml", "slim"].flatMap((lang) => [
+  ...["erb", "haml", "slim", "pug"].flatMap((lang) => [
     `${lang}.diagnostics.enabled`,
     `${lang}.format.enabled`,
   ]),

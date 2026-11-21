@@ -133,6 +133,8 @@ pub const BLOCK_TAGS: ListOption = ListOption { key: "tags", default: &["div", "
 const ALL: &[TemplateLang] = &[Erb, Haml, Slim, Ruby];
 const HAML_SLIM: &[TemplateLang] = &[Haml, Slim];
 const TEMPLATES: &[TemplateLang] = &[Erb, Haml, Slim];
+/// Every language the formatter handles.
+const FORMATTED: &[TemplateLang] = &[Erb, Haml, Slim, Pug];
 
 pub const RULES: &[Rule] = &[
     lint("Syntax/Ruby", "Ruby in the template that doesn't parse.", ALL),
@@ -206,7 +208,7 @@ pub const RULES: &[Rule] = &[
     ),
     format_rule(EMPTY_LINES, TEMPLATES, &[], &[CountOption { key: "max", default: 1 }], &[]),
     // ERB is rendered byte for byte, so its end is output.
-    format_rule(TRAILING_EMPTY_LINES, TEMPLATES, HAML_SLIM, &[], &[]),
+    format_rule(TRAILING_EMPTY_LINES, FORMATTED, &[Haml, Slim, Pug], &[], &[]),
     format_rule(AROUND_BLOCK_BODY, TEMPLATES, &[], &[], &[STYLE]),
     format_rule(AROUND_ELEMENT_BODY, TEMPLATES, &[], &[], &[STYLE]),
     format_rule(AROUND_BRANCHES, TEMPLATES, &[], &[], &[STYLE]),
@@ -214,8 +216,9 @@ pub const RULES: &[Rule] = &[
     format_rule(SPACE_AFTER_SCRIPT_MARKER, HAML_SLIM, &[], &[], &[]),
     format_rule(ERB_COMMENT_SYNTAX, &[Erb], &[], &[], &[]),
     format_rule(SPACE_IN_HTML_TAG, &[Erb], &[], &[], &[]),
-    format_rule(INDENTATION_STYLE, &[Erb], &[Erb], &[], &[INDENT_STYLE]),
-    format_rule(TRAILING_WHITESPACE, TEMPLATES, TEMPLATES, &[], &[]),
+    // Slim and Haml always take spaces; Pug reads tabs as well as spaces.
+    format_rule(INDENTATION_STYLE, &[Erb, Pug], &[Erb, Pug], &[], &[INDENT_STYLE]),
+    format_rule(TRAILING_WHITESPACE, FORMATTED, FORMATTED, &[], &[]),
     // Renames HTML attributes, which only an app that runs Turbo and not Rails UJS wants.
     format_rule(PREFER_TURBO_ATTRIBUTES, TEMPLATES, &[], &[], &[]),
     // Style preferences: templates written either way are fine.
@@ -326,6 +329,7 @@ mod tests {
             Erb => "erb",
             Haml => "haml",
             Slim => "slim",
+            Pug => "pug",
             _ => "jbuilder",
         };
         for rule in RULES.iter().filter(|rule| rule.department() != "Syntax") {

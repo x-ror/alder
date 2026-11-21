@@ -516,7 +516,7 @@ fn format_text(
                 format::format_in(&uri, lang, false, text, &settings, rules.extra_engines(), projects)
             }
         }
-        _ => format::skip(SkipKind::NotHandled, "not an ERB, Haml or Slim template"),
+        _ => format::skip(SkipKind::NotHandled, "not an ERB, Haml, Slim or Pug template"),
     };
     let mut code = OK;
     let formatted = match result {

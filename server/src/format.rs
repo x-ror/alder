@@ -1,4 +1,4 @@
-//! Whitespace-only formatting of HTML ERB, Haml and Slim: indentation, trailing whitespace, blank lines and the final
+//! Whitespace-only formatting of HTML ERB, Haml, Slim and Pug: indentation, trailing whitespace, blank lines and the final
 //! newline. Anything else stays byte for byte; a file whose structure is in doubt is left unchanged, with the reason.
 
 mod attributes_per_line;
@@ -8,6 +8,7 @@ mod element_style;
 pub mod erb;
 pub mod haml;
 mod inline;
+pub mod pug;
 pub mod slim;
 mod tag_style;
 mod turbo_attributes;
@@ -360,7 +361,7 @@ fn format_stages(
         TemplateLang::Haml => indent_haml(text, settings)?,
         TemplateLang::Ruby => return skip(SkipKind::NotHandled, "Ruby views are formatted by Ruby tools"),
         TemplateLang::Liquid => return skip(SkipKind::NotHandled, "Liquid has no formatter here"),
-        TemplateLang::Pug => return skip(SkipKind::NotHandled, "Pug has no formatter yet"),
+        TemplateLang::Pug => indent_pug(text, settings)?,
     };
     Ok(tidy(lang, indented, text, settings, extra_engines))
 }
@@ -377,11 +378,12 @@ fn tidy(lang: TemplateLang, indented: Indented, original: &str, settings: &Setti
     Formatted { text: indented, notes }
 }
 
-/// Whether Haml or Slim compile both texts alike, line numbers aside; ERB has no compiled form to compare.
+/// Whether Haml, Slim or Pug compile both texts alike, line numbers aside; ERB has no compiled form to compare.
 fn same_compilation_ignoring_lines(lang: TemplateLang, before: &str, after: &str, extra_engines: &[String]) -> bool {
     match lang {
         TemplateLang::Haml => crate::haml::parser::same_compilation_ignoring_lines(before, after),
         TemplateLang::Slim | TemplateLang::Skim => crate::slim::ruby::same_compilation_ignoring_lines(before, after, extra_engines),
+        TemplateLang::Pug => crate::pug::same_compilation(before, after),
         _ => true,
     }
 }
@@ -407,6 +409,19 @@ fn indent_haml(text: &str, settings: &Settings) -> Result<Indented, Skipped> {
         return skip(SkipKind::Doubt, "Haml would reject the file");
     };
     if !crate::haml::parser::same_compilation(text, &indented.text) {
+        return skip(SkipKind::Doubt, "the compiled output would change");
+    }
+    Ok(indented)
+}
+
+fn indent_pug(text: &str, settings: &Settings) -> Result<Indented, Skipped> {
+    if crate::pug::parser::parse(text).is_err() {
+        return skip(SkipKind::Doubt, "Pug would reject the file");
+    }
+    let Some(indented) = pug::format(text, settings) else {
+        return skip(SkipKind::Doubt, "its indentation can't move safely");
+    };
+    if !crate::pug::same_compilation(text, &indented.text) {
         return skip(SkipKind::Doubt, "the compiled output would change");
     }
     Ok(indented)
@@ -527,6 +542,21 @@ mod tests {
             let skipped = fmt("a.html.haml", text, &Settings::default()).expect_err(text);
             assert_eq!((skipped.kind, skipped.reason.as_str()), (SkipKind::Doubt, "Haml would reject the file"), "{text:?}");
         }
+    }
+
+    #[test]
+    fn pug_goes_through_its_formatter() {
+        let s = Settings::default();
+        assert_eq!(fmt("a.jst.pug", "div\n    p hi  \n    - x  \n\n\n", &s).as_deref(), Ok("div\n  p hi  \n  - x\n"));
+        let tabs = Settings { indent_style: IndentStyle::Tabs, ..Settings::default() };
+        assert_eq!(fmt("a.pug", "div\n  p.\n      a\n        b", &tabs).as_deref(), Ok("div\n\tp.\n\t\ta\n\t\t  b\n"));
+        let skipped = fmt("a.jade", "div\n    p\n  a\n", &s).expect_err("inconsistent indentation");
+        assert_eq!((skipped.kind, skipped.reason.as_str()), (SkipKind::Doubt, "Pug would reject the file"));
+        // A text block whose first line starts with spaces past the block's tabs reads differently once they are spaces.
+        let skipped = fmt("a.pug", "div\n\tp.\n\t\t  a\n", &s).expect_err("text would change");
+        assert_eq!(skipped.reason, "the compiled output would change");
+        let end_kept = Settings { trailing_empty_lines: false, ..s };
+        assert_eq!(fmt("a.pug", "div\n    p\n\n", &end_kept).as_deref(), Ok("div\n  p\n\n"));
     }
 
     #[test]
@@ -892,7 +922,7 @@ mod tests {
         assert_eq!(fmt("app/views/pages/nginx.conf.erb", "<div>\n<p>x</p>\n</div>\n", &s).map_err(|e| e.kind), Err(SkipKind::NotHandled));
     }
 
-    const SAMPLES: [(&str, &str); 10] = [
+    const SAMPLES: [(&str, &str); 12] = [
         ("sample.html.erb", include_str!("../../test/sample.html.erb")),
         ("sample.html.haml", include_str!("../../test/sample.html.haml")),
         ("sample.html.slim", include_str!("../../test/sample.html.slim")),
@@ -900,9 +930,11 @@ mod tests {
         ("sample.js.erb", include_str!("../../test/sample.js.erb")),
         ("sample.json.erb", include_str!("../../test/sample.json.erb")),
         ("sample.text.erb", include_str!("../../test/sample.text.erb")),
+        ("layout.jst.pug", include_str!("../../test/format/layout.pug")),
         ("bad.html.erb", include_str!("../../test/broken/bad.html.erb")),
         ("bad.html.haml", include_str!("../../test/broken/bad.html.haml")),
         ("bad.html.slim", include_str!("../../test/broken/bad.html.slim")),
+        ("bad.jst.pug", include_str!("../../test/broken/bad.pug")),
     ];
 
     /// The sample with every line's indentation replaced: none, doubled, tabs; and with CRLF endings.
@@ -968,7 +1000,7 @@ mod tests {
 
     #[test]
     fn broken_fixtures_come_back_unchanged() {
-        for (name, text) in &SAMPLES[7..] {
+        for (name, text) in &SAMPLES[8..] {
             let uri = uri(name);
             let lang = TemplateLang::from_uri_or_id(&uri, None).unwrap();
             let kind = format(&uri, lang, false, text, &Settings::default(), &[]).map(|f| f.text);

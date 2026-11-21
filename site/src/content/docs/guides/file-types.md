@@ -117,7 +117,7 @@ If Shopify's Liquid extension also contributes `liquid`, disable one of the two 
 
 ## Pug
 
-`.pug` and `.jade` files, including `pug-rails`' `.jst.pug` templates (compiled by Sprockets into JST functions, usually under `app/assets/templates`), keep VS Code's own `jade` language: its highlighting, comment toggling, folding and Emmet. The extension adds Pug snippets, syntax errors, an outline and navigation through `include` and `extends`. Pug code is JavaScript, so none of the Rails lookups or checks apply to it, and it is not formatted.
+`.pug` and `.jade` files, including `pug-rails`' `.jst.pug` templates (compiled by Sprockets into JST functions, usually under `app/assets/templates`), keep VS Code's own `jade` language: its highlighting, comment toggling, folding and Emmet. The extension adds Pug snippets, syntax errors, an outline, navigation through `include` and `extends`, and whitespace-only formatting. Pug code is JavaScript, so none of the Rails lookups or checks apply to it.
 
 ```pug title="app/assets/templates/users/list.jst.pug"
 ul.users
@@ -147,6 +147,10 @@ block content
   include row.jst.pug
   include:markdown-it notes.md
 ```
+
+### Formatting
+
+_Format Document_, format on save and `ruby-templates format` re-indent a Pug template one level per nesting, with the editor's tab size, in spaces or tabs; text blocks (`script.`, `style.`, comments, filters, `-` code blocks) move with their line and keep their own indentation; trailing whitespace goes where Pug doesn't output it, and the file ends with one line break. A template Pug would reject, or one whose Pug tree would change, is left as it is. _Format Selection_ is not offered. `rubyTemplates.pug.format.enabled` (or `format.enabled` under `[pug]` in a `.ruby-templates.toml`) turns it off. See [Formatting](/vscode-ruby-templates/guides/formatting/#pug).
 
 ### Outline
 

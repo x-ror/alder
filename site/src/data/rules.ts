@@ -74,6 +74,7 @@ const text = (...lines: string[]) => `${lines.join("\n")}\n`;
 const ERB_FILE = "app/views/users/index.html.erb";
 const HAML_FILE = "app/views/users/index.html.haml";
 const SLIM_FILE = "app/views/users/index.html.slim";
+const PUG_FILE = "app/assets/templates/users/list.jst.pug";
 const PARTIAL_ERB_FILE = "app/views/users/_card.html.erb";
 const PARTIAL_HAML_FILE = "app/views/users/_card.html.haml";
 const PARTIAL_SLIM_FILE = "app/views/users/_card.html.slim";
@@ -550,20 +551,20 @@ export const rules: Rule[] = [
   {
     name: "Layout/IndentationStyle",
     summary: "Indent with tabs or with spaces.",
-    languages: ["erb"],
+    languages: ["erb", "pug"],
     type: "autofix",
     safe: true,
     safeNote:
       "Leading whitespace between tags renders as nothing. Content where whitespace counts is left alone.",
     status: "available",
-    onByDefault: ["erb"],
+    onByDefault: ["erb", "pug"],
     config: text(
       "[Layout.IndentationStyle]",
       "enabled = true",
       'style = "tabs" # or "spaces"',
     ),
     today:
-      'ERB only; Haml and Slim always use spaces, since Slim rejects mixed indentation and Haml wants it consistent. Each indent level the formatter writes is one tab with `style = "tabs"`, or the width in spaces (the default of 2) with `"spaces"`. Only the leading whitespace of the lines the formatter indents changes: `<pre>`, `<textarea>`, `<script>`, `<style>`, `<xmp>` and `<listing>` bodies, Ruby inside tags, quoted attribute values and comments keep every byte. The lines of a tag that spans several lines move with its first line and keep their indentation relative to it, as written, so a tag attribute lined up with spaces stays lined up. Without `style`, the style comes from the first of these that has one: the `editor.insertSpaces` setting, then `.editorconfig` (`indent_style = tab` or `space`), then spaces. In an editor `insertSpaces` always decides, because the language server protocol always sends it, as it does the tab size; `.editorconfig` counts only on the command line, or through an EditorConfig extension that sets `insertSpaces`. `style` in `.ruby-templates.toml` beats all of them, and `enabled = false` always writes spaces. The width is the editor\'s tab size, then `.editorconfig` (`indent_size`, or `tab_width` for `indent_size = tab`), then 2; it only matters for spaces. Format selection applies the style to the lines it covers.',
+      'ERB and Pug; Haml and Slim always use spaces, since Slim rejects mixed indentation and Haml wants it consistent. In Pug a text block (`script.`, a comment, a filter, a `-` code block) moves to one level below its line, and the indentation its lines have past the block\'s stays as written; a Pug template is left as it is when that would change its text, as when a line of a tab-indented block goes on with spaces. Each indent level the formatter writes is one tab with `style = "tabs"`, or the width in spaces (the default of 2) with `"spaces"`. Only the leading whitespace of the lines the formatter indents changes: `<pre>`, `<textarea>`, `<script>`, `<style>`, `<xmp>` and `<listing>` bodies, Ruby inside tags, quoted attribute values and comments keep every byte. The lines of a tag that spans several lines move with its first line and keep their indentation relative to it, as written, so a tag attribute lined up with spaces stays lined up. Without `style`, the style comes from the first of these that has one: the `editor.insertSpaces` setting, then `.editorconfig` (`indent_style = tab` or `space`), then spaces. In an editor `insertSpaces` always decides, because the language server protocol always sends it, as it does the tab size; `.editorconfig` counts only on the command line, or through an EditorConfig extension that sets `insertSpaces`. `style` in `.ruby-templates.toml` beats all of them, and `enabled = false` always writes spaces. The width is the editor\'s tab size, then `.editorconfig` (`indent_size`, or `tab_width` for `indent_size = tab`), then 2; it only matters for spaces. Format selection applies the style to the lines it covers.',
     setting: {
       label: "Always indent with spaces",
       code: `[Layout.IndentationStyle]
@@ -589,21 +590,28 @@ enabled = false`,
         ),
         note: 'With `style = "tabs"`.',
       },
+      {
+        lang: "pug",
+        file: PUG_FILE,
+        before: text("ul", "  each user in users", "    li= user.name"),
+        after: text("ul", "\teach user in users", "\t\tli= user.name"),
+        note: 'With `style = "tabs"`.',
+      },
     ],
   },
   {
     name: "Layout/TrailingWhitespace",
     summary: "No spaces or tabs at the end of a line.",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     type: "autofix",
     safe: true,
     safeNote:
-      "Whitespace that is content stays: `<pre>` and `<textarea>` bodies, ERB comments, Haml filters, and Slim text lines (`| text`, text after a tag).",
+      "Whitespace that is content stays: `<pre>` and `<textarea>` bodies, ERB comments, Haml filters, Slim text lines (`| text`, text after a tag), and in Pug text after a tag or `|`, the spaces after a bare tag (Pug outputs `div ` as `<div> </div>`), inline HTML, `//` comments, `doctype` and text blocks. A value that goes on over several lines keeps them too.",
     status: "available",
-    onByDefault: ["erb", "haml", "slim"],
+    onByDefault: ["erb", "haml", "slim", "pug"],
     config: text("[Layout.TrailingWhitespace]", "enabled = true"),
     today:
-      "The formatter does it in ERB, Haml and Slim, on Format Document, on save and in `ruby-templates format`. It is on for all three; with `enabled = false` the spaces and tabs at the line ends stay as written, whitespace-only lines included.",
+      "The formatter does it in ERB, Haml, Slim and Pug, on Format Document, on save and in `ruby-templates format`. In Pug it goes after code (`- x`, `= x`, `if`, `each`), keywords, `.`, `//-` comments and their text, and between attributes. It is on for all four; with `enabled = false` the spaces and tabs at the line ends stay as written, whitespace-only lines included.",
     setting: {
       label: "Turn it off",
       code: `[Layout.TrailingWhitespace]
@@ -651,23 +659,41 @@ enabled = false`,
           "      = user.name",
         ),
       },
+      {
+        lang: "pug",
+        file: PUG_FILE,
+        before: text(
+          "//- one row per user  ",
+          "ul",
+          "  each user in users  ",
+          "    li= user.name \t",
+          "    li Text stays as written  ",
+        ),
+        after: text(
+          "//- one row per user",
+          "ul",
+          "  each user in users",
+          "    li= user.name",
+          "    li Text stays as written  ",
+        ),
+      },
     ],
   },
   {
     name: "Layout/TrailingEmptyLines",
     summary: "The file ends with exactly one line break.",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     type: "autofix",
     safe: false,
     safeNote:
-      'Safe in Haml and Slim, which ignore the blank lines at the end. Not safe in ERB: Rails renders a template or partial byte for byte, so a final line break or the blank lines at the end become output. A partial `_icon.html.erb` that is `<svg></svg>` renders with a line break after it once the rule adds one, and that shows as a space in `<button><%= render "icon" %>Save</button>`.',
+      'Safe in Haml, Slim and Pug, which ignore the blank lines at the end. Not safe in ERB: Rails renders a template or partial byte for byte, so a final line break or the blank lines at the end become output. A partial `_icon.html.erb` that is `<svg></svg>` renders with a line break after it once the rule adds one, and that shows as a space in `<button><%= render "icon" %>Save</button>`.',
     status: "available",
-    onByDefault: ["haml", "slim"],
+    onByDefault: ["haml", "slim", "pug"],
     config: text("[Layout.TrailingEmptyLines]", "enabled = true"),
     today:
-      "The blank lines at the end of the file go, and a file that doesn't end with a line break gets one, using the line ending the file mostly has. It is on for Haml and Slim and off for ERB, where `enabled = true` turns it on, and `include` limits it to some files. Format selection leaves the end of the file as it is.",
+      "The blank lines at the end of the file go, and a file that doesn't end with a line break gets one, using the line ending the file mostly has. It is on for Haml, Slim and Pug and off for ERB, where `enabled = true` turns it on, and `include` limits it to some files. Format selection leaves the end of the file as it is.",
     setting: {
-      label: "Turn it off (Haml and Slim)",
+      label: "Turn it off (Haml, Slim and Pug)",
       code: `[Layout.TrailingEmptyLines]
 enabled = false`,
     },
@@ -687,6 +713,12 @@ enabled = false`,
       {
         lang: "slim",
         file: SLIM_FILE,
+        before: text("h1 Users", "", ""),
+        after: text("h1 Users"),
+      },
+      {
+        lang: "pug",
+        file: PUG_FILE,
         before: text("h1 Users", "", ""),
         after: text("h1 Users"),
       },

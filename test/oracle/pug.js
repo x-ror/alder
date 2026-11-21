@@ -50,6 +50,7 @@ export const loadPug = () => {
   console.warn = () => {};
   return {
     version,
+    pug: fromPath("pug"),
     lex: fromPug("pug-lexer"),
     strip: fromPug("pug-strip-comments"),
     parse: fromPug("pug-parser"),

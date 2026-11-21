@@ -50,6 +50,82 @@ pub fn diagnostics(text: &str, path: Option<&Path>) -> Vec<Diagnostic> {
     }
 }
 
+/// Whether Pug accepts both texts and builds the same tree from them, positions aside and without the whitespace that
+/// ends a piece of JavaScript (`- x  `), which changes nothing it does.
+pub fn same_compilation(before: &str, after: &str) -> bool {
+    match (parser::parse(before), parser::parse(after)) {
+        (Ok(mut before), Ok(mut after)) => {
+            normalize_block(&mut before);
+            normalize_block(&mut after);
+            before == after
+        }
+        _ => false,
+    }
+}
+
+fn normalize_block(block: &mut parser::Block) {
+    block.line = 0;
+    block.nodes.iter_mut().for_each(normalize_node);
+}
+
+fn normalize_node(node: &mut parser::Node) {
+    use parser::{Alternate, NodeKind};
+    (node.line, node.column) = (0, 0);
+    let trim = |js: &mut String| js.truncate(js.trim_end().len());
+    match &mut node.kind {
+        NodeKind::Tag(tag) | NodeKind::MixinCall { tag, .. } => {
+            tag.attrs.iter_mut().for_each(|attr| (attr.line, attr.column) = (0, 0));
+            tag.attribute_blocks.iter_mut().for_each(|block| (block.line, block.column) = (0, 0));
+            normalize_block(&mut tag.block);
+        }
+        NodeKind::Code(code) => {
+            trim(&mut code.val);
+            code.block.iter_mut().for_each(normalize_block);
+        }
+        NodeKind::Conditional(conditional) => {
+            normalize_block(&mut conditional.consequent);
+            match &mut conditional.alternate {
+                Some(Alternate::ElseIf(node)) => normalize_node(node),
+                Some(Alternate::Else(block)) => normalize_block(block),
+                None => {}
+            }
+        }
+        NodeKind::While { test: js, block } | NodeKind::Case { expr: js, block } => {
+            trim(js);
+            normalize_block(block);
+        }
+        NodeKind::Each { obj, block, alternate, .. } => {
+            trim(obj);
+            normalize_block(block);
+            alternate.iter_mut().for_each(normalize_block);
+        }
+        NodeKind::When { expr, block } => {
+            trim(expr);
+            block.iter_mut().for_each(normalize_block);
+        }
+        NodeKind::MixinDefinition { block, .. } | NodeKind::NamedBlock { block, .. } | NodeKind::BlockComment { block, .. } => {
+            normalize_block(block)
+        }
+        NodeKind::Extends { file } => (file.line, file.column) = (0, 0),
+        NodeKind::Include { file, block } => {
+            (file.line, file.column) = (0, 0);
+            normalize_block(block);
+        }
+        NodeKind::RawInclude { file, filters } => {
+            (file.line, file.column) = (0, 0);
+            for filter in filters {
+                (filter.line, filter.column) = (0, 0);
+                filter.attrs.iter_mut().for_each(|attr| (attr.line, attr.column) = (0, 0));
+            }
+        }
+        NodeKind::Filter { attrs, block, .. } => {
+            attrs.iter_mut().for_each(|attr| (attr.line, attr.column) = (0, 0));
+            normalize_block(block);
+        }
+        NodeKind::Text { .. } | NodeKind::Comment { .. } | NodeKind::Doctype(_) | NodeKind::MixinBlock | NodeKind::YieldBlock => {}
+    }
+}
+
 /// The template's tree, or the tree of the lines before its first error.
 pub fn parsed(text: &str) -> Option<parser::Block> {
     let error = match parser::parse(text) {

@@ -890,6 +890,11 @@
           "default": true,
           "description": "Show the language server's diagnostics in Slim and Skim files. Turn off to silence them all."
         },
+        "rubyTemplates.pug.diagnostics.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the language server's diagnostics in Pug files. Turn off to silence them all."
+        },
         "rubyTemplates.erb.format.enabled": {
           "type": "boolean",
           "default": true,
@@ -910,6 +915,11 @@
           "default": true,
           "description": "Let the language server format Slim and Skim files (Format Document and Format Selection). Turn off for no edits. A `.ruby-templates.toml` overrides it."
         },
+        "rubyTemplates.pug.format.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Let the language server format Pug files (Format Document: indentation, trailing whitespace, final newline). Turn off for no edits. A `.ruby-templates.toml` overrides it."
+        },
         "rubyTemplates.routes.enabled": {
           "type": "boolean",
           "default": true,
@@ -918,7 +928,7 @@
         "rubyTemplates.server.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Run the Rust language server (diagnostics, go to partial, completions, hover, and the built-in ERB, Haml and Slim formatting)."
+          "description": "Run the Rust language server (diagnostics, go to partial, completions, hover, and the built-in ERB, Haml, Slim and Pug formatting)."
         },
         "rubyTemplates.server.path": {
           "type": "string",

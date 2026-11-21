@@ -55,8 +55,9 @@ const ROUTES_NOTIFICATION: &str = "rubyTemplates/routes";
 const FORMATTING_REGISTRATION: &str = "formatting";
 const RANGE_FORMATTING_REGISTRATION: &str = "range-formatting";
 
-const FORMATTING_LANGUAGES: [&str; 4] = ["erb", "haml", "slim", "skim"];
-/// Not Slim/Skim: range formatting re-indents only the range, which breaks nesting in indentation-sensitive languages.
+const FORMATTING_LANGUAGES: [&str; 5] = ["erb", "haml", "slim", "skim", "jade"];
+/// Not Slim/Skim or Pug (`jade`): range formatting re-indents only the range, and a line of theirs deeper than the one
+/// above it, by any amount, nests under it, so a range re-indented without the lines around it can change the nesting.
 const RANGE_FORMATTING_LANGUAGES: [&str; 2] = ["erb", "haml"];
 
 /// Which formatting requests the client takes dynamic registrations for.

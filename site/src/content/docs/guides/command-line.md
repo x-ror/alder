@@ -56,7 +56,7 @@ npx ruby-templates format --verbose --check app/views   # also the settings and 
 
 ## Configuration
 
-Both commands read the `.ruby-templates.toml` files above each template, as the editor does: rules turned off, files excluded, `[erb] format.enabled = false`, `format.align_comments`, `extra_engines`. The [rules reference](/vscode-ruby-templates/reference/rules/#configuration) describes the file. `format` prints a file's problems once on standard error and fails only with `--check`, never when it prints the result for an editor (`--check --format github` annotates them). `format --verbose` also prints each file read; an excluded file is reported as `left unchanged: excluded by <file>`.
+Both commands read the `.ruby-templates.toml` files above each template, as the editor does: rules turned off, files excluded, `[erb] format.enabled = false` (also `[haml]`, `[slim]`, `[pug]`), `format.align_comments`, `extra_engines`. The [rules reference](/vscode-ruby-templates/reference/rules/#configuration) describes the file. `format` prints a file's problems once on standard error and fails only with `--check`, never when it prints the result for an editor (`--check --format github` annotates them). `format --verbose` also prints each file read; an excluded file is reported as `left unchanged: excluded by <file>`.
 
 ## Files and folders
 

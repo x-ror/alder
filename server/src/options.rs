@@ -12,7 +12,7 @@ const SECTIONS: [(&str, &[TemplateLang]); 6] = [
     ("pug", &[TemplateLang::Pug]),
 ];
 /// The sections whose `diagnostics.enabled` and `format.enabled` switch their languages off.
-const SWITCHED_SECTIONS: [&str; 3] = ["erb", "haml", "slim"];
+const SWITCHED_SECTIONS: [&str; 4] = ["erb", "haml", "slim", "pug"];
 
 #[derive(Default, Debug)]
 pub(crate) struct Options {
@@ -116,7 +116,8 @@ mod tests {
             "erb": { "diagnostics": { "enabled": false } },
             "slim": { "format": { "enabled": false }, "diagnostics": { "enabled": "no" } },
             "haml": { "diagnostics": { "enabled": true }, "format": {} },
-            "jbuilder": { "diagnostics": { "enabled": false } }
+            "jbuilder": { "diagnostics": { "enabled": false } },
+            "pug": { "format": { "enabled": false } }
         });
         let (options, ignored) = Options::from_init(Some(&init));
         assert_eq!(ignored.len(), 1, "{ignored:?}");
@@ -129,6 +130,7 @@ mod tests {
         assert!(options.diagnostics_enabled(TemplateLang::Ruby), "Jbuilder has no switch");
         let formats = |lang| options.format_enabled(lang);
         assert!(formats(TemplateLang::Erb) && formats(TemplateLang::Haml) && formats(TemplateLang::Ruby));
-        assert!(!formats(TemplateLang::Slim) && !formats(TemplateLang::Skim));
+        assert!(!formats(TemplateLang::Slim) && !formats(TemplateLang::Skim) && !formats(TemplateLang::Pug));
+        assert!(options.diagnostics_enabled(TemplateLang::Pug));
     }
 }

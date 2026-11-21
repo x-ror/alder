@@ -28,7 +28,7 @@ Choose this extension's formatter per language:
 }
 ```
 
-To keep the other one, set it as `editor.defaultFormatter` for the language. `rubyTemplates.<erb|haml|slim>.format.enabled` set to `false` (or `format.enabled = false` in a `.ruby-templates.toml`) makes this extension return no edits, but it stays in the list VS Code asks from.
+To keep the other one, set it as `editor.defaultFormatter` for the language. `rubyTemplates.<erb|haml|slim|pug>.format.enabled` set to `false` (or `format.enabled = false` in a `.ruby-templates.toml`) makes this extension return no edits, but it stays in the list VS Code asks from.
 
 ### Grammar
 

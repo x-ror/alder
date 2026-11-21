@@ -152,7 +152,7 @@ try {
   );
   fs.unlinkSync(liquid);
 
-  // Pug code is JavaScript: no Rails checks, only Pug's own syntax errors, and no formatter yet.
+  // Pug code is JavaScript: no Rails checks, only Pug's own syntax errors; its formatter does whitespace.
   const pug = file("row.jst.pug", '- render("users/missing")\nimg(src="x")\n');
   r = run(["check", pug]);
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
@@ -180,10 +180,28 @@ try {
   r = run(["check", including]);
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
   fs.unlinkSync(including);
+  fs.writeFileSync(
+    pug,
+    "tr\n    td= name  \n    td.\n        a  \n          b\n\n",
+  );
   r = run(["format", pug]);
   assert.strictEqual(r.status, 0, r.stderr);
-  assert.strictEqual(r.stdout, fs.readFileSync(pug, "utf8"), "kept as is");
-  assert.match(r.stderr, /row\.jst\.pug: left unchanged: Pug has no formatter/);
+  const pugFormatted = "tr\n  td= name\n  td.\n    a  \n      b\n";
+  assert.strictEqual(r.stdout, pugFormatted, "re-indented, text kept");
+  r = run(["format", "--check", pug]);
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stdout, /row\.jst\.pug/);
+  assert.strictEqual(run(["format", "--write", pug]).status, 0);
+  assert.strictEqual(fs.readFileSync(pug, "utf8"), pugFormatted);
+  assert.strictEqual(run(["format", "--check", pug]).status, 0);
+  const rejected = file("odd.jade", "td\n    span\n  b\n");
+  r = run(["format", "--check", rejected]);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.match(
+    r.stderr,
+    /odd\.jade: left unchanged: Pug would reject the file/,
+  );
+  fs.unlinkSync(rejected);
   fs.unlinkSync(pug);
 
   // Ruby 3.3 rejects a line that starts with `&&`; the latest grammar, used without a project Ruby, takes it.

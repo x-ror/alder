@@ -1873,6 +1873,37 @@ const check = (label, actual, expected) => {
       rangeEdits[0].newText === "  %i",
     JSON.stringify(rangeEdits),
   );
+  // Pug: the editor's width and style; a text block moves as a block and keeps its trailing spaces.
+  const pugFormatUri = fileUri(path.join(views, "users", "reindent.jst.pug"));
+  await send(
+    "textDocument/didOpen",
+    {
+      textDocument: {
+        uri: pugFormatUri,
+        languageId: "jade",
+        version: 1,
+        text: "ul\n    li hi  \n    - x  \n    script.\n        if (a) {\n          b();  \n        }\n\n\n",
+      },
+    },
+    true,
+  );
+  const pugFormat = async (insertSpaces) =>
+    (
+      await send("textDocument/formatting", {
+        textDocument: { uri: pugFormatUri },
+        options: { tabSize: 2, insertSpaces },
+      })
+    ).result?.[0]?.newText;
+  check(
+    "pug formatting",
+    await pugFormat(true),
+    "ul\n  li hi  \n  - x\n  script.\n    if (a) {\n      b();  \n    }\n",
+  );
+  check(
+    "pug formatting, tabs",
+    await pugFormat(false),
+    "ul\n\tli hi  \n\t- x\n\tscript.\n\t\tif (a) {\n\t\t  b();  \n\t\t}\n",
+  );
   // Without dynamic registration nothing is advertised.
   const staticFormatting = init.result.capabilities.documentFormattingProvider;
   expect(
@@ -3065,6 +3096,7 @@ const check = (label, actual, expected) => {
     initializationOptions: {
       erb: { diagnostics: { enabled: false }, format: { enabled: false } },
       haml: { format: { enabled: false } },
+      pug: { format: { enabled: false } },
     },
   });
   await off.send("initialized", {}, true);
@@ -3100,6 +3132,8 @@ const check = (label, actual, expected) => {
       })
     ).result;
   check("haml format off", await formatResult(reindentUri), null);
+  await open(pugFormatUri, "jade", "ul\n    li\n");
+  check("pug format off", await formatResult(pugFormatUri), null);
   const rangeOff = await off.send("textDocument/rangeFormatting", {
     textDocument: { uri: reindentUri },
     options: { tabSize: 2, insertSpaces: true },
@@ -3866,7 +3900,7 @@ const check = (label, actual, expected) => {
     ]),
   );
   check("dynamic formatting registration", registeredLanguages, {
-    "textDocument/formatting": ["erb", "haml", "slim", "skim"],
+    "textDocument/formatting": ["erb", "haml", "slim", "skim", "jade"],
     "textDocument/rangeFormatting": ["erb", "haml"],
   });
   await dynamic.send("shutdown", {});

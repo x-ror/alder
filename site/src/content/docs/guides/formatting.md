@@ -1,11 +1,11 @@
 ---
 title: Formatting
-description: How the built-in formatter re-indents ERB, Haml and Slim templates while changing only whitespace.
+description: How the built-in formatter re-indents ERB, Haml, Slim and Pug templates while changing only whitespace.
 sidebar:
   order: 6
 ---
 
-_Format Document_, _Format Selection_ and format on save work for HTML ERB views, Haml and Slim. The formatter changes **only whitespace**: leading indentation, trailing whitespace, blank lines and the final newline, and, when you turn the rules on, the spaces at the edges of ERB tags and after Haml and Slim script markers. It never wraps or joins lines, never reorders attributes and never touches Ruby code.
+_Format Document_, _Format Selection_ and format on save work for HTML ERB views, Haml and Slim, and _Format Document_ and format on save for Pug. The formatter changes **only whitespace**: leading indentation, trailing whitespace, blank lines and the final newline, and, when you turn the rules on, the spaces at the edges of ERB tags and after Haml and Slim script markers. It never wraps or joins lines, never reorders attributes and never touches Ruby code.
 
 ## ERB
 
@@ -49,13 +49,37 @@ ul
 
 A file Haml or Slim would reject is left unchanged, and so is any result that wouldn't compile to the same output.
 
+## Pug
+
+`.pug`, `.jade` and `pug-rails`' `.jst.pug` templates get whitespace only: the indentation, trailing whitespace and the final newline. Each line that starts a node is indented one level per nesting. A text block (`script.`, `style.`, `p.`, a `//` or `//-` comment, a filter, a `-` code block) moves to one level below its line, and the indentation its lines have past the block's own stays, since Pug outputs it. The lines of a multi-line attribute list or mixin call move with their line, and a value that goes on over several lines (an object, a template literal) keeps every byte.
+
+```pug title="Before"
+ul
+    each user in users
+        li
+            script.
+                  track(
+                    "#{user.id}");
+```
+
+```pug title="After"
+ul
+  each user in users
+    li
+      script.
+        track(
+          "#{user.id}");
+```
+
+Pug reads tabs as well as spaces, so `Layout/IndentationStyle` applies to it as to ERB (see [below](#indentation-width-and-line-endings)). A file is left unchanged when Pug would reject it (inconsistent indentation, tabs and spaces mixed in one line's indentation, any syntax error), when it has a lone CR line break or an `&attributes(...)` over several lines, and when the result, parsed again, is not the same Pug tree, as for a tab-indented text block one of whose lines goes on with spaces past the tabs. The tree is compared without line numbers and without the spaces that end a piece of JavaScript (`- x  `), which change nothing it does. _Format Selection_ is not offered for Pug, as for Slim: a line nests under any less indented line, so re-indenting some lines without the ones around them can change the nesting.
+
 The [rules reference](/vscode-ruby-templates/reference/rules/) lists the formatting rules, which are configured in a `.ruby-templates.toml`.
 
 ## Blank lines
 
-Rules in a `.ruby-templates.toml` decide what happens to blank lines; none runs on _Format Selection_.
+Rules in a `.ruby-templates.toml` decide what happens to blank lines; none runs on _Format Selection_. Pug has `Layout/TrailingEmptyLines` only; its other blank lines stay as written.
 
-- `Layout/TrailingEmptyLines` is on for Haml and Slim: the file ends with exactly one line break. The blank lines at the end go, and a missing final line break is added in the file's line ending. It is off for ERB, because Rails renders ERB byte for byte and the end of a partial is output (a final line break shows as a space between inline elements); turn it on with `enabled = true`, or with `insert_final_newline = true` in `.editorconfig` (a rule you turn off stays off).
+- `Layout/TrailingEmptyLines` is on for Haml, Slim and Pug: the file ends with exactly one line break. The blank lines at the end go, and a missing final line break is added in the file's line ending. It is off for ERB, because Rails renders ERB byte for byte and the end of a partial is output (a final line break shows as a space between inline elements); turn it on with `enabled = true`, or with `insert_final_newline = true` in `.editorconfig` (a rule you turn off stays off).
 - `Layout/EmptyLines` is off. Turn it on to cut every run of blank lines longer than `max` (1 by default) down to `max`.
 - `Layout/EmptyLinesAroundBlockBody`, `Layout/EmptyLinesAroundElementBody` and `Layout/EmptyLinesAroundBranches` are off. Each takes `style`: `no_empty_lines` (the default) removes the blank lines at the start and end of a body (`<% if %>`, `<% x.each do %>`, `<div>`, `%div`, `div` and what they contain) or before and after `else`, `elsif`, `when`, `in`, `rescue` and `ensure`; `empty_lines` keeps exactly one there and adds it where there is none. The end of a body is the closing tag or `<% end %>`, so it only exists in ERB: in Haml and Slim the rules set the blank lines after the opening line and around branch lines, and leave the ones before a dedent alone, since they separate siblings. A body with nothing in it (`<div>` directly above `</div>`, `- if a` above `- else`) loses its blank lines under `no_empty_lines` and is left alone under `empty_lines`; a body that ends the file has no closing line, so nothing is added there.
 - `max` of `Layout/EmptyLines` is applied after these rules, so with `max = 0` no blank line is left and `empty_lines` has no effect.
@@ -226,11 +250,11 @@ enabled = true
 
 ## Indentation width and line endings
 
-`format.enabled` and `format.align_comments` under `[erb]`, `[haml]` and `[slim]` in a `.ruby-templates.toml` turn formatting off or on and align comments, and win over the `rubyTemplates.*` settings; its global `exclude` leaves files unformatted.
+`format.enabled` (under `[erb]`, `[haml]`, `[slim]` and `[pug]`) and `format.align_comments` (under `[erb]`) in a `.ruby-templates.toml` turn formatting off or on and align comments, and win over the `rubyTemplates.*` settings; its global `exclude` leaves files unformatted.
 
 The indentation width comes from the editor's tab size, then `.editorconfig` (`indent_size`; `tab_width` for `indent_size = tab`), then 2. Each line keeps its ending.
 
-Haml and Slim are indented with spaces. ERB can use tabs: one tab per indent level, whatever the width. The style comes from the first of these that sets it:
+Haml and Slim are indented with spaces. ERB and Pug can use tabs: one tab per indent level, whatever the width. The style comes from the first of these that sets it:
 
 1. `style` of `[Layout.IndentationStyle]` in a `.ruby-templates.toml` (`"spaces"` or `"tabs"`); `enabled = false` always gives spaces.
 2. The editor's `editor.insertSpaces` for the file. In an editor this always decides when the toml is silent, because the language server protocol always sends it (as it does the tab size). `.editorconfig` only counts there through an EditorConfig extension, which sets `insertSpaces` for the file.
@@ -252,7 +276,9 @@ Only the leading whitespace the formatter writes becomes tabs. `<pre>`, `<textar
 
 ## Trailing whitespace
 
-`Layout/TrailingWhitespace` is on for ERB, Haml and Slim: spaces and tabs at the end of a line go where they don't count, and whitespace-only lines become empty. With `[Layout.TrailingWhitespace] enabled = false` they stay as written; the places where they count (a `<pre>` body, an ERB comment, a Haml filter, Slim text) are never touched either way.
+`Layout/TrailingWhitespace` is on for ERB, Haml, Slim and Pug: spaces and tabs at the end of a line go where they don't count, and whitespace-only lines become empty. With `[Layout.TrailingWhitespace] enabled = false` they stay as written; the places where they count (a `<pre>` body, an ERB comment, a Haml filter, Slim text) are never touched either way.
+
+In Pug they count wherever Pug reads them as text: after a tag's text or `|`, after a bare tag (`div ` renders `<div> </div>`), on an inline HTML line, in a `//` comment, after `doctype`, and in every line of a text block but a `//-` comment's. They go after code (`- x`, `= x`), keywords (`if`, `each`, `block`, `mixin`), a `.`, a `//-` comment and between attributes.
 
 ## Comments in ERB
 
@@ -272,11 +298,12 @@ Turn on format on save per language:
 {
   "[erb]": { "editor.formatOnSave": true },
   "[haml]": { "editor.formatOnSave": true },
-  "[slim]": { "editor.formatOnSave": true }
+  "[slim]": { "editor.formatOnSave": true },
+  "[jade]": { "editor.formatOnSave": true }
 }
 ```
 
-If another extension also formats these languages, pick this one with `"[erb]": { "editor.defaultFormatter": "x-ror.ruby-templates" }` (also `[haml]`, `[slim]`). To let the other one format instead, set `rubyTemplates.<erb|haml|slim>.format.enabled` to `false`. See [Troubleshooting](/vscode-ruby-templates/guides/troubleshooting/).
+If another extension also formats these languages, pick this one with `"[erb]": { "editor.defaultFormatter": "x-ror.ruby-templates" }` (also `[haml]`, `[slim]`, `[jade]` for Pug). To let the other one format instead, set `rubyTemplates.<erb|haml|slim|pug>.format.enabled` to `false`. See [Troubleshooting](/vscode-ruby-templates/guides/troubleshooting/).
 
 The formatter also runs in CI with `npx ruby-templates format --check`; see [Command line for CI](/vscode-ruby-templates/guides/command-line/).
 
