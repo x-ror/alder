@@ -45,7 +45,7 @@ pub(crate) fn code_start(lang: TemplateLang, text: &str, offset: usize, role: Li
             let line = util::lines_with_offsets(&text[line_start..]).next().map_or("", |(_, line)| line);
             haml::ruby_start(line, offset - line_start).map(|col| line_start + col)
         }
-        TemplateLang::Skim | TemplateLang::Ruby | TemplateLang::Liquid => None,
+        TemplateLang::Skim | TemplateLang::Ruby | TemplateLang::Liquid | TemplateLang::Pug => None,
     }
 }
 
@@ -58,7 +58,7 @@ pub(crate) fn compiled(lang: TemplateLang, text: &str, close: Option<Close>, ext
             let comment = close.and_then(|close| strict_locals::find(text, close));
             Some(haml::ruby::compiled(text, &haml::parser::parse_with_ruby(text), comment.as_ref()))
         }
-        TemplateLang::Skim | TemplateLang::Ruby | TemplateLang::Liquid => None,
+        TemplateLang::Skim | TemplateLang::Ruby | TemplateLang::Liquid | TemplateLang::Pug => None,
     }
 }
 
@@ -117,7 +117,7 @@ fn render_in_code(
                 |p: &str| ws + p.len() + line[ws + p.len()..].len() - line[ws + p.len()..].trim_start_matches(['=', '<', '>', '\'']).len();
             prefix.filter(|_| in_ruby()).map(marker_end)
         }
-        (TemplateLang::Skim | TemplateLang::Liquid, _) => None,
+        (TemplateLang::Skim | TemplateLang::Liquid | TemplateLang::Pug, _) => None,
         (TemplateLang::Ruby, _) => in_ruby().then_some(0),
     };
     code_start.is_some_and(|code| code <= r.call && ruby::code_end(&line[code..r.call]) == ruby::CodeEnd::Code)
@@ -152,7 +152,7 @@ pub(crate) fn in_ruby_context(lang: TemplateLang, text: &str, spans: &[(usize, u
             haml::in_ruby(line, offset - line_start)
         }
         // Skim code is CoffeeScript: no Rails helpers, renders or form builders.
-        TemplateLang::Skim | TemplateLang::Liquid => false,
+        TemplateLang::Skim | TemplateLang::Liquid | TemplateLang::Pug => false,
         TemplateLang::Ruby => !ruby::comment_before(&text[line_start..offset]),
         TemplateLang::Slim => {
             let before = &text[line_start..offset];

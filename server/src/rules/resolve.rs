@@ -254,7 +254,7 @@ fn section(lang: TemplateLang) -> Option<&'static str> {
         TemplateLang::Erb => Some("erb"),
         TemplateLang::Haml => Some("haml"),
         TemplateLang::Slim | TemplateLang::Skim => Some("slim"),
-        TemplateLang::Ruby | TemplateLang::Liquid => None,
+        TemplateLang::Ruby | TemplateLang::Liquid | TemplateLang::Pug => None,
     }
 }
 

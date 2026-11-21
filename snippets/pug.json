@@ -1,0 +1,53 @@
+{
+  "extends": {
+    "prefix": "extends",
+    "body": ["extends ${1:layout}", "", "block ${2:content}", "\t$0"]
+  },
+  "block": { "prefix": "block", "body": ["block ${1:content}", "\t$0"] },
+  "include": { "prefix": "include", "body": ["include ${1:file}$0"] },
+  "mixin": {
+    "prefix": "mixin",
+    "body": ["mixin ${1:name}(${2:args})", "\t$0"]
+  },
+  "mixin call": {
+    "prefix": "+call",
+    "body": ["+${1:name}(${2:args})$0"],
+    "description": "+name(args)"
+  },
+  "each": {
+    "prefix": "each",
+    "body": ["each ${1:item} in ${2:items}", "\t$0"]
+  },
+  "each with index": {
+    "prefix": "eachi",
+    "body": ["each ${1:item}, ${2:index} in ${3:items}", "\t$0"]
+  },
+  "while": { "prefix": "while", "body": ["while ${1:condition}", "\t$0"] },
+  "if": { "prefix": "if", "body": ["if ${1:condition}", "\t$0"] },
+  "if else": {
+    "prefix": "ife",
+    "body": ["if ${1:condition}", "\t$2", "else", "\t$0"]
+  },
+  "else if": { "prefix": "elseif", "body": ["else if ${1:condition}", "\t$0"] },
+  "else": { "prefix": "else", "body": ["else", "\t$0"] },
+  "case": {
+    "prefix": "case",
+    "body": [
+      "case ${1:value}",
+      "\twhen ${2:match}",
+      "\t\t$3",
+      "\tdefault",
+      "\t\t$0"
+    ]
+  },
+  "script block": {
+    "prefix": "scriptb",
+    "body": ["script.", "\t$0"],
+    "description": "script. (text block)"
+  },
+  "style block": {
+    "prefix": "styleb",
+    "body": ["style.", "\t$0"],
+    "description": "style. (text block)"
+  }
+}

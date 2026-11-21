@@ -152,6 +152,19 @@ try {
   );
   fs.unlinkSync(liquid);
 
+  // Pug code is JavaScript: no Rails checks, and no checks or formatter of its own yet.
+  const pug = file("row.jst.pug", '- render("users/missing")\nimg(src="x")\n');
+  r = run(["check", pug]);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.strictEqual(r.stdout, "", "Pug has nothing to report");
+  r = run(["check", views]);
+  assert.doesNotMatch(r.stdout, /row\.jst\.pug/, "a folder's Pug is skipped");
+  r = run(["format", pug]);
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.strictEqual(r.stdout, fs.readFileSync(pug, "utf8"), "kept as is");
+  assert.match(r.stderr, /row\.jst\.pug: left unchanged: Pug has no formatter/);
+  fs.unlinkSync(pug);
+
   // Ruby 3.3 rejects a line that starts with `&&`; the latest grammar, used without a project Ruby, takes it.
   const ruby = file("ruby.html.erb", "<% x = a\n  && b %>\n");
   r = run(["check", ruby]);

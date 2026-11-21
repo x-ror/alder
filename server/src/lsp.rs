@@ -346,7 +346,7 @@ impl LanguageServer for Backend {
             let found = liquid::ref_at(line, col).map(|r| liquid::resolve(&path, &r)).unwrap_or_default();
             return Ok(locations_response(found.into_iter().filter_map(file_location).collect()));
         }
-        if self.is_liquid(&uri) {
+        if self.without_rails(&uri) {
             return Ok(None);
         }
         let Some(path) = util::file_path(&uri) else { return Ok(None) };
@@ -419,7 +419,7 @@ impl LanguageServer for Backend {
             }
             return Ok(Some(links));
         }
-        if self.is_liquid(&uri) {
+        if self.without_rails(&uri) {
             return Ok(None);
         }
         let Some(path) = util::file_path(&uri) else { return Ok(None) };
@@ -459,7 +459,7 @@ impl LanguageServer for Backend {
             let (_, line, col) = util::line_at(&doc.text, pos);
             return Ok(liquid::ref_at(line, col).and_then(|r| markdown_hover(liquid::hover(&path, &r))));
         }
-        if self.is_liquid(&uri) {
+        if self.without_rails(&uri) {
             return Ok(None);
         }
         let file = match util::file_path(&uri) {
@@ -588,7 +588,7 @@ impl LanguageServer for Backend {
             TemplateLang::Haml => Some(outline::haml::folding_ranges(&text)),
             TemplateLang::Slim | TemplateLang::Skim => Some(outline::slim::folding_ranges(&text, &extra_engines)),
             TemplateLang::Erb if html => Some(outline::folding_ranges(&text)),
-            TemplateLang::Erb | TemplateLang::Ruby | TemplateLang::Liquid => None,
+            TemplateLang::Erb | TemplateLang::Ruby | TemplateLang::Liquid | TemplateLang::Pug => None,
         })
         .await
     }
@@ -621,7 +621,7 @@ impl LanguageServer for Backend {
                 TemplateLang::Erb => outline::document_symbols(&text, html),
                 TemplateLang::Haml => outline::haml::document_symbols(&text),
                 TemplateLang::Slim | TemplateLang::Skim => outline::slim::document_symbols(&text, &extra_engines),
-                TemplateLang::Ruby | TemplateLang::Liquid => return None,
+                TemplateLang::Ruby | TemplateLang::Liquid | TemplateLang::Pug => return None,
             };
             Some(DocumentSymbolResponse::Nested(symbols))
         })
@@ -737,7 +737,7 @@ impl LanguageServer for Backend {
     async fn references(&self, p: ReferenceParams) -> Result<Option<Vec<Location>>> {
         let uri = p.text_document_position.text_document.uri;
         let pos = p.text_document_position.position;
-        if self.is_liquid(&uri) {
+        if self.without_rails(&uri) {
             return Ok(None);
         }
         let Some(path) = util::file_path(&uri) else { return Ok(None) };
@@ -799,8 +799,7 @@ impl LanguageServer for Backend {
         let mut out = Vec::new();
         for views in roots {
             let is_template = |f: &&PathBuf| {
-                crate::util::file_uri(f)
-                    .is_some_and(|u| TemplateLang::from_uri_or_id(&u, None).is_some_and(|lang| lang != TemplateLang::Liquid))
+                crate::util::file_uri(f).is_some_and(|u| TemplateLang::from_uri_or_id(&u, None).is_some_and(TemplateLang::uses_rails))
             };
             let templates: Vec<PathBuf> = self.views_files(&views).iter().filter(is_template).cloned().collect();
             let project = Project::for_views(&views).with_view_cache(Arc::clone(&self.view_roots));
@@ -873,7 +872,7 @@ impl LanguageServer for Backend {
             let items = named.map(|(name, file)| util::completion_item(name, CompletionItemKind::FILE, file_name_of(&file))).collect();
             return Ok(Some(CompletionResponse::Array(items)));
         }
-        if self.is_liquid(&uri) {
+        if self.without_rails(&uri) {
             return Ok(None);
         }
         let Some(doc) = self.docs.get(&uri) else { return Ok(None) };
@@ -936,9 +935,8 @@ impl Backend {
         }
     }
 
-    /// Liquid has its own lookups and none of Rails': every Rails one would misfire on it.
-    fn is_liquid(&self, uri: &Uri) -> bool {
-        self.docs.get(uri).is_some_and(|doc| doc.lang == TemplateLang::Liquid)
+    fn without_rails(&self, uri: &Uri) -> bool {
+        self.docs.get(uri).is_some_and(|doc| !doc.lang.uses_rails())
     }
 
     /// The path and a copy of the open Liquid file at `uri`.
@@ -948,9 +946,9 @@ impl Backend {
     }
 
     /// A copy of the open template at `uri`, so no `docs` guard is held across an `.await` (it would block the next
-    /// `did_change`) or while other documents are read; none for Liquid.
+    /// `did_change`) or while other documents are read; none for a language `without_rails`.
     fn template_doc(&self, uri: &Uri) -> Option<Doc> {
-        self.docs.get(uri).filter(|doc| doc.lang != TemplateLang::Liquid).map(|doc| doc.clone())
+        self.docs.get(uri).filter(|doc| doc.lang.uses_rails()).map(|doc| doc.clone())
     }
 
     /// The Slim engines that apply to `uri`.

@@ -86,6 +86,9 @@ pub(crate) fn diagnostics_in(
         let reported = liquid::diagnostics(&doc.text).into_iter().filter(|d| util::code(d).is_none_or(|code| rules.reports(code)));
         return reported.map(|d| Diagnostic { source: Some(DIAGNOSTIC_SOURCE.into()), ..d }).collect();
     }
+    if !doc.lang.uses_rails() {
+        return vec![];
+    }
     let path = util::file_path(uri);
     let project = path.as_deref().map(|path| Project::memoized(projects, path, None));
     let ruby = path.as_deref().zip(project).map_or_else(RubyContext::outside_project, |(path, project)| project.ruby_context(path));
@@ -284,7 +287,7 @@ pub(crate) fn language_diagnostics(
             .collect(),
         // Syntax errors are Ruby LSP's job, but it doesn't know the `locals:` comment is code to Rails.
         TemplateLang::Ruby => locals_signature(text, ruby),
-        TemplateLang::Liquid => Vec::new(),
+        TemplateLang::Liquid | TemplateLang::Pug => Vec::new(),
     };
     // Void elements are an HTML rule; Slim itself renders `<img>x</img>` for `.xml.slim` and friends.
     if lang == TemplateLang::Slim && !slim_html_host(uri) {

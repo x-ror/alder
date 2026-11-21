@@ -41,7 +41,8 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "workspaceContains:**/*.{jbuilder,builder}"
+    "workspaceContains:**/*.{jbuilder,builder}",
+    "onLanguage:jade"
   ],
   "contributes": {
     "languages": [
@@ -427,6 +428,10 @@
       {
         "language": "slim",
         "path": "./snippets/slim.json"
+      },
+      {
+        "language": "jade",
+        "path": "./snippets/pug.json"
       }
     ],
     "commands": [

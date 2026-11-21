@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Pug, first step: the server attaches to VS Code's own Pug language (`jade`: `.pug`, `.jade`, `pug-rails`' `.jst.pug`) and keeps it away from every Rails feature, since its code is JavaScript: a `render` or helper name in it is never taken for a partial, helper, route or translation, and no `Rails/*` or other rule reports on it. Pug snippets (`extends`, `block`, `include`, `mixin`, `+call`, `each`, `eachi`, `while`, `if`, `ife`, `elseif`, `else`, `case`, `scriptb` for `script.`, `styleb` for `style.`). No Pug diagnostics, outline or formatter yet; `ruby-templates check` reports nothing for a Pug file and `format` leaves it as it is.
+
 ## 1.0.0
 
 The first stable release. From 1.0 the [stability page](https://x-ror.github.io/vscode-ruby-templates/reference/stability/) says what follows Semantic Versioning. When upgrading from 0.16, check the entries marked **Breaking**.

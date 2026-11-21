@@ -436,6 +436,47 @@ const check = (label, actual, expected) => {
     (await req("textDocument/hover", liquidHelperUri, 0, 5)).result ?? null,
     null,
   );
+  // pug-rails JST: its code is JavaScript, so a `render` or helper name is no Rails one, even under app/views.
+  const pugUri = fileUri(path.join(views, "users", "row.jst.pug"));
+  await send(
+    "textDocument/didOpen",
+    {
+      textDocument: {
+        uri: pugUri,
+        languageId: "jade",
+        version: 1,
+        text: '- render("users/card")\np= link_to("x")\n- render("us',
+      },
+    },
+    true,
+  );
+  check(
+    "definition: none for a render in pug",
+    targets(await req("textDocument/definition", pugUri, 0, 12)),
+    [],
+  );
+  check(
+    "hover: none for a render or a helper in pug",
+    [
+      (await req("textDocument/hover", pugUri, 0, 12)).result ?? null,
+      (await req("textDocument/hover", pugUri, 1, 5)).result ?? null,
+    ],
+    [null, null],
+  );
+  check(
+    "completion: no partials in pug",
+    labels(await req("textDocument/completion", pugUri, 2, 12)),
+    [],
+  );
+  check(
+    "document links: none in pug",
+    (
+      await send("textDocument/documentLink", {
+        textDocument: { uri: pugUri },
+      })
+    ).result ?? null,
+    null,
+  );
   check(
     "hover",
     firstLine(await req("textDocument/hover", uri, 0, 14)),
@@ -724,6 +765,15 @@ const check = (label, actual, expected) => {
       "<p>{{ a }}</p>\n{% if a %}\n  b\n",
     ),
     ["1:Syntax/LiquidUnclosedBlock"],
+  );
+  check(
+    "pug: no Rails checks on a render",
+    await diagnosticsFor(
+      fileUri(path.join(views, "users", "list.jst.pug")),
+      "jade",
+      '- render("users/missing")\nimg(src="x")\n',
+    ),
+    [],
   );
   check(
     "erb: the same text has a stray else",

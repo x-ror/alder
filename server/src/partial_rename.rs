@@ -367,7 +367,7 @@ fn sources_in(
         .filter_map(|path| {
             let lang = match path.extension() {
                 Some(ext) if ext == "rb" => None,
-                _ => Some(TemplateLang::from_uri_or_id(&crate::util::file_uri(&path)?, None).filter(|&lang| lang != TemplateLang::Liquid)?),
+                _ => Some(TemplateLang::from_uri_or_id(&crate::util::file_uri(&path)?, None).filter(|&lang| lang.uses_rails())?),
             };
             let text = crate::util::open_or_read(open.get(&path).cloned(), &path).filter(|text| keep(text))?;
             let slim = matches!(lang, Some(TemplateLang::Slim | TemplateLang::Skim));

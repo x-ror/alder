@@ -360,6 +360,7 @@ fn format_stages(
         TemplateLang::Haml => indent_haml(text, settings)?,
         TemplateLang::Ruby => return skip(SkipKind::NotHandled, "Ruby views are formatted by Ruby tools"),
         TemplateLang::Liquid => return skip(SkipKind::NotHandled, "Liquid has no formatter here"),
+        TemplateLang::Pug => return skip(SkipKind::NotHandled, "Pug has no formatter yet"),
     };
     Ok(tidy(lang, indented, text, settings, extra_engines))
 }

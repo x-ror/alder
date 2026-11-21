@@ -149,10 +149,13 @@ async function doStart(context) {
     {
       // Scheme-less selectors also match git diff sides and chat code blocks, duplicating diagnostics.
       // `ruby` is contributed only for Jbuilder/Builder views; other Ruby files are not templates.
+      // `jade` is VS Code's own Pug language, which we don't contribute.
       documentSelector: [
         ...context.extension.packageJSON.contributes.languages
-          .filter(({ id }) => id !== "ruby")
-          .flatMap(({ id }) => [
+          .map(({ id }) => id)
+          .filter((id) => id !== "ruby")
+          .concat("jade")
+          .flatMap((id) => [
             { scheme: "file", language: id },
             { scheme: "untitled", language: id },
           ]),
