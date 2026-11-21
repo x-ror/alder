@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export type Language = "erb" | "haml" | "slim" | "jbuilder" | "liquid";
+export type Language = "erb" | "haml" | "slim" | "jbuilder" | "liquid" | "pug";
 
 export const LANGUAGE_NAMES: Record<Language, string> = {
   erb: "ERB",
@@ -11,6 +11,7 @@ export const LANGUAGE_NAMES: Record<Language, string> = {
   slim: "Slim",
   jbuilder: "Jbuilder",
   liquid: "Liquid",
+  pug: "Pug",
 };
 
 export interface Diagnostic {
@@ -545,6 +546,128 @@ export const diagnostics: Diagnostic[] = [
     },
     message: "`endfor` doesn't close the open `if` tag; Liquid expects `endif`",
     line: 3,
+    column: 1,
+  },
+  {
+    code: "Syntax/PugInconsistentIndent",
+    languages: ["pug"],
+    summary: "Indentation Pug can't follow, or tabs and spaces mixed.",
+    explanation:
+      'Pug raises `PUG:INCONSISTENT_INDENTATION` for a line un-indented to a level no open line has, and `PUG:INVALID_INDENTATION` ("Invalid indentation, you can use tabs or spaces but not both") for a line indented with the other character than the lines before it. The template doesn\'t compile. Like every Pug error, only the first one is reported, at the line and column Pug gives: Pug stops there.',
+    example: {
+      file: "app/assets/templates/users/list.jst.pug",
+      lang: "pug",
+      code: `ul.users
+    li= user.name
+  li= user.email
+`,
+    },
+    message: "Inconsistent indentation. Expecting either 0 or 4 spaces/tabs.",
+    line: 3,
+    column: 1,
+  },
+  {
+    code: "Syntax/PugUnclosedBracket",
+    languages: ["pug"],
+    summary:
+      "An attribute list, interpolation or expression whose bracket is never closed, or closed by the wrong one.",
+    explanation:
+      "Pug raises `PUG:NO_END_BRACKET` when an attribute list `(…)`, the arguments of a mixin call or of `&attributes(…)`, or a `#{…}` or `#[…]` interpolation runs to the end of the line or the file, and `PUG:BRACKET_MISMATCH` when a bracket inside it is closed by another kind. The JavaScript inside is not otherwise checked.",
+    example: {
+      file: "app/assets/templates/users/nav.jst.pug",
+      lang: "pug",
+      code: `li(class={active: user.active) Profile
+`,
+    },
+    message: "Mismatched Bracket: )",
+    line: 1,
+    column: 30,
+  },
+  {
+    code: "Syntax/PugInvalidName",
+    languages: ["pug"],
+    summary: "A `#id` or `.class` that isn't a valid name.",
+    explanation:
+      'Pug raises `PUG:INVALID_ID` or `PUG:INVALID_CLASS_NAME`: an id may hold letters, digits, `_` and `-`, and a class name the same with at least one letter or `_`. Use an attribute for any other value: `div(class="6")`.',
+    example: {
+      file: "app/assets/templates/users/row.jst.pug",
+      lang: "pug",
+      code: `.grid
+  .col.6 Name
+`,
+    },
+    message: "Class names must contain at least one letter or underscore.",
+    line: 2,
+    column: 7,
+  },
+  {
+    code: "Syntax/PugDuplicateAttribute",
+    languages: ["pug"],
+    summary: "An attribute given twice on one tag, `id` included.",
+    explanation:
+      "Pug raises `PUG:DUPLICATE_ATTRIBUTE`, or `PUG:DUPLICATE_ID` for a `#id` shorthand after an `id` attribute; the template doesn't compile. `class` is the exception: Pug joins several classes.",
+    example: {
+      file: "app/assets/templates/users/form.jst.pug",
+      lang: "pug",
+      code: `input#email(type="email" id="user-email")
+`,
+    },
+    message: 'Duplicate attribute "id" is not allowed.',
+    line: 1,
+    column: 26,
+  },
+  {
+    code: "Syntax/PugMalformedKeyword",
+    languages: ["pug"],
+    summary:
+      "A keyword such as `each`, `case` or `include` without the expression or path it needs, or with one it can't take.",
+    explanation:
+      "Pug raises `PUG:MALFORMED_EACH` (`each user of users`, or `- each` with a dash), `PUG:NO_CASE_EXPRESSION`, `PUG:NO_WHEN_EXPRESSION`, `PUG:NO_WHILE_EXPRESSION`, `PUG:NO_INCLUDE_PATH`, `PUG:NO_EXTENDS_PATH`, `PUG:MALFORMED_INCLUDE`, `PUG:MALFORMED_EXTENDS`, `PUG:DEFAULT_WITH_EXPRESSION` and `PUG:ELSE_CONDITION` (`else x`, where `else if x` was meant).",
+    example: {
+      file: "app/assets/templates/users/list.jst.pug",
+      lang: "pug",
+      code: `each user of users
+  li= user.name
+`,
+    },
+    message: "malformed each",
+    line: 1,
+    column: 5,
+  },
+  {
+    code: "Syntax/PugIllegalNesting",
+    languages: ["pug"],
+    summary:
+      "Lines nested under buffered code or a raw include, which can't hold them.",
+    explanation:
+      "Pug raises `PUG:BLOCK_IN_BUFFERED_CODE` for lines indented under a `= code` or `!= code` line, and `PUG:RAW_INCLUDE_BLOCK` for lines under an `include` of a file that isn't Pug. Unbuffered `- code` may hold a block.",
+    example: {
+      file: "app/assets/templates/users/list.jst.pug",
+      lang: "pug",
+      code: `ul
+  = user.name
+    li admin
+`,
+    },
+    message: "Buffered code cannot have a block attached to it",
+    line: 3,
+    column: 1,
+  },
+  {
+    code: "Syntax/PugTemplate",
+    languages: ["pug"],
+    summary: "Any other error the Pug parser raises.",
+    explanation:
+      "Pug 2's lexer and parser errors that belong to no other code, such as `PUG:UNEXPECTED_TEXT`, `PUG:INVALID_TOKEN`, `PUG:MIXIN_WITHOUT_BODY` and `PUG:BLOCK_OUTISDE_MIXIN` (an anonymous `block` outside a mixin), with Pug's message. A few templates make Pug itself throw a JavaScript error (a `#` with nothing after it, a lone `.` under a tag); that error's message is reported. The JavaScript in `- code`, `#{}` and attribute values is not checked, so Pug's `PUG:SYNTAX_ERROR` is never reported.",
+    example: {
+      file: "app/assets/templates/users/badge.jst.pug",
+      lang: "pug",
+      code: `mixin badge
+p Hello
+`,
+    },
+    message: "Mixin badge declared without body",
+    line: 1,
     column: 1,
   },
   {

@@ -1,6 +1,6 @@
 //! Haml folding ranges and document symbols.
 
-use super::{erb_symbol, indent_level, indentation_folds, region_folds, Symbols, LANDMARKS};
+use super::{block_end, erb_symbol, indentation_folds, region_folds, Symbols, LANDMARKS};
 use crate::haml::indent::{haml_code_start, haml_structure, is_haml_tag, tag_name_len};
 use crate::util::{closing_bracket, find_balanced, leading_ws, LineIndex};
 use regex::Regex;
@@ -58,21 +58,6 @@ pub fn document_symbols(text: &str) -> Vec<DocumentSymbol> {
         }
     }
     symbols.finish()
-}
-
-/// Last line of the block a structural line opens: its own span, then every following line indented deeper
-/// (trailing blank lines excluded).
-fn block_end(lines: &[&str], i: usize, span: usize) -> usize {
-    let Some(indent) = indent_level(lines[i]) else { return i };
-    let mut end = i + span - 1;
-    for (j, l) in lines.iter().enumerate().skip(i + span) {
-        match indent_level(l) {
-            None => {}
-            Some(level) if level > indent => end = j,
-            Some(_) => break,
-        }
-    }
-    end
 }
 
 /// `section#main` for `%section#main.wide`, `div#cart` for `#cart`, `nav` for `%nav`; `None` for other tags.

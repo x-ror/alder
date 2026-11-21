@@ -776,6 +776,45 @@ const check = (label, actual, expected) => {
     [],
   );
   check(
+    "pug: a syntax error is reported with its code",
+    await diagnosticsFor(
+      fileUri(path.join(views, "users", "broken.jst.pug")),
+      "jade",
+      "ul\n    li\n  li\n",
+    ),
+    ["2:Syntax/PugInconsistentIndent"],
+  );
+  const pugShowUri = fileUri(path.join(views, "users", "show.jst.pug"));
+  check(
+    "pug: nothing for a valid template",
+    await diagnosticsFor(
+      pugShowUri,
+      "jade",
+      "extends layout\nblock content\n  section#main\n    .card= user.name\nmixin badge(x)\n  span.badge= x\n",
+    ),
+    [],
+  );
+  check(
+    "pug documentSymbols",
+    (
+      (
+        await send("textDocument/documentSymbol", {
+          textDocument: { uri: pugShowUri },
+        })
+      ).result || []
+    ).map(tree),
+    ["block content [section#main [.card]]", "mixin badge [span.badge]"],
+  );
+  check(
+    "pug foldingRanges: VS Code's own",
+    (
+      await send("textDocument/foldingRange", {
+        textDocument: { uri: pugShowUri },
+      })
+    ).result ?? null,
+    null,
+  );
+  check(
     "erb: the same text has a stray else",
     (await diagnosticsFor("file:///v/plain.html.erb", "erb", mixed)).length > 0,
     true,

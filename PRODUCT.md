@@ -34,7 +34,7 @@ Evaluated in a browser next to VS Code, often after landing from the Marketplace
 
 ## Capabilities and Constraints
 
-- Languages: ERB (with host variants such as `.js.erb`, `.yml.erb`), Haml, Slim, Skim; Liquid for highlighting and editing only; Pug (`pug-rails` `.jst.pug` and plain `.pug`, on VS Code's own `jade` language) with snippets only so far, its JavaScript code kept away from every Rails feature.
+- Languages: ERB (with host variants such as `.js.erb`, `.yml.erb`), Haml, Slim, Skim; Liquid for highlighting and editing only; Pug (`pug-rails` `.jst.pug` and plain `.pug`, on VS Code's own `jade` language) with snippets, syntax errors (Pug 2.0.4's own) and an outline so far, its JavaScript code kept away from every Rails feature and not checked; no `include`/`extends` navigation or formatter yet.
 - Every diagnostic has a stable code listed in `package.json` (`rubyTemplates.<lang>.disabledDiagnostics`); the site documents each one.
 - `README.md` stays the Marketplace page but becomes a short overview linking to the site; the site holds the full documentation.
 - `CHANGELOG.md` is rendered on the site from the file itself.

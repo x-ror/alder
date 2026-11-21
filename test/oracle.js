@@ -1,9 +1,10 @@
-// Oracle harness: compares the official template engine with ruby-templates. `bun test/oracle.js slim|haml`
+// Oracle harness: compares the official template engine with ruby-templates. `bun test/oracle.js slim|haml|erb|pug`
 // Stage 0 measures today's code, so mismatches don't fail the run; only a broken harness does.
 import { spawn, spawnSync } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import * as pugOracle from "./oracle/pug.js";
 
 // The oracle scripts' `column` (Haml reports none) is a 0-based UTF-16 offset in the line; `ruby-templates check` prints 1-based columns.
 const COLUMN_TO_CLI = 1;
@@ -195,6 +196,14 @@ const languages = {
     breakVariants: (source) => erbBreakVariants(source),
     breakSample: 10,
   },
+  // An npm package rather than a gem (PUG_PATH); errors only, until Pug has a formatter.
+  pug: {
+    gem: "pug",
+    version: pugOracle.VERSION,
+    installed: () => Boolean(pugOracle.loadPug()),
+    installHint: pugOracle.INSTALL_HINT,
+    report: () => pugReport(),
+  },
 };
 
 // Whether the gem and the gems it is pinned to load at the expected versions.
@@ -287,6 +296,10 @@ const oursByPath = ({ extension }, files) => {
     } else if (last && text) {
       last.message += `\n${text}`;
     }
+  }
+  // `check` ends each message with its rule, ` [Syntax/Ruby]`, which the official message doesn't have.
+  for (const diagnostic of [...byPath.values()].flat()) {
+    diagnostic.message = diagnostic.message.replace(/ \[[A-Z]\w*\/\w+\]$/, "");
   }
   return byPath;
 };
@@ -1317,6 +1330,88 @@ const contextReport = async () => {
   }
 };
 
+// Pug's column counts UTF-16 units from 1 after its byte order mark; `check` counts characters. 0-based, as the Ruby scripts give it.
+const pugCharColumn = (source, line, column) => {
+  const text = source.replace(/^﻿/, "").split(/\r\n|\r|\n/)[line - 1] ?? "";
+  return [...text.slice(0, column - 1)].length;
+};
+
+// test/oracle/pug_cases.json and Pug's own test templates through Pug in Node and through `ruby-templates check`: the
+// first error, at the same line and column with the same message. Pug's `PUG:SYNTAX_ERROR` is about the JavaScript,
+// which ours doesn't check, so it is counted apart.
+const pugReport = async () => {
+  const pug = pugOracle.loadPug();
+  const recorded = JSON.parse(fs.readFileSync(pugOracle.casesFile, "utf8"));
+  const sources = [
+    ...recorded.map(({ source }, i) => ({
+      label: `pug_cases.json #${i + 1}`,
+      source,
+    })),
+    ...pugOracle.upstreamTemplates(pug),
+  ];
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rt-oracle-pug-"));
+  try {
+    const items = sources.map((item, n) => {
+      const file = path.join(dir, `${n}.pug`);
+      fs.writeFileSync(file, item.source);
+      return { ...item, path: file };
+    });
+    const ours = oursByPath(
+      { extension: ".pug" },
+      items.map((item) => item.path),
+    );
+    const counts = { officialErrors: 0, oursErrors: 0, same: 0, javascript: 0 };
+    const mismatches = [];
+    for (const item of items) {
+      const { error } = pugOracle.record(pug, item.source);
+      const errors = (ours.get(path.resolve(item.path)) ?? []).filter(
+        (d) => d.severity === "error",
+      );
+      if (error?.code === "PUG:SYNTAX_ERROR") {
+        counts.javascript++;
+        continue;
+      }
+      if (error) counts.officialErrors++;
+      if (errors.length) counts.oursErrors++;
+      const official = error && {
+        message: error.message,
+        line: error.line,
+        column:
+          error.line === null
+            ? null
+            : pugCharColumn(item.source, error.line, error.column),
+      };
+      // A JavaScript error Pug throws has no position, and the engine words it: ours follows Node, this runs on Bun.
+      const thrown = error?.line === null;
+      const agree = official
+        ? errors.some((e) => thrown || sameError(official, e))
+        : !errors.length;
+      if (agree) {
+        if (official) counts.same++;
+        continue;
+      }
+      mismatches.push(
+        `${item.label} ${JSON.stringify(item.source)}\n` +
+          `    official: ${official ? describe(official) : "compiles"}\n` +
+          `    ours:     ${errors.length ? errors.map(describe).join("; ") : "no error"}`,
+      );
+    }
+    console.log(
+      `pug ${pug.version} vs ruby-templates  (${items.length.toLocaleString("en-US")} templates)`,
+    );
+    console.log(
+      `errors:  official ${counts.officialErrors}, ours ${counts.oursErrors}, same ${counts.same}`,
+    );
+    console.log(
+      `skipped: ${counts.javascript} (Pug's JavaScript syntax errors, not checked by ours)`,
+    );
+    console.log(`mismatches: ${mismatches.length}`);
+    if (process.env.VERBOSE) mismatches.forEach((m) => console.log(m));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+};
+
 // Every actionview version of the fixtures must load at exactly that version.
 const contextInstalled = () =>
   CONTEXT_ACTIONVIEW_VERSIONS.every((version) => {
@@ -1341,7 +1436,7 @@ if (!lang) {
 }
 if (!(lang.installed ?? installed)(lang)) {
   console.log(
-    `skipped: ${lang.gem} ${lang.version}${lang.pins ? ` with ${lang.pins.map((p) => `${p.gem} ${p.version}`).join(", ")}` : ""} is not installed (ruby -r${lang.gem}); see test/oracle/README.md`,
+    `skipped: ${lang.gem} ${lang.version}${lang.pins ? ` with ${lang.pins.map((p) => `${p.gem} ${p.version}`).join(", ")}` : ""} is not installed (${lang.installHint ?? `ruby -r${lang.gem}`}); see test/oracle/README.md`,
   );
   process.exit(0);
 }

@@ -114,3 +114,21 @@ Go to Definition, Ctrl/Cmd+click links and hover work on the name in `{% render 
 The language server reports, as errors, the tags that stop a template from rendering: a `{{` or `{%` that is never closed (`Syntax/LiquidUnclosedTag`; Jekyll front matter, `{% raw %}`, `{% comment %}` and `{% doc %}` are not read), a block tag (`if`, `unless`, `for`, `case`, `capture`, `comment`, `raw`, `tablerow`, `form`, `paginate`, `highlight`, also on the lines of a `{% liquid %}` tag) without its end tag (`Syntax/LiquidUnclosedBlock`), an end tag with nothing to close (`Syntax/LiquidStrayEndTag`) and an end tag for another block (`Syntax/LiquidMismatchedEndTag`). `{% comment %}` and `{% raw %}` are not read as tags, and tags you register yourself are left alone. `ruby-templates check` reports them too, and `rubyTemplates.liquid.disabledDiagnostics` turns them off. See [Diagnostics](/vscode-ruby-templates/reference/diagnostics/).
 
 If Shopify's Liquid extension also contributes `liquid`, disable one of the two for the workspace: VS Code uses one grammar per language id.
+
+## Pug
+
+`.pug` and `.jade` files, including `pug-rails`' `.jst.pug` templates (compiled by Sprockets into JST functions, usually under `app/assets/templates`), keep VS Code's own `jade` language: its highlighting, comment toggling, folding and Emmet. The extension adds Pug snippets, syntax errors and an outline. Pug code is JavaScript, so none of the Rails lookups or checks apply to it, and it is not formatted.
+
+```pug title="app/assets/templates/users/list.jst.pug"
+ul.users
+  each user in users
+    li(class={admin: user.admin})= user.name
+```
+
+### Checks
+
+The language server reports the first error Pug 2.0.4 raises (the Pug 2.0 that `pug-ruby` ships, so the one `pug-rails` compiles with), with Pug's message, at Pug's line and column: inconsistent indentation (`Syntax/PugInconsistentIndent`), a bracket never closed or closed by the wrong one (`Syntax/PugUnclosedBracket`), an invalid `#id` or `.class` (`Syntax/PugInvalidName`), an attribute given twice (`Syntax/PugDuplicateAttribute`), a keyword such as `each` or `include` without what it needs (`Syntax/PugMalformedKeyword`), lines nested under buffered code or a raw include (`Syntax/PugIllegalNesting`), and any other Pug error (`Syntax/PugTemplate`). Pug stops at its first error, and so does the check. The JavaScript in `- code`, `#{}` and attribute values is not checked, and neither are the files `include` and `extends` name. `ruby-templates check` reports these errors too, and `rubyTemplates.pug.disabledDiagnostics` turns them off. See [Diagnostics](/vscode-ruby-templates/reference/diagnostics/).
+
+### Outline
+
+The outline lists tags with a `#id` or `.class` (`section#main.wide`, `.card`), a literal `id` (`form(id="signup")` is `form#signup`) or a landmark name (`header`, `nav`, `main`, `section`, `aside`, `footer`, `form`), `block`s and `mixin` definitions, nested by indentation. With a syntax error it shows the lines above the error.

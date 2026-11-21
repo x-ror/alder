@@ -8,6 +8,7 @@ use crate::haml;
 use crate::lang::{haml_html_host, html_host, is_partial, slim_html_host, TemplateLang};
 use crate::line_length;
 use crate::liquid;
+use crate::pug;
 use crate::rails::project::{Framework, Project, Projects};
 use crate::rails::render_call::HamlPipes;
 use crate::rails::{
@@ -81,9 +82,14 @@ pub(crate) fn diagnostics_in(
     if uri.path().as_str().to_ascii_lowercase().ends_with(".tt") || !rules.diagnostics_enabled() {
         return vec![];
     }
-    // Liquid has none of the Rails lookups, so only its own tags are checked.
-    if doc.lang == TemplateLang::Liquid {
-        let reported = liquid::diagnostics(&doc.text).into_iter().filter(|d| util::code(d).is_none_or(|code| rules.reports(code)));
+    // Liquid and Pug have none of the Rails lookups, so only their own syntax is checked.
+    let own_syntax = match doc.lang {
+        TemplateLang::Liquid => Some(liquid::diagnostics(&doc.text)),
+        TemplateLang::Pug => Some(pug::diagnostics(&doc.text)),
+        _ => None,
+    };
+    if let Some(found) = own_syntax {
+        let reported = found.into_iter().filter(|d| util::code(d).is_none_or(|code| rules.reports(code)));
         return reported.map(|d| Diagnostic { source: Some(DIAGNOSTIC_SOURCE.into()), ..d }).collect();
     }
     if !doc.lang.uses_rails() {
@@ -663,6 +669,13 @@ mod tests {
         // Every check carries a code, or the setting can't turn it off.
         assert!(!codes(erb_path, TemplateLang::Erb, include_str!("../../test/broken/bad.html.erb"), &all).is_empty());
         assert!(!codes(haml_path, TemplateLang::Haml, include_str!("../../test/broken/bad.html.haml"), &all).is_empty());
+        // Pug gets its own syntax errors and none of the Rails checks, which would misread its JavaScript.
+        let pug_path = "file:///v/app/views/users/row.jst.pug";
+        let pug = "- render(\"users/missing\")\np\n   a\n  b\n";
+        assert_eq!(codes(pug_path, TemplateLang::Pug, pug, &all), [pug::code::INCONSISTENT_INDENT]);
+        let pug_off =
+            Options::from_init(Some(&serde_json::json!({ "pug": { "disabledDiagnostics": [pug::code::INCONSISTENT_INDENT] } }))).0;
+        assert!(codes(pug_path, TemplateLang::Pug, pug, &pug_off).is_empty());
     }
 
     #[test]
@@ -701,6 +714,7 @@ mod tests {
             ("slim", TemplateLang::Slim),
             ("jbuilder", TemplateLang::Ruby),
             ("liquid", TemplateLang::Liquid),
+            ("pug", TemplateLang::Pug),
         ] {
             let items = items(section);
             let listed: BTreeSet<&str> = items["enum"].as_array().unwrap().iter().map(|c| c.as_str().unwrap()).collect();
@@ -725,6 +739,7 @@ mod tests {
             include_str!("haml/indent.rs"),
             include_str!("slim/indent.rs"),
             include_str!("liquid.rs"),
+            include_str!("pug.rs"),
         ] {
             assert!(!literal.is_match(src.split("#[cfg(test)]").next().unwrap()), "coded(…, \"literal\")");
         }

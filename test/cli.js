@@ -152,13 +152,22 @@ try {
   );
   fs.unlinkSync(liquid);
 
-  // Pug code is JavaScript: no Rails checks, and no checks or formatter of its own yet.
+  // Pug code is JavaScript: no Rails checks, only Pug's own syntax errors, and no formatter yet.
   const pug = file("row.jst.pug", '- render("users/missing")\nimg(src="x")\n');
   r = run(["check", pug]);
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
-  assert.strictEqual(r.stdout, "", "Pug has nothing to report");
+  assert.strictEqual(r.stdout, "", "valid Pug has nothing to report");
+  const brokenPug = file("cell.pug", "td\n    span\n  b\n");
+  r = run(["check", brokenPug]);
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+  assert.match(
+    r.stdout,
+    /cell\.pug:3:1: error: Inconsistent indentation\. Expecting either 0 or 4 spaces\/tabs\. \[Syntax\/PugInconsistentIndent\]/,
+  );
   r = run(["check", views]);
-  assert.doesNotMatch(r.stdout, /row\.jst\.pug/, "a folder's Pug is skipped");
+  assert.match(r.stdout, /cell\.pug:3:1: /, "a folder's Pug is checked");
+  assert.doesNotMatch(r.stdout, /row\.jst\.pug/);
+  fs.unlinkSync(brokenPug);
   r = run(["format", pug]);
   assert.strictEqual(r.status, 0, r.stderr);
   assert.strictEqual(r.stdout, fs.readFileSync(pug, "utf8"), "kept as is");

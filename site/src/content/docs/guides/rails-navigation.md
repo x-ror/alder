@@ -145,3 +145,5 @@ This works when the controller makes the record plain to see, for example `@repo
 ## Outline and breadcrumbs
 
 Every template has an outline and breadcrumbs.
+
+In Pug, which has no Rails calls, the outline lists tags with an id, a class or a landmark name, `block`s and `mixin` definitions; see [File types](/vscode-ruby-templates/guides/file-types/#outline).

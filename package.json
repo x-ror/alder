@@ -811,6 +811,24 @@
           "uniqueItems": true,
           "description": "Built-in Liquid diagnostics to turn off, by rule name (`Department/Name`). A rule a `.ruby-templates.toml` switches with `enabled` follows the file."
         },
+        "rubyTemplates.pug.disabledDiagnostics": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "Syntax/PugInconsistentIndent",
+              "Syntax/PugUnclosedBracket",
+              "Syntax/PugInvalidName",
+              "Syntax/PugDuplicateAttribute",
+              "Syntax/PugMalformedKeyword",
+              "Syntax/PugIllegalNesting",
+              "Syntax/PugTemplate"
+            ]
+          },
+          "default": [],
+          "uniqueItems": true,
+          "description": "Built-in Pug diagnostics to turn off, by rule name (`Department/Name`). A rule a `.ruby-templates.toml` switches with `enabled` follows the file."
+        },
         "rubyTemplates.slim.disabledDiagnostics": {
           "type": "array",
           "items": {

@@ -588,6 +588,7 @@ impl LanguageServer for Backend {
             TemplateLang::Haml => Some(outline::haml::folding_ranges(&text)),
             TemplateLang::Slim | TemplateLang::Skim => Some(outline::slim::folding_ranges(&text, &extra_engines)),
             TemplateLang::Erb if html => Some(outline::folding_ranges(&text)),
+            // VS Code's off-side folding of `jade` is all ours would give: Pug has no region markers.
             TemplateLang::Erb | TemplateLang::Ruby | TemplateLang::Liquid | TemplateLang::Pug => None,
         })
         .await
@@ -621,7 +622,8 @@ impl LanguageServer for Backend {
                 TemplateLang::Erb => outline::document_symbols(&text, html),
                 TemplateLang::Haml => outline::haml::document_symbols(&text),
                 TemplateLang::Slim | TemplateLang::Skim => outline::slim::document_symbols(&text, &extra_engines),
-                TemplateLang::Ruby | TemplateLang::Liquid | TemplateLang::Pug => return None,
+                TemplateLang::Pug => outline::pug::document_symbols(&text),
+                TemplateLang::Ruby | TemplateLang::Liquid => return None,
             };
             Some(DocumentSymbolResponse::Nested(symbols))
         })

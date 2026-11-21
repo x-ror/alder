@@ -22,6 +22,7 @@ mod nested_interactive;
 mod options;
 mod outline;
 mod partial_rename;
+mod pug;
 mod rails;
 mod report;
 mod ruby;

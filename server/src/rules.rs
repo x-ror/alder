@@ -5,7 +5,7 @@ pub mod resolve;
 
 use crate::lang::TemplateLang;
 use crate::line_length::LINE_LENGTH;
-use TemplateLang::{Erb, Haml, Liquid, Ruby, Slim};
+use TemplateLang::{Erb, Haml, Liquid, Pug, Ruby, Slim};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
@@ -154,6 +154,21 @@ pub const RULES: &[Rule] = &[
     lint("Syntax/LiquidUnclosedBlock", "A block tag such as `if` or `for` with no end tag.", &[Liquid]),
     lint("Syntax/LiquidStrayEndTag", "An end tag with no open block to close.", &[Liquid]),
     lint("Syntax/LiquidMismatchedEndTag", "An end tag that doesn't match the innermost open block.", &[Liquid]),
+    lint("Syntax/PugInconsistentIndent", "Indentation Pug can't follow, or tabs and spaces mixed.", &[Pug]),
+    lint(
+        "Syntax/PugUnclosedBracket",
+        "An attribute list, interpolation or expression whose bracket is never closed, or closed by the wrong one.",
+        &[Pug],
+    ),
+    lint("Syntax/PugInvalidName", "A `#id` or `.class` that isn't a valid name.", &[Pug]),
+    lint("Syntax/PugDuplicateAttribute", "An attribute given twice on one tag, `id` included.", &[Pug]),
+    lint(
+        "Syntax/PugMalformedKeyword",
+        "A keyword such as `each`, `case` or `include` without the expression or path it needs, or with one it can't take.",
+        &[Pug],
+    ),
+    lint("Syntax/PugIllegalNesting", "Lines nested under buffered code or a raw include, which can't hold them.", &[Pug]),
+    lint("Syntax/PugTemplate", "Any other error the Pug parser raises.", &[Pug]),
     lint("Html/UnexpectedCloseTag", "An end tag with no open element of that name.", &[Erb]),
     lint("Html/MismatchedCloseTag", "An end tag that doesn't close the innermost open element.", &[Erb]),
     lint("Html/UnclosedElement", "An element whose end tag never comes.", &[Erb]),
@@ -269,6 +284,7 @@ mod tests {
             include_str!("haml/indent.rs"),
             include_str!("slim/indent.rs"),
             include_str!("liquid.rs"),
+            include_str!("pug.rs"),
             include_str!("ruby/generated.rs"),
         ];
         let declared: HashSet<&str> = sources.iter().flat_map(|src| re.captures_iter(src).map(|c| c.get(1).unwrap().as_str())).collect();

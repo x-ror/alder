@@ -76,6 +76,9 @@ function initializationOptions(config) {
     liquid: {
       disabledDiagnostics: config.get("liquid.disabledDiagnostics", []),
     },
+    pug: {
+      disabledDiagnostics: config.get("pug.disabledDiagnostics", []),
+    },
   };
 }
 
@@ -88,6 +91,7 @@ const SERVER_SETTINGS = [
   "haml.disabledDiagnostics",
   "jbuilder.disabledDiagnostics",
   "liquid.disabledDiagnostics",
+  "pug.disabledDiagnostics",
   "erb.format.alignComments",
   ...["erb", "haml", "slim"].flatMap((lang) => [
     `${lang}.diagnostics.enabled`,
