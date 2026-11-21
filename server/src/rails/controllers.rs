@@ -96,7 +96,7 @@ mod tests {
             names("    render :edit, status: :unprocessable_entity", None),
             [("edit".into(), vec!["admin/users/edit.html.slim".into()])]
         );
-        assert_eq!(names(r#"render action: :edit"#, None)[0].0, "edit");
+        assert_eq!(names(r"render action: :edit", None)[0].0, "edit");
         assert_eq!(names(r#"render :template => "shared/missing""#, None)[0].0, "shared/missing");
         assert_eq!(names(r#"render partial: "form""#, None)[0].1, ["admin/users/_form.html.erb"]);
         assert_eq!(names(r#"render partial: "/admin/users/form""#, None)[0].1, ["admin/users/_form.html.erb"]);

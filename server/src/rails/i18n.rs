@@ -13,7 +13,7 @@ use walkdir::WalkDir;
 // `t "a.b"`, `t(".x")`, `translate`, `I18n.t`; not `obj.t(…)`. `#` keeps interpolated keys out.
 const CALL: &str = r#"(?:^|[^\w.@$])(?:I18n\.)?(?:t|translate)\s*\(?\s*["']"#;
 static KEY_CALL: LazyLock<Regex> = LazyLock::new(|| Regex::new(&format!(r#"{CALL}([\w.?!-]+)["']"#)).unwrap());
-static KEY_OPEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(&format!(r#"{CALL}([\w.?!-]*)$"#)).unwrap());
+static KEY_OPEN: LazyLock<Regex> = LazyLock::new(|| Regex::new(&format!(r"{CALL}([\w.?!-]*)$")).unwrap());
 const VALUE_PREVIEW: usize = 80;
 const DEFAULT_LOCALE: &str = "en";
 /// Gems that serve translations from a store besides the files.
@@ -665,7 +665,7 @@ mod tests {
             keys(r#"<%= t("a.b") %> <%= t '.title' %> <%= I18n.t("x") %> <%= translate("y", count: 1) %>"#),
             ["a.b", ".title", "x", "y"]
         );
-        assert!(keys(r##"<%= t("a.#{b}") %> <%= post.t("x") %> <%= link_to "x" %> <%= at("x") %> <%= t(:sym) %>"##).is_empty());
+        assert!(keys(r#"<%= t("a.#{b}") %> <%= post.t("x") %> <%= link_to "x" %> <%= at("x") %> <%= t(:sym) %>"#).is_empty());
         let line = r#"<%= t(".title") %>"#;
         assert_eq!(key_at(line, 8), Some((7, 13)));
         assert_eq!(key_at(line, 2), None);

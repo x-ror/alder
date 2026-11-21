@@ -644,7 +644,7 @@ mod tests {
         assert_eq!(at_end(r#"<div data-action="click->he"#), controller(25, "he"));
         assert_eq!(at_end(r#"<div data-action="he"#), controller(18, "he"));
         assert_eq!(at_end(r#"%div{data: {controller: "x", action: "click->y"#), controller(45, "y"));
-        assert_eq!(at_end(r#"div data-controller='a--"#), controller(21, "a--"));
+        assert_eq!(at_end(r"div data-controller='a--"), controller(21, "a--"));
         assert_eq!(at_end(r#"<div data-action="click->hello#gr"#), Some((31, "gr".into(), Slot::Method("hello".into()))));
         assert_eq!(at_end(r#"<a data-action="x#a admin--users#"#), Some((33, "".into(), Slot::Method("admin--users".into()))));
         assert_eq!(at_end(r#"<input data-date-picker-target="a in"#), Some((34, "in".into(), Slot::Target("date-picker".into()))));
