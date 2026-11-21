@@ -857,7 +857,7 @@ mod tests {
         let names = |line: &str| render_refs(line).into_iter().map(|r| r.name).collect::<Vec<_>>();
         assert_eq!(names(r#"json.partial! "users/user", user: u"#), ["users/user"]);
         assert_eq!(names(r#"json.partial!("users/user")"#), ["users/user"]);
-        assert_eq!(names(r#"json.partial! partial: 'users/user', locals: { user: u }"#), ["users/user"]);
+        assert_eq!(names(r"json.partial! partial: 'users/user', locals: { user: u }"), ["users/user"]);
         assert_eq!(names(r#"json.array! @users, partial: "users/user", as: :user"#), ["users/user"]);
         assert_eq!(names(r#"json.array!(@users, :partial => "users/user", :as => :user)"#), ["users/user"]);
         assert_eq!(names(r#"json.comments @post.comments, partial: "comments/comment", as: :comment"#), ["comments/comment"]);
@@ -891,7 +891,7 @@ mod tests {
             render_string_prefix(r##"json.tags @t, label: "#x", partial: "sh"##, 39).unwrap(),
             (RenderKind::Partial, "sh".to_string())
         );
-        assert_eq!(render_string_prefix(r#"json.partial! partial: 'po"#, 26).unwrap(), (RenderKind::Partial, "po".to_string()));
+        assert_eq!(render_string_prefix(r"json.partial! partial: 'po", 26).unwrap(), (RenderKind::Partial, "po".to_string()));
         let refs = |l: &str| render_refs(l).into_iter().map(|r| (r.kind, r.name)).collect::<Vec<_>>();
         let p = |n: &str| (RenderKind::Partial, n.to_string());
         assert_eq!(refs(r#"<%= render layout: "box" do %>"#), [p("box")]);
@@ -1053,7 +1053,7 @@ mod tests {
         assert_eq!(found(r#"#main= render partial: "row", layout: "box""#), [n("row", false), n("box", true)]);
         assert_eq!(found(r#"%div.a#main= render formats: [:json], partial: "x""#), [n("x", false)]);
         assert_eq!(found(r#"#main = render formats: [:json], partial: "x""#), [n("x", false)]);
-        let line = r#"<%= render a: 1 %>(<%= render b: 2 %>"#;
+        let line = r"<%= render a: 1 %>(<%= render b: 2 %>";
         assert!(call_tails(line, &RENDER_OPTIONS).iter().all(|(_, tail)| line[tail.end..].starts_with("%>")));
     }
 
@@ -1072,7 +1072,7 @@ mod tests {
         assert_eq!(names(r#"json.a 1; json.b @b, partial: "x""#), ["x"]);
         assert_eq!(names(r#"json.a 1, as: :z; json.b @b, partial: "x""#), ["x"]);
         assert_eq!(names(r#"json.comments partial: "comments/comment", collection: @c"#), ["comments/comment"]);
-        assert!(names(r#"json.a @a; json.b @b"#).is_empty());
+        assert!(names(r"json.a @a; json.b @b").is_empty());
     }
 
     #[test]
