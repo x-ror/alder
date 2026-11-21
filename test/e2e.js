@@ -469,13 +469,80 @@ const check = (label, actual, expected) => {
     [],
   );
   check(
-    "document links: none in pug",
+    "document links: none for a render in pug",
     (
       await send("textDocument/documentLink", {
         textDocument: { uri: pugUri },
       })
-    ).result ?? null,
-    null,
+    ).result,
+    [],
+  );
+  // pug-rails templates under app/assets/templates: `.pug` is implied, `/` starts from the asset root.
+  const templates = path.join(root, "app", "assets", "templates");
+  fs.mkdirSync(path.join(templates, "users", "parts"), { recursive: true });
+  fs.writeFileSync(path.join(templates, "layout.pug"), "block content\n");
+  fs.writeFileSync(path.join(templates, "users", "row.pug"), "li row\n");
+  fs.writeFileSync(path.join(templates, "users", "cell.jst.pug"), "td\n");
+  const listUri = fileUri(path.join(templates, "users", "list.jst.pug"));
+  await send(
+    "textDocument/didOpen",
+    {
+      textDocument: {
+        uri: listUri,
+        languageId: "jade",
+        version: 1,
+        text: "extends /layout\nblock content\n  include row\n  include \n  include parts/\n",
+      },
+    },
+    true,
+  );
+  check(
+    "definition: pug include adds .pug",
+    targets(await req("textDocument/definition", listUri, 2, 12)),
+    ["/app/assets/templates/users/row.pug"],
+  );
+  check(
+    "definition: pug extends from the asset root",
+    targets(await req("textDocument/definition", listUri, 0, 10)),
+    ["/app/assets/templates/layout.pug"],
+  );
+  check(
+    "document links: pug include and extends",
+    (
+      await send("textDocument/documentLink", {
+        textDocument: { uri: listUri },
+      })
+    ).result.map((l) => [l.range.start.line, rel(l.target)]),
+    [
+      [0, "/app/assets/templates/layout.pug"],
+      [2, "/app/assets/templates/users/row.pug"],
+    ],
+  );
+  check(
+    "hover: pug include names its file",
+    (await req("textDocument/hover", listUri, 2, 12)).result.contents.value,
+    "**Include** `row`\n\n`app/assets/templates/users/row.pug`",
+  );
+  check(
+    "completion: pug include names as written",
+    labels(await req("textDocument/completion", listUri, 3, 10)),
+    ["cell.jst.pug", "parts/", "row"],
+  );
+  check(
+    "completion: pug extends from the asset root",
+    (await req("textDocument/completion", listUri, 0, 9)).result.map((i) => [
+      i.label,
+      i.textEdit.range.start.character,
+    ]),
+    [
+      ["layout", 9],
+      ["users/", 9],
+    ],
+  );
+  check(
+    "completion: pug include in an empty folder",
+    labels(await req("textDocument/completion", listUri, 4, 16)),
+    [],
   );
   check(
     "hover",
@@ -784,6 +851,7 @@ const check = (label, actual, expected) => {
     ),
     ["2:Syntax/PugInconsistentIndent"],
   );
+  fs.writeFileSync(path.join(views, "users", "layout.pug"), "block content\n");
   const pugShowUri = fileUri(path.join(views, "users", "show.jst.pug"));
   check(
     "pug: nothing for a valid template",
@@ -793,6 +861,56 @@ const check = (label, actual, expected) => {
       "extends layout\nblock content\n  section#main\n    .card= user.name\nmixin badge(x)\n  span.badge= x\n",
     ),
     [],
+  );
+  const pugAssets = path.join(root, "app", "assets", "templates", "users");
+  const lateUri = fileUri(path.join(pugAssets, "late.jst.pug"));
+  check(
+    "pug: a missing include and a late extends; no mixin check without it",
+    await diagnosticsFor(
+      lateUri,
+      "jade",
+      "p\n  include missing\n  +nope\nextends /layout\n",
+    ),
+    ["1:Syntax/PugMissingFile", "3:Syntax/PugExtendsNotFirst"],
+  );
+  const missingPug = path.join(pugAssets, "missing.pug");
+  fs.writeFileSync(missingPug, "p\n");
+  await send(
+    "workspace/didChangeWatchedFiles",
+    { changes: [{ uri: fileUri(missingPug), type: 1 }] },
+    true,
+  );
+  await new Promise((r) => setTimeout(r, 200));
+  check(
+    "pug: a created include is found, and the mixin call then checked",
+    notes
+      .filter(
+        (n) =>
+          n.method === "textDocument/publishDiagnostics" &&
+          n.params.uri === lateUri,
+      )
+      .at(-1)
+      ?.params.diagnostics.map((d) => `${d.range.start.line}:${d.code}`),
+    ["3:Syntax/PugExtendsNotFirst", "2:Syntax/PugUnknownMixin"],
+  );
+  fs.unlinkSync(missingPug);
+  check(
+    "pug: a block the layout lacks",
+    await diagnosticsFor(
+      fileUri(path.join(pugAssets, "sidebar.jst.pug")),
+      "jade",
+      "extends /layout\nblock content\n  p\nblock sidebar\n",
+    ),
+    ["3:Syntax/PugUnexpectedBlock"],
+  );
+  check(
+    "pug: an unknown mixin, with every include in place",
+    await diagnosticsFor(
+      fileUri(path.join(pugAssets, "mixin-call.jst.pug")),
+      "jade",
+      "include row\n+nope\n",
+    ),
+    ["1:Syntax/PugUnknownMixin"],
   );
   check(
     "pug documentSymbols",

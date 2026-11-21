@@ -11,6 +11,7 @@ use crate::erb::tags;
 use crate::lang::{file_name, is_partial, TemplateLang};
 use crate::liquid;
 use crate::options::Options;
+use crate::pug::refs as pug_refs;
 use crate::rails::controllers::Target;
 use crate::rails::output_lints::{output_marker_edit, SILENT_HELPER, SILENT_RENDER};
 use crate::rails::project::{Project, Projects};
@@ -341,10 +342,15 @@ impl LanguageServer for Backend {
     async fn goto_definition(&self, p: GotoDefinitionParams) -> Result<Option<GotoDefinitionResponse>> {
         let uri = p.text_document_position_params.text_document.uri;
         let pos = p.text_document_position_params.position;
-        if let Some((path, doc)) = self.liquid_doc(&uri) {
+        if let Some((path, doc)) = self.file_doc(&uri, TemplateLang::Liquid) {
             let (_, line, col) = util::line_at(&doc.text, pos);
             let found = liquid::ref_at(line, col).map(|r| liquid::resolve(&path, &r)).unwrap_or_default();
             return Ok(locations_response(found.into_iter().filter_map(file_location).collect()));
+        }
+        if let Some((path, doc)) = self.file_doc(&uri, TemplateLang::Pug) {
+            let found = util::position_to_offset(&doc.text, pos).and_then(|at| pug_refs::ref_at(&doc.text, at));
+            let target = found.and_then(|r| pug_refs::target(&path, &r));
+            return Ok(locations_response(target.into_iter().filter_map(file_location).collect()));
         }
         if self.without_rails(&uri) {
             return Ok(None);
@@ -409,7 +415,15 @@ impl LanguageServer for Backend {
 
     async fn document_link(&self, p: DocumentLinkParams) -> Result<Option<Vec<DocumentLink>>> {
         let uri = p.text_document.uri;
-        if let Some((path, doc)) = self.liquid_doc(&uri) {
+        if let Some((path, doc)) = self.file_doc(&uri, TemplateLang::Pug) {
+            let index = util::LineIndex::new(&doc.text);
+            let links = pug_refs::file_refs(&doc.text).into_iter().filter_map(|r| {
+                let target = pug_refs::target(&path, &r)?;
+                file_link(index.range(r.start, r.end), &target, &path)
+            });
+            return Ok(Some(links.collect()));
+        }
+        if let Some((path, doc)) = self.file_doc(&uri, TemplateLang::Liquid) {
             let mut links = Vec::new();
             for (i, (_, line)) in util::lines_with_offsets(&doc.text).enumerate() {
                 for r in liquid::refs(line) {
@@ -455,9 +469,13 @@ impl LanguageServer for Backend {
     async fn hover(&self, p: HoverParams) -> Result<Option<Hover>> {
         let uri = p.text_document_position_params.text_document.uri;
         let pos = p.text_document_position_params.position;
-        if let Some((path, doc)) = self.liquid_doc(&uri) {
+        if let Some((path, doc)) = self.file_doc(&uri, TemplateLang::Liquid) {
             let (_, line, col) = util::line_at(&doc.text, pos);
             return Ok(liquid::ref_at(line, col).and_then(|r| markdown_hover(liquid::hover(&path, &r))));
+        }
+        if let Some((path, doc)) = self.file_doc(&uri, TemplateLang::Pug) {
+            let found = util::position_to_offset(&doc.text, pos).and_then(|at| pug_refs::ref_at(&doc.text, at));
+            return Ok(found.and_then(|r| markdown_hover(pug_refs::hover(&path, &r))));
         }
         if self.without_rails(&uri) {
             return Ok(None);
@@ -866,7 +884,24 @@ impl LanguageServer for Backend {
     async fn completion(&self, p: CompletionParams) -> Result<Option<CompletionResponse>> {
         let uri = p.text_document_position.text_document.uri;
         let pos = p.text_document_position.position;
-        if let Some((path, doc)) = self.liquid_doc(&uri) {
+        if let Some((path, doc)) = self.file_doc(&uri, TemplateLang::Pug) {
+            let (_, line, col) = util::line_at(&doc.text, pos);
+            let Some((keyword, start, typed)) = pug_refs::path_prefix(line, col) else { return Ok(None) };
+            let range = util::span_range(pos.line as usize, line, start, col);
+            let typed = typed.to_string();
+            let found = off_server_task({
+                let path = path.clone();
+                move || pug_refs::candidates(&path, keyword, &typed)
+            })
+            .await?;
+            let items = found.into_iter().map(|c| {
+                let kind = if c.folder { CompletionItemKind::FOLDER } else { CompletionItemKind::FILE };
+                let edit = CompletionTextEdit::Edit(TextEdit::new(range, c.label.clone()));
+                CompletionItem { text_edit: Some(edit), ..util::completion_item(c.label, kind, paths::rails_relative(&c.file, &path)) }
+            });
+            return Ok(Some(CompletionResponse::Array(items.collect())));
+        }
+        if let Some((path, doc)) = self.file_doc(&uri, TemplateLang::Liquid) {
             let (_, line, col) = util::line_at(&doc.text, pos);
             let Some((tag, prefix)) = liquid::name_prefix(line, col) else { return Ok(None) };
             let names = off_server_task(move || liquid::candidates(&path, tag)).await?;
@@ -941,9 +976,9 @@ impl Backend {
         self.docs.get(uri).is_some_and(|doc| !doc.lang.uses_rails())
     }
 
-    /// The path and a copy of the open Liquid file at `uri`.
-    fn liquid_doc(&self, uri: &Uri) -> Option<(PathBuf, Doc)> {
-        let doc = self.docs.get(uri).filter(|doc| doc.lang == TemplateLang::Liquid).map(|doc| doc.clone())?;
+    /// The path and a copy of the open `lang` file at `uri`.
+    fn file_doc(&self, uri: &Uri, lang: TemplateLang) -> Option<(PathBuf, Doc)> {
+        let doc = self.docs.get(uri).filter(|doc| doc.lang == lang).map(|doc| doc.clone())?;
         Some((util::file_path(uri)?, doc))
     }
 

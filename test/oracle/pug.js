@@ -1,5 +1,5 @@
-// Pug oracle: runs templates through Pug 2.0.4's own lexer, comment stripper and parser in Node (what `pug.compile`
-// does before linking) and records the first error, or an outline of the AST, for `server/src/pug/parser.rs` to match.
+// Pug oracle: runs templates through Pug 2.0.4's own lexer, comment stripper and parser in Node, with the implied `.pug`
+// (what `pug.compile` does before linking) and records the first error, or an outline of the AST, for `server/src/pug/parser.rs` to match.
 //   node test/oracle/pug.js           checks test/oracle/pug_cases.json against Pug (UPDATE=1 rewrites it), then
 //                                     records Pug's own test templates and runs the Rust comparison on them
 // PUG_PATH: a directory where `pug` 2.0.x resolves (`npm install pug@2.0.4` there). Without it the oracle is skipped.
@@ -170,13 +170,21 @@ const outline = (node, out = []) => {
   return out;
 };
 
+// `pug.compile` adds `.pug` to an `include` or `extends` path without an extension before it parses (lib/index.js).
+const impliedExtension = (tokens) =>
+  tokens.map((token) =>
+    token.type === "path" && path.extname(token.val) === ""
+      ? { ...token, val: `${token.val}.pug` }
+      : token,
+  );
+
 // Pug's first error: its code, message, line and column; an error Pug doesn't word itself (a JavaScript TypeError,
 // character-parser's or assert's) has no position. Node's wording of a TypeError is recorded as it is.
 const official = (pug, source) => {
   try {
     return {
       error: null,
-      outline: outline(pug.parse(pug.strip(pug.lex(source)))),
+      outline: outline(pug.parse(pug.strip(impliedExtension(pug.lex(source))))),
     };
   } catch (e) {
     if (e.code?.startsWith("PUG:")) {

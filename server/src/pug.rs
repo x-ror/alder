@@ -3,8 +3,10 @@
 
 pub mod lexer;
 pub mod parser;
+pub mod refs;
 
 use crate::util::{coded, error, leading_ws, LineIndex, BOM};
+use std::path::Path;
 use tower_lsp_server::ls_types::{Diagnostic, Position, Range};
 
 /// Stable diagnostic codes; `rubyTemplates.pug.disabledDiagnostics` refers to these.
@@ -17,6 +19,10 @@ pub mod code {
     pub const ILLEGAL_NESTING: &str = "Syntax/PugIllegalNesting";
     /// Pug's errors that belong to no other code, and the JavaScript errors Pug itself throws on some templates.
     pub const SYNTAX_ERROR: &str = "Syntax/PugTemplate";
+    pub const MISSING_FILE: &str = "Syntax/PugMissingFile";
+    pub const EXTENDS_NOT_FIRST: &str = "Syntax/PugExtendsNotFirst";
+    pub const UNEXPECTED_BLOCK: &str = "Syntax/PugUnexpectedBlock";
+    pub const UNKNOWN_MIXIN: &str = "Syntax/PugUnknownMixin";
 }
 
 /// The first error Pug raises.
@@ -32,11 +38,34 @@ pub struct Error {
     pub column: usize,
 }
 
-/// Pug's first error, with Pug's message, filed under the code of the construct it is about.
-pub fn diagnostics(text: &str) -> Vec<Diagnostic> {
-    let Err(found) = parser::parse(text) else { return Vec::new() };
-    let code = code_of(found.code);
-    vec![coded(error(range(text, &found, code == code::INCONSISTENT_INDENT), found.message), code)]
+/// Pug's first error, with Pug's message, filed under the code of the construct it is about; without one, for a file on
+/// disk, the problems with what it includes and extends.
+pub fn diagnostics(text: &str, path: Option<&Path>) -> Vec<Diagnostic> {
+    match parser::parse(text) {
+        Ok(tree) => path.map(|path| refs::diagnostics(text, &tree, path)).unwrap_or_default(),
+        Err(found) => {
+            let code = code_of(found.code);
+            vec![coded(error(range(text, &found, code == code::INCONSISTENT_INDENT), found.message), code)]
+        }
+    }
+}
+
+/// The template's tree, or the tree of the lines before its first error.
+pub fn parsed(text: &str) -> Option<parser::Block> {
+    let error = match parser::parse(text) {
+        Ok(tree) => return Some(tree),
+        Err(error) => error,
+    };
+    let before: usize = text.split_inclusive('\n').take(error.line.saturating_sub(1)).map(str::len).sum();
+    parser::parse(&text[..before]).ok()
+}
+
+/// The byte offset of Pug's 1-based line and UTF-16 column, which don't count the byte order mark.
+pub fn offset(index: &LineIndex, line: usize, column: usize) -> usize {
+    let line = line.saturating_sub(1).min(index.line_of(usize::MAX));
+    let raw = index.line(line);
+    let bom = if line == 0 && raw.starts_with(BOM) { BOM.len_utf8() } else { 0 };
+    index.line_start(line) + bom + lexer::unit_offset(&raw[bom..], column.saturating_sub(1))
 }
 
 fn code_of(pug_code: &str) -> &'static str {
@@ -78,7 +107,7 @@ mod tests {
 
     /// (line, start, end, code, message) of the diagnostic for `text`, 0-based as the editor gets them.
     fn found(text: &str) -> Vec<(u32, u32, u32, String, String)> {
-        diagnostics(text)
+        diagnostics(text, None)
             .into_iter()
             .map(|d| {
                 let code = crate::util::code(&d).unwrap_or_default().to_string();

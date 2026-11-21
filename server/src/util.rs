@@ -25,6 +25,21 @@ fn without_verbatim_drive(path: PathBuf) -> PathBuf {
     PathBuf::from(format!("{}:{}", drive as char, components.as_path().display()))
 }
 
+/// `path` with its `.` and `..` parts worked out without reading the disk, as Node's `path.join` does.
+pub fn lexically_normal(path: &Path) -> PathBuf {
+    let mut normal = PathBuf::new();
+    for part in path.components() {
+        match part {
+            std::path::Component::ParentDir => {
+                normal.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => normal.push(other),
+        }
+    }
+    normal
+}
+
 /// Convert a byte offset within `text` to an LSP position (line, UTF-16 column); for many offsets, use one `LineIndex`.
 pub fn offset_to_position(text: &str, offset: usize) -> Position {
     let offset = char_floor(text, offset);

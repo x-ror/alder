@@ -1,5 +1,6 @@
 //! Port of `pug-parser` 5.0.1 (Pug 2.0.4), run as Pug runs it: after `pug-strip-comments` 1.0.4 with Pug's defaults,
-//! which drop `//-` comments and their bodies. The AST has Pug's nodes, each with the line and column of the token
+//! which drop `//-` comments and their bodies, and with `.pug` implied for a path without an extension, as `pug.compile`
+//! gives it (the path keeps its written form here). The AST has Pug's nodes, each with the line and column of the token
 //! that starts it (1-based, columns in UTF-16 code units); `#[...]` in text is spliced into the text's nodes.
 
 use super::lexer::{lex, BlockMode, Kind, Pos, Token};
@@ -78,7 +79,7 @@ pub enum NodeKind {
     Extends {
         file: FileReference,
     },
-    /// A `.pug` (or `.jade`) file without filters.
+    /// A `.pug` (or `.jade`) file, or a path without an extension, without filters.
     Include {
         file: FileReference,
         block: Block,
@@ -659,7 +660,8 @@ impl Parser {
             filters.push(self.parse_include_filter()?);
         }
         let file = self.file_reference()?;
-        if filters.is_empty() && (file.path.ends_with(".pug") || file.path.ends_with(".jade")) {
+        let read = super::refs::implied(&file.path);
+        if filters.is_empty() && (read.ends_with(".pug") || read.ends_with(".jade")) {
             let block = self.optional_block(token.start.line)?;
             return Ok(node(&token, NodeKind::Include { file, block }));
         }
@@ -896,7 +898,7 @@ mod tests {
 
     fn outline_node(node: &Node, out: &mut Vec<String>) {
         let at = format!("@{}:{}", node.line, node.column);
-        let file = |f: &FileReference| format!("{}@{}:{}", f.path, f.line, f.column);
+        let file = |f: &FileReference| format!("{}@{}:{}", crate::pug::refs::implied(&f.path), f.line, f.column);
         match &node.kind {
             NodeKind::NamedBlock { name, mode, block } => {
                 let mode = match mode {

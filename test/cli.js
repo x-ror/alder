@@ -168,6 +168,18 @@ try {
   assert.match(r.stdout, /cell\.pug:3:1: /, "a folder's Pug is checked");
   assert.doesNotMatch(r.stdout, /row\.jst\.pug/);
   fs.unlinkSync(brokenPug);
+  // `include row` reads row.pug, not pug-rails' row.jst.pug next to it.
+  const including = file("list.jst.pug", "ul\n  include row\n");
+  r = run(["check", including]);
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+  assert.match(
+    r.stdout,
+    /list\.jst\.pug:2:11: error: Missing file app\/views\/users\/row\.pug \[Syntax\/PugMissingFile\]/,
+  );
+  fs.writeFileSync(including, "ul\n  include row.jst.pug\n");
+  r = run(["check", including]);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  fs.unlinkSync(including);
   r = run(["format", pug]);
   assert.strictEqual(r.status, 0, r.stderr);
   assert.strictEqual(r.stdout, fs.readFileSync(pug, "utf8"), "kept as is");

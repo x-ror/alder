@@ -1350,6 +1350,18 @@ const pugReport = async () => {
     ...pugOracle.upstreamTemplates(pug),
   ];
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rt-oracle-pug-"));
+  // Pug's parser doesn't read the files a template includes or extends; ours does, for these.
+  fs.writeFileSync(
+    path.join(dir, ".ruby-templates.toml"),
+    [
+      "PugMissingFile",
+      "PugExtendsNotFirst",
+      "PugUnexpectedBlock",
+      "PugUnknownMixin",
+    ]
+      .map((rule) => `[Syntax.${rule}]\nenabled = false\n`)
+      .join("\n"),
+  );
   try {
     const items = sources.map((item, n) => {
       const file = path.join(dir, `${n}.pug`);

@@ -128,7 +128,7 @@ async function doStart(context) {
   const command = findServer(context);
   log(`starting language server: ${command}`);
 
-  // The server caches app/views listings, parsed locales (and the config that sets their default locale and sources), the helpers and routes files that define route helpers and the Stimulus controllers app/javascript registers, and a changed Gemfile.lock or .ruby-version changes its framework gates and the Ruby grammar, and a .ruby-templates.toml changes which rules apply; these events invalidate them. The folder globs
+  // The server caches app/views listings, parsed locales (and the config that sets their default locale and sources), the helpers and routes files that define route helpers and the Stimulus controllers app/javascript registers, and a changed Gemfile.lock or .ruby-version changes its framework gates and the Ruby grammar, and a .ruby-templates.toml changes which rules apply, and a Pug file changes what the templates that include or extend it find; these events invalidate them. The folder globs
   // catch deleting/renaming a whole app/ or config/ tree, which VS Code reports as one event for the folder.
   // Created once: restarts reuse them instead of piling up live watchers.
   if (!watchers) {
@@ -142,6 +142,7 @@ async function doStart(context) {
       "**/Gemfile.lock",
       "**/.ruby-version",
       "**/.ruby-templates.toml",
+      "**/*.{pug,jade}",
       "**/{app,config,app/views,config/locales}",
     ].map((glob) => vscode.workspace.createFileSystemWatcher(glob));
     context.subscriptions.push(...watchers);

@@ -117,7 +117,7 @@ If Shopify's Liquid extension also contributes `liquid`, disable one of the two 
 
 ## Pug
 
-`.pug` and `.jade` files, including `pug-rails`' `.jst.pug` templates (compiled by Sprockets into JST functions, usually under `app/assets/templates`), keep VS Code's own `jade` language: its highlighting, comment toggling, folding and Emmet. The extension adds Pug snippets, syntax errors and an outline. Pug code is JavaScript, so none of the Rails lookups or checks apply to it, and it is not formatted.
+`.pug` and `.jade` files, including `pug-rails`' `.jst.pug` templates (compiled by Sprockets into JST functions, usually under `app/assets/templates`), keep VS Code's own `jade` language: its highlighting, comment toggling, folding and Emmet. The extension adds Pug snippets, syntax errors, an outline and navigation through `include` and `extends`. Pug code is JavaScript, so none of the Rails lookups or checks apply to it, and it is not formatted.
 
 ```pug title="app/assets/templates/users/list.jst.pug"
 ul.users
@@ -127,7 +127,26 @@ ul.users
 
 ### Checks
 
-The language server reports the first error Pug 2.0.4 raises (the Pug 2.0 that `pug-ruby` ships, so the one `pug-rails` compiles with), with Pug's message, at Pug's line and column: inconsistent indentation (`Syntax/PugInconsistentIndent`), a bracket never closed or closed by the wrong one (`Syntax/PugUnclosedBracket`), an invalid `#id` or `.class` (`Syntax/PugInvalidName`), an attribute given twice (`Syntax/PugDuplicateAttribute`), a keyword such as `each` or `include` without what it needs (`Syntax/PugMalformedKeyword`), lines nested under buffered code or a raw include (`Syntax/PugIllegalNesting`), and any other Pug error (`Syntax/PugTemplate`). Pug stops at its first error, and so does the check. The JavaScript in `- code`, `#{}` and attribute values is not checked, and neither are the files `include` and `extends` name. `ruby-templates check` reports these errors too, and `rubyTemplates.pug.disabledDiagnostics` turns them off. See [Diagnostics](/vscode-ruby-templates/reference/diagnostics/).
+The language server reports the first error Pug 2.0.4 raises (the Pug 2.0 that `pug-ruby` ships, so the one `pug-rails` compiles with), with Pug's message, at Pug's line and column: inconsistent indentation (`Syntax/PugInconsistentIndent`), a bracket never closed or closed by the wrong one (`Syntax/PugUnclosedBracket`), an invalid `#id` or `.class` (`Syntax/PugInvalidName`), an attribute given twice (`Syntax/PugDuplicateAttribute`), a keyword such as `each` or `include` without what it needs (`Syntax/PugMalformedKeyword`), lines nested under buffered code or a raw include (`Syntax/PugIllegalNesting`), and any other Pug error (`Syntax/PugTemplate`). Pug stops at its first error, and so does the check. The JavaScript in `- code`, `#{}` and attribute values is not checked.
+
+In a template without a syntax error, the files it includes and extends are checked too (see [Include and extends](#include-and-extends) for how paths resolve): a file that doesn't exist (`Syntax/PugMissingFile`), an `extends` after another statement or a second one (`Syntax/PugExtendsNotFirst`; blank lines and `//-` comments may come first), a top-level `block` of an extending template that no layout up the chain has (`Syntax/PugUnexpectedBlock`), and, as a warning, a `+call` of a mixin that neither the template, the files it includes nor its layouts define (`Syntax/PugUnknownMixin`). The last two are left out when a file on the way is missing or doesn't parse, and the mixin check also for a template that another Pug file in the app includes or extends, since it may call that file's mixins. These follow the files on disk and run again when a Pug file is saved, created or deleted.
+
+`ruby-templates check` reports these errors too, and `rubyTemplates.pug.disabledDiagnostics` turns them off. See [Diagnostics](/vscode-ruby-templates/reference/diagnostics/).
+
+### Include and extends
+
+Go to Definition, Ctrl/Cmd+click links and hover work on the path after `include`, `include:filter` and `extends`, and completion offers the folders and files of the folder typed so far. Under `pug-rails`, `include` and `extends` compile only with `pug-ruby`'s system compiler (`Pug.use :system`): the compiler the gem ships can't read files. Paths resolve as Pug 2 resolves them:
+
+- `.pug` is added to a path without an extension: `include row` reads `row.pug`. A `pug-rails` template named `row.jst.pug` has to be included as `include row.jst.pug`, and completion offers it that way. A path with another extension (`include notes.md`) is read as it is.
+- A relative path starts from the template's folder.
+- An absolute path (`extends /layout`) starts from `app/assets/templates`, or `app/assets/javascripts` when that doesn't exist, standing in for the `basedir` option Pug needs for it (`pug-rails` sets none; set `config.pug.basedir` to the same folder). Without either folder, an absolute path isn't followed.
+
+```pug title="app/assets/templates/users/show.jst.pug"
+extends /layout
+block content
+  include row.jst.pug
+  include:markdown-it notes.md
+```
 
 ### Outline
 

@@ -671,6 +671,84 @@ p Hello
     column: 1,
   },
   {
+    code: "Syntax/PugMissingFile",
+    languages: ["pug"],
+    summary: "An `include` or `extends` of a file that doesn't exist.",
+    explanation:
+      "Pug reads the file when it compiles the template and fails when it isn't there. A path without an extension gets `.pug`, so `include row` never finds pug-rails' `row.jst.pug`: write `include row.jst.pug`. A relative path starts from the template's folder; an absolute one (`/shared/nav`) from `app/assets/templates`, else `app/assets/javascripts`, standing in for the `basedir` option, and isn't checked when neither exists. Here `users/row.jst.pug` and `layout.pug` exist.",
+    example: {
+      file: "app/assets/templates/users/show.jst.pug",
+      lang: "pug",
+      code: `extends ../layout
+block content
+  include row
+`,
+    },
+    message: "Missing file app/assets/templates/users/row.pug",
+    line: 3,
+    column: 11,
+  },
+  {
+    code: "Syntax/PugExtendsNotFirst",
+    languages: ["pug"],
+    summary:
+      "An `extends` that isn't the template's first statement, or a second one.",
+    explanation:
+      "pug-linker raises `PUG:EXTENDS_NOT_FIRST` with this message. Blank lines and `//-` comments may come before `extends`, since Pug drops them; a `doctype`, a `//` comment (it is output) or a `mixin` may not. The layout's `doctype` belongs in the layout.",
+    example: {
+      file: "app/assets/templates/users/show.jst.pug",
+      lang: "pug",
+      code: `doctype html
+extends ../layout
+`,
+    },
+    message:
+      'Declaration of template inheritance ("extends") should be the first thing in the file. There can only be one extends statement per file.',
+    line: 2,
+    column: 1,
+  },
+  {
+    code: "Syntax/PugUnexpectedBlock",
+    languages: ["pug"],
+    summary: "A `block` of an extending template that its layouts don't have.",
+    explanation:
+      "pug-linker raises `PUG:UNEXPECTED_BLOCK` for a block at the top level of an extending template, `append` and `prepend` included, whose name no layout up the `extends` chain has (with the files they include) and no other block of the template nests. Not reported when a layout or one of its includes is missing or has a syntax error. Here `layout.pug` has `block content` only.",
+    example: {
+      file: "app/assets/templates/users/index.jst.pug",
+      lang: "pug",
+      code: `extends ../layout
+block content
+  ul.users
+block sidebar
+  p Filters
+`,
+    },
+    message: "Unexpected block sidebar",
+    line: 4,
+    column: 1,
+  },
+  {
+    code: "Syntax/PugUnknownMixin",
+    languages: ["pug"],
+    summary:
+      "A `+mixin` call with no definition in the template, the files it includes or its layouts.",
+    explanation:
+      "Pug compiles the call and fails when the template renders (`pug_mixins.usr is not a function`). A template that another one includes or extends may call that one's mixins, so the call is only reported when no Pug file in the app (`app/`, or the template's folder outside one) pulls the template in, and when every file it includes and extends is there and parses. A `+#{name}` call is never reported. Here `mixins.pug` defines `mixin user(user)`.",
+    example: {
+      file: "app/assets/templates/users/list.jst.pug",
+      lang: "pug",
+      code: `include ../mixins
+ul
+  each user in users
+    +usr(user)
+`,
+    },
+    message:
+      "Mixin `usr` is not defined here, in an included file or in a layout",
+    line: 4,
+    column: 5,
+  },
+  {
     code: "Syntax/Ruby",
     languages: ["erb", "haml", "slim", "jbuilder"],
     summary: "Ruby in the template that doesn't parse.",

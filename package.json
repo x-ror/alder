@@ -822,7 +822,11 @@
               "Syntax/PugDuplicateAttribute",
               "Syntax/PugMalformedKeyword",
               "Syntax/PugIllegalNesting",
-              "Syntax/PugTemplate"
+              "Syntax/PugTemplate",
+              "Syntax/PugMissingFile",
+              "Syntax/PugExtendsNotFirst",
+              "Syntax/PugUnexpectedBlock",
+              "Syntax/PugUnknownMixin"
             ]
           },
           "default": [],

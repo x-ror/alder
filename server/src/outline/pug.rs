@@ -1,9 +1,10 @@
 //! Pug document symbols, from Pug's own tree.
 
 use super::{block_end, Symbols, LANDMARKS};
-use crate::pug::lexer::{unit_offset, BlockMode};
-use crate::pug::parser::{self, Alternate, AttrValue, Block, Node, NodeKind, Tag};
-use crate::util::{LineIndex, BOM};
+use crate::pug::lexer::BlockMode;
+use crate::pug::parser::{Alternate, AttrValue, Block, Node, NodeKind, Tag};
+use crate::pug::{self, parsed};
+use crate::util::LineIndex;
 use tower_lsp_server::ls_types::{DocumentSymbol, SymbolKind};
 
 /// Outline: tags with a `#id` or `.class`, a literal `id` or a landmark name, `block`s and `mixin` definitions, each
@@ -14,16 +15,6 @@ pub fn document_symbols(text: &str) -> Vec<DocumentSymbol> {
     let mut outline = Outline { text, lines: text.split('\n').collect(), index: &index, symbols: Symbols::new(&index) };
     outline.block(&tree);
     outline.symbols.finish()
-}
-
-/// The template's tree, or the tree of the lines before its first error.
-fn parsed(text: &str) -> Option<Block> {
-    let error = match parser::parse(text) {
-        Ok(tree) => return Some(tree),
-        Err(error) => error,
-    };
-    let before: usize = text.split_inclusive('\n').take(error.line.saturating_sub(1)).map(str::len).sum();
-    parser::parse(&text[..before]).ok()
 }
 
 struct Outline<'a> {
@@ -112,12 +103,8 @@ impl Outline<'_> {
         self.symbols.add(name, kind, range, selection);
     }
 
-    /// The byte offset of Pug's 1-based line and UTF-16 column, which don't count the byte order mark.
     fn offset(&self, node: &Node) -> usize {
-        let line = node.line.saturating_sub(1).min(self.lines.len() - 1);
-        let raw = self.index.line(line);
-        let bom = if line == 0 && raw.starts_with(BOM) { BOM.len_utf8() } else { 0 };
-        self.index.line_start(line) + bom + unit_offset(&raw[bom..], node.column.saturating_sub(1))
+        pug::offset(self.index, node.line, node.column)
     }
 }
 

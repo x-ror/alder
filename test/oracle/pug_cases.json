@@ -246,7 +246,7 @@
   {
     "source": "extends layout",
     "error": null,
-    "outline": ["extends layout@1:9@1:1"]
+    "outline": ["extends layout.pug@1:9@1:1"]
   },
   {
     "source": "extends:x",
@@ -274,7 +274,7 @@
   {
     "source": "include x",
     "error": null,
-    "outline": ["include x@1:9@1:1"]
+    "outline": ["include x.pug@1:9@1:1"]
   },
   {
     "source": "include-x",
@@ -317,6 +317,11 @@
     "source": "include a.pug\n  p",
     "error": null,
     "outline": ["include a.pug@1:9@1:1", "p ()@2:3"]
+  },
+  {
+    "source": "include x\n  p",
+    "error": null,
+    "outline": ["include x.pug@1:9@1:1", "p ()@2:3"]
   },
   {
     "source": "case",

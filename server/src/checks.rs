@@ -82,10 +82,10 @@ pub(crate) fn diagnostics_in(
     if uri.path().as_str().to_ascii_lowercase().ends_with(".tt") || !rules.diagnostics_enabled() {
         return vec![];
     }
-    // Liquid and Pug have none of the Rails lookups, so only their own syntax is checked.
+    // Liquid and Pug have none of the Rails lookups, so only their own syntax (and Pug's includes) is checked.
     let own_syntax = match doc.lang {
         TemplateLang::Liquid => Some(liquid::diagnostics(&doc.text)),
-        TemplateLang::Pug => Some(pug::diagnostics(&doc.text)),
+        TemplateLang::Pug => Some(pug::diagnostics(&doc.text, util::file_path(uri).as_deref())),
         _ => None,
     };
     if let Some(found) = own_syntax {
