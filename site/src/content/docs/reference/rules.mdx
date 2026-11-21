@@ -1,6 +1,6 @@
 ---
 title: Rules
-description: The formatting and lint rules of Ruby Templates for ERB, Haml and Slim, each with an example.
+description: The formatting and lint rules of Ruby Templates for ERB, Haml, Slim and Pug, each with an example.
 tableOfContents: false
 ---
 
@@ -15,7 +15,7 @@ The formatter and the checks work without configuration, and a `.ruby-templates.
 - **Type.** An _autofix_ is a formatter rule that rewrites the template. A _warning_ is a check that reports a problem and rewrites nothing.
 - **Rendered output.** _Safe_ means the rule leaves the rendered page as it is: it only changes whitespace the browser ignores, or changes markup into an equal form. _Not safe_ says what can change.
 - **Examples.** An autofix shows the template before and after. A warning shows a flagged template and a fine one. The examples are run through `ruby-templates format` and `ruby-templates check` by the tests.
-- **Defaults.** A formatting rule says whether it is on by default. `Layout/TrailingEmptyLines` is, for Haml and Slim, and so are `Layout/TrailingWhitespace` (all three languages) and `Layout/IndentationStyle` (ERB, which writes spaces unless the editor, `.editorconfig` or its `style` say tabs); the others, `Layout/EmptyLines` among them, are off until you turn them on, so a file is never changed beyond what the entry says unless you ask. The checks (lint rules) are on, except `Style/ErbTrimMode` and `Layout/LineLength`.
+- **Defaults.** A formatting rule says whether it is on by default. `Layout/TrailingEmptyLines` is, for Haml, Slim and Pug, and so are `Layout/TrailingWhitespace` (ERB, Haml, Slim and Pug) and `Layout/IndentationStyle` (ERB and Pug, which write spaces unless the editor, `.editorconfig` or its `style` say tabs); the others, `Layout/EmptyLines` among them, are off until you turn them on, so a file is never changed beyond what the entry says unless you ask. The checks (lint rules) are on, except `Style/ErbTrimMode` and `Layout/LineLength`.
 
 ## Configuration
 

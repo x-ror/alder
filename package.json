@@ -456,6 +456,14 @@
         "title": "Ruby Templates: Wrap Selection in Slim Output (= / #{})"
       },
       {
+        "command": "rubyTemplates.togglePugLine",
+        "title": "Ruby Templates: Toggle Pug Line (- / = / != / //-)"
+      },
+      {
+        "command": "rubyTemplates.wrapInPug",
+        "title": "Ruby Templates: Wrap Selection in Pug Output (= / #{})"
+      },
+      {
         "command": "rubyTemplates.preview",
         "title": "Ruby Templates: Preview Rendered HTML"
       },
@@ -514,6 +522,12 @@
         "when": "editorTextFocus && !editorReadonly && editorLangId =~ /^(slim|skim)$/"
       },
       {
+        "command": "rubyTemplates.togglePugLine",
+        "key": "ctrl+alt+e",
+        "mac": "cmd+alt+e",
+        "when": "editorTextFocus && !editorReadonly && editorLangId == jade"
+      },
+      {
         "command": "rubyTemplates.wrapInErb",
         "key": "ctrl+alt+w",
         "mac": "cmd+alt+w",
@@ -524,6 +538,12 @@
         "key": "ctrl+alt+w",
         "mac": "cmd+alt+w",
         "when": "editorTextFocus && !editorReadonly && editorLangId =~ /^(slim|skim)$/"
+      },
+      {
+        "command": "rubyTemplates.wrapInPug",
+        "key": "ctrl+alt+w",
+        "mac": "cmd+alt+w",
+        "when": "editorTextFocus && !editorReadonly && editorLangId == jade"
       },
       {
         "command": "rubyTemplates.preview",
@@ -555,6 +575,16 @@
           "group": "rubyTemplates@2"
         },
         {
+          "command": "rubyTemplates.togglePugLine",
+          "when": "editorLangId == jade",
+          "group": "rubyTemplates@1"
+        },
+        {
+          "command": "rubyTemplates.wrapInPug",
+          "when": "editorLangId == jade && editorHasSelection",
+          "group": "rubyTemplates@2"
+        },
+        {
           "command": "rubyTemplates.preview",
           "when": "editorLangId =~ /^erb/ || editorLangId == haml || editorLangId == slim",
           "group": "rubyTemplates@3"
@@ -566,7 +596,7 @@
         },
         {
           "command": "rubyTemplates.extractPartial",
-          "when": "(editorLangId =~ /^erb/ || editorLangId == haml || editorLangId == slim) && editorHasSelection && resourceScheme == file",
+          "when": "(editorLangId =~ /^erb/ || editorLangId =~ /^(haml|slim|jade)$/) && editorHasSelection && resourceScheme == file",
           "group": "rubyTemplates@2"
         },
         {
@@ -607,6 +637,14 @@
           "when": "editorLangId =~ /^(slim|skim)$/"
         },
         {
+          "command": "rubyTemplates.togglePugLine",
+          "when": "editorLangId == jade"
+        },
+        {
+          "command": "rubyTemplates.wrapInPug",
+          "when": "editorLangId == jade"
+        },
+        {
           "command": "rubyTemplates.convertToHaml",
           "when": "editorLangId == erb || editorLangId == html"
         },
@@ -620,7 +658,7 @@
         },
         {
           "command": "rubyTemplates.extractPartial",
-          "when": "(editorLangId =~ /^erb/ || editorLangId == haml || editorLangId == slim) && resourceScheme == file"
+          "when": "(editorLangId =~ /^erb/ || editorLangId =~ /^(haml|slim|jade)$/) && resourceScheme == file"
         },
         {
           "command": "rubyTemplates.toggleHamlPrefix",
@@ -826,7 +864,15 @@
               "Syntax/PugMissingFile",
               "Syntax/PugExtendsNotFirst",
               "Syntax/PugUnexpectedBlock",
-              "Syntax/PugUnknownMixin"
+              "Syntax/PugUnknownMixin",
+              "Html/ImgAlt",
+              "Html/DuplicateId",
+              "Html/VoidChildren",
+              "Html/AnchorHref",
+              "Html/NestedInteractive",
+              "A11y/IframeTitle",
+              "A11y/GenericLinkText",
+              "Layout/LineLength"
             ]
           },
           "default": [],
@@ -974,7 +1020,7 @@
     "package": "bun run build && bunx @vscode/vsce package --no-dependencies",
     "test:tokens": "bun test/tokenize.js",
     "test:snippets": "bun test/snippets.js",
-    "test:unit": "bun test/erbTags.js && bun test/langconfig.js && bun test/haml.js && bun test/clientPure.js",
+    "test:unit": "bun test/erbTags.js && bun test/langconfig.js && bun test/haml.js && bun test/pug.js && bun test/clientPure.js",
     "test:slim": "bun test/slim.js",
     "test:format": "bun test/slim_format.js",
     "test:rules": "bun test/rules.js",

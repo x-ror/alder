@@ -8,6 +8,7 @@ import {
 } from "./erbCommands.js";
 import { toggleActiveHamlLines } from "./hamlCommands.js";
 import { toggleSlimTag, wrapInSlim } from "./slimCommands.js";
+import { togglePugLine, wrapInPug } from "./pugCommands.js";
 import { extractPartial } from "./extractPartial.js";
 import { switchRelated } from "./relatedFile.js";
 import { registerPreview } from "./preview.js";
@@ -27,6 +28,8 @@ const COMMANDS = {
   "rubyTemplates.toggleHamlPrefix": toggleActiveHamlLines,
   "rubyTemplates.toggleSlimTag": toggleSlimTag,
   "rubyTemplates.wrapInSlim": wrapInSlim,
+  "rubyTemplates.togglePugLine": togglePugLine,
+  "rubyTemplates.wrapInPug": wrapInPug,
   // The former Slim-only id, kept for keybindings that still name it.
   "rubyTemplates.extractSlimPartial": extractPartial,
 };

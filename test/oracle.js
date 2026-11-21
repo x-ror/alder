@@ -283,11 +283,12 @@ const oursByPath = ({ extension }, files) => {
   for (const text of r.stdout.split("\n")) {
     const m = text.match(diagnostic);
     if (m) {
+      // `check` ends a message's first line with its rule, ` [Syntax/Ruby]`, which the official message doesn't have.
       last = {
         line: Number(m[2]),
         column: Number(m[3]),
         severity: m[4],
-        message: m[5],
+        message: m[5].replace(/ \[[A-Z]\w*\/\w+\]$/, ""),
       };
       const file = path.resolve(m[1]);
       if (!known.has(file))
@@ -296,10 +297,6 @@ const oursByPath = ({ extension }, files) => {
     } else if (last && text) {
       last.message += `\n${text}`;
     }
-  }
-  // `check` ends each message with its rule, ` [Syntax/Ruby]`, which the official message doesn't have.
-  for (const diagnostic of [...byPath.values()].flat()) {
-    diagnostic.message = diagnostic.message.replace(/ \[[A-Z]\w*\/\w+\]$/, "");
   }
   return byPath;
 };
@@ -1350,16 +1347,18 @@ const pugReport = async () => {
     ...pugOracle.upstreamTemplates(pug),
   ];
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rt-oracle-pug-"));
-  // Pug's parser doesn't read the files a template includes or extends; ours does, for these.
+  // Pug's parser doesn't read the files a template includes or extends, and content in a void element is an error of
+  // pug-code-gen, which the oracle doesn't run; ours reports these.
   fs.writeFileSync(
     path.join(dir, ".ruby-templates.toml"),
     [
-      "PugMissingFile",
-      "PugExtendsNotFirst",
-      "PugUnexpectedBlock",
-      "PugUnknownMixin",
+      "Syntax.PugMissingFile",
+      "Syntax.PugExtendsNotFirst",
+      "Syntax.PugUnexpectedBlock",
+      "Syntax.PugUnknownMixin",
+      "Html.VoidChildren",
     ]
-      .map((rule) => `[Syntax.${rule}]\nenabled = false\n`)
+      .map((rule) => `[${rule}]\nenabled = false\n`)
       .join("\n"),
   );
   try {

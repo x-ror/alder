@@ -45,7 +45,7 @@ pub(crate) fn format(text: &str, settings: &Settings) -> Option<Indented> {
         return None;
     }
     let body = text.strip_prefix(BOM).unwrap_or(text);
-    if body.replace("\r\n", "").contains('\r') {
+    if crate::pug::has_lone_cr(body) {
         return None;
     }
     crate::pug::parser::parse(text).ok()?;
@@ -163,7 +163,15 @@ fn classify(rows: &[&str], tokens: &[Token]) -> Option<Vec<Classified>> {
                 let end = token.end.line - 1;
                 roles[line + 1..=end].fill(Some(Role::Inside));
                 keeps[line..end].fill(true);
-                keeps[end] = matches!(kind, Kind::Text(_) | Kind::TextHtml(_) | Kind::Comment { buffer: true, .. } | Kind::Doctype(_));
+                // Pug joins consecutive `-` lines into one piece of JavaScript, so a string can go on past the line end.
+                keeps[end] = matches!(
+                    kind,
+                    Kind::Text(_)
+                        | Kind::TextHtml(_)
+                        | Kind::Comment { buffer: true, .. }
+                        | Kind::Doctype(_)
+                        | Kind::Code { buffer: false, .. }
+                );
             }
         }
     }
@@ -253,13 +261,19 @@ mod tests {
     #[test]
     fn trailing_whitespace_goes_only_where_pug_reads_none() {
         // Text, a tag's trailing spaces (Pug reads them as text), `|`, inline HTML, buffered comments and doctype keep it.
-        for kept in ["p hi  \n", "div  \n", "| a  \n", "<b>  \n", "// c  \n", "doctype html  \n", "p #{x}  \n", "a(href='x')  \n"] {
+        for kept in
+            ["p hi  \n", "div  \n", "| a  \n", "<b>  \n", "// c  \n", "doctype html  \n", "p #{x}  \n", "a(href='x')  \n", "+m(a)  \n"]
+        {
             assert_eq!(fmt(kept), kept, "{kept:?}");
         }
         assert_eq!(
-            fmt("- var x = 1  \np= x \t\nif x  \n  p.  \n    a\neach i in xs  \n  span\nblock content  \n//- c  \n\n  \n"),
-            "- var x = 1\np= x\nif x\n  p.\n    a\neach i in xs\n  span\nblock content\n//- c\n\n\n"
+            fmt("p= x \t\nif x  \n  p.  \n    a\neach i in xs  \n  span\nwhile x  \n  i\ncase x  \n  when 1  \n    b\nblock content  \n//- c  \n\n  \n"),
+            "p= x\nif x\n  p.\n    a\neach i in xs\n  span\nwhile x\n  i\ncase x\n  when 1\n    b\nblock content\n//- c\n\n\n"
         );
+        // Pug joins `-` lines into one piece of JavaScript: these spaces are in a string.
+        let literal = "- var a = `x  \n- y`\np= a\n";
+        assert_eq!(fmt(literal), literal);
+        assert!(!crate::pug::same_compilation(literal, "- var a = `x\n- y`\np= a\n"));
         let off = Settings { trailing_whitespace: false, ..Settings::default() };
         assert_eq!(
             reindent("div  \n    - x  \n  \n    p.\n          a\n           \n", &off).as_deref(),

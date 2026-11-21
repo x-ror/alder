@@ -6,6 +6,7 @@ use crate::attributes::{Element, Value};
 use crate::erb::ruby::ErbTag;
 use crate::erb::tags;
 use crate::lang::TemplateLang;
+use crate::pug;
 use crate::ruby::BlockEffect;
 use crate::util::{coded, lines_with_offsets, warning, LineIndex};
 use std::ops::Range;
@@ -28,7 +29,11 @@ pub(crate) fn diagnostics(lang: TemplateLang, text: &str, markup: &[Element], he
     let elements: Vec<&Element> = markup.iter().chain(helpers).filter(|element| !element.at.is_empty()).collect();
     let holders: Vec<&Element> =
         elements.iter().copied().filter(|e| RESTRICTING.contains(&e.name.as_str()) || OPAQUE.contains(&e.name.as_str())).collect();
-    let contents = if lang == TemplateLang::Erb { erb_contents(text, &holders) } else { indented_contents(text, &holders) };
+    let contents = match lang {
+        TemplateLang::Erb => erb_contents(text, &holders),
+        TemplateLang::Pug => pug_contents(text, &holders),
+        _ => indented_contents(text, &holders),
+    };
     let index = LineIndex::new(text);
     let report = |inner: &Element| {
         let around: Vec<&Content> = contents.iter().filter(|(_, content)| content.contains(&inner.at.start)).collect();
@@ -106,6 +111,13 @@ fn indented_contents<'a>(text: &str, holders: &[&'a Element]) -> Vec<Content<'a>
         let end = below.iter().find(|(_, line)| !line.trim().is_empty() && indentation(line) <= indent);
         Some(start..end.map_or(text.len(), |(offset, _)| *offset))
     };
+    holders.iter().filter_map(|&holder| Some((holder, content(holder)?))).collect()
+}
+
+/// Pug: the tags under the element in Pug's tree.
+fn pug_contents<'a>(text: &str, holders: &[&'a Element]) -> Vec<Content<'a>> {
+    let contents = pug::elements::contents(text);
+    let content = |holder: &Element| contents.iter().find(|(at, _)| *at == holder.at.start).map(|(_, content)| content.clone());
     holders.iter().filter_map(|&holder| Some((holder, content(holder)?))).collect()
 }
 
@@ -226,6 +238,20 @@ mod tests {
         }
         let found = run(Erb, "<a href=\"/x\"><%= button_to \"Del\", path %></a>");
         assert_eq!(found[0].0, "`<button>` inside `<a>`: interactive content can't be nested (HTML 4.5.1)");
+    }
+
+    #[test]
+    fn pug_nesting_follows_the_tree_not_the_indentation() {
+        let flagged = |text: &str| {
+            let found = diagnostics(TemplateLang::Pug, text, &pug::elements::markup(text), &[]);
+            found.into_iter().map(|d| (d.range.start.line, d.message)).collect::<Vec<_>>()
+        };
+        let button_in_a = "`<button>` inside `<a>`: interactive content can't be nested (HTML 4.5.1)".to_string();
+        assert_eq!(flagged("p See #[a(href=x) docs] or\n  button(type=\"button\") Open\n"), []);
+        assert_eq!(flagged("a(href=x): button x\n"), [(0, button_in_a.clone())]);
+        assert_eq!(flagged("p #[a(href=x) #[button x]]\n"), [(0, button_in_a.clone())]);
+        assert_eq!(flagged("a(href=x)\n  span\n    button x\nbutton y\n"), [(2, button_in_a)]);
+        assert_eq!(flagged("a(href=x)\n  svg\n    a(href=y)\n"), []);
     }
 
     #[test]

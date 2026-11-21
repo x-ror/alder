@@ -5,6 +5,7 @@ use crate::attributes::{ends_in_options, last_argument_bytes, Element};
 use crate::lang::TemplateLang;
 use crate::util::find_balanced;
 use ruby_prism::{CallNode, Visit};
+use std::ops::Range;
 
 /// The byte offset and the text that add the attribute `name` with an empty value to `element` of the template `text`; none when
 /// the template doesn't show where.
@@ -17,6 +18,7 @@ pub(crate) fn empty_attribute(lang: TemplateLang, text: &str, element: &Element,
         TemplateLang::Erb => Some((head, format!(" {name}=\"\""))),
         TemplateLang::Haml => in_haml_tag(text, head, name),
         TemplateLang::Slim => in_slim_tag(text, head, name),
+        TemplateLang::Pug => in_pug_tag(text, element, head, name),
         _ => None,
     }
 }
@@ -46,18 +48,37 @@ fn in_slim_tag(text: &str, head: usize, name: &str) -> Option<(usize, String)> {
     }
 }
 
+/// `img(src="a")` takes `alt=""` in its first list, a tag without one `(alt="")` after its name and shorthands; none unless Pug
+/// reads the result as the same tag with the attribute added.
+fn in_pug_tag(text: &str, element: &Element, head: usize, name: &str) -> Option<(usize, String)> {
+    let entry = format!("{name}=\"\"");
+    let (at, added) = match text[head..].chars().next() {
+        // Where Pug ends the list, past `)` in strings, template literals and regular expressions.
+        Some('(') => append_entry(text, crate::pug::lexer::parse_until(text, ')', head + 1).ok()?, &entry, " "),
+        _ => (head, format!("({entry})")),
+    };
+    let edited = format!("{}{added}{}", &text[..at], &text[at..]);
+    let gained =
+        |tag: &Element| tag.at == element.at && tag.attributes.len() == element.attributes.len() + 1 && tag.attribute(name).is_some();
+    crate::pug::elements::markup(&edited).iter().any(gained).then_some((at, added))
+}
+
 /// Appends `entry` after the last entry of the group that opens at `open` and ends with `close`; `separator` follows an entry
 /// that has none after it.
 fn inside_wrapper(text: &str, open: usize, close: char, entry: &str, separator: &str) -> Option<(usize, String)> {
     let opener = text[open..].chars().next()?;
     let end = open + find_balanced(&text[open..], opener, close)? - close.len_utf8();
-    let content = text[open + opener.len_utf8()..end].trim_end();
-    let inner_start = open + opener.len_utf8();
+    Some(append_entry(text, open + opener.len_utf8()..end, entry, separator))
+}
+
+/// `entry` after the last entry written in `inner`, the inside of a group.
+fn append_entry(text: &str, inner: Range<usize>, entry: &str, separator: &str) -> (usize, String) {
+    let content = text[inner.clone()].trim_end();
     if content.trim_start().is_empty() {
-        return Some((inner_start, entry.to_string()));
+        return (inner.start, entry.to_string());
     }
     let separator = if content.ends_with(',') { " " } else { separator };
-    Some((inner_start + content.len(), format!("{separator}{entry}")))
+    (inner.start + content.len(), format!("{separator}{entry}"))
 }
 
 /// Where `image_tag "a.png", class: "x"` takes `, alt: ""`: the end of the call's last argument, in `code` that starts with
@@ -174,6 +195,21 @@ mod tests {
             ".card{data: {turbo_permanent: true}, id: \"\"}\n"
         );
         assert_eq!(with_attribute(Haml, "%div(data-turbo-permanent)\n", "div", "id").unwrap(), "%div(data-turbo-permanent id=\"\")\n");
+    }
+
+    #[test]
+    fn pug_tags_get_the_attribute_where_pug_ends_their_list() {
+        use TemplateLang::Pug;
+        let img = |text: &str| {
+            let found = crate::pug::elements::markup(text);
+            let (offset, added) = empty_attribute(Pug, text, &found[0], "alt")?;
+            Some(format!("{}{added}{}", &text[..offset], &text[offset..]))
+        };
+        assert_eq!(img("img(src=`:)`)\n").as_deref(), Some("img(src=`:)` alt=\"\")\n"));
+        assert_eq!(img("img(src=/\\)/.source)\n").as_deref(), Some("img(src=/\\)/.source alt=\"\")\n"));
+        assert_eq!(img("img(src=\")\")\n").as_deref(), Some("img(src=\")\" alt=\"\")\n"));
+        // Pug would read `alt` as part of the comment's line, not as an attribute.
+        assert_eq!(img("img(src=x //\n)\n"), None);
     }
 
     #[test]

@@ -133,8 +133,8 @@ pub const BLOCK_TAGS: ListOption = ListOption { key: "tags", default: &["div", "
 const ALL: &[TemplateLang] = &[Erb, Haml, Slim, Ruby];
 const HAML_SLIM: &[TemplateLang] = &[Haml, Slim];
 const TEMPLATES: &[TemplateLang] = &[Erb, Haml, Slim];
-/// Every language the formatter handles.
-const FORMATTED: &[TemplateLang] = &[Erb, Haml, Slim, Pug];
+/// The templates with HTML markup: what the formatter handles and the rules that need only the tags or the lines.
+const MARKUP: &[TemplateLang] = &[Erb, Haml, Slim, Pug];
 
 pub const RULES: &[Rule] = &[
     lint("Syntax/Ruby", "Ruby in the template that doesn't parse.", ALL),
@@ -178,14 +178,14 @@ pub const RULES: &[Rule] = &[
     lint("Html/UnexpectedCloseTag", "An end tag with no open element of that name.", &[Erb]),
     lint("Html/MismatchedCloseTag", "An end tag that doesn't close the innermost open element.", &[Erb]),
     lint("Html/UnclosedElement", "An element whose end tag never comes.", &[Erb]),
-    lint("Html/ImgAlt", "An image without alt text.", TEMPLATES),
-    lint("Html/DuplicateId", "The same static id twice in one template.", TEMPLATES),
-    lint("Html/VoidChildren", "Content inside a void element such as `img` or `input`.", HAML_SLIM),
+    lint("Html/ImgAlt", "An image without alt text.", MARKUP),
+    lint("Html/DuplicateId", "The same static id twice in one template.", MARKUP),
+    lint("Html/VoidChildren", "Content inside a void element such as `img` or `input`.", &[Haml, Slim, Pug]),
     lint("Html/DuplicateAttribute", "An attribute given twice on one tag.", TEMPLATES),
-    lint("Html/AnchorHref", "An `<a>` without an `href`, which is not a link and cannot be reached with the keyboard.", TEMPLATES),
-    lint("Html/NestedInteractive", "An interactive element inside another: a link in a link, a form in a form.", TEMPLATES),
-    lint("A11y/IframeTitle", "An `<iframe>` without a `title`, which screen readers use to name it.", TEMPLATES),
-    lint("A11y/GenericLinkText", "Link text that says nothing out of context: \"click here\", \"here\", \"read more\".", TEMPLATES),
+    lint("Html/AnchorHref", "An `<a>` without an `href`, which is not a link and cannot be reached with the keyboard.", MARKUP),
+    lint("Html/NestedInteractive", "An interactive element inside another: a link in a link, a form in a form.", MARKUP),
+    lint("A11y/IframeTitle", "An `<iframe>` without a `title`, which screen readers use to name it.", MARKUP),
+    lint("A11y/GenericLinkText", "Link text that says nothing out of context: \"click here\", \"here\", \"read more\".", MARKUP),
     lint("Rails/MissingPartial", "A `render` of a partial or template that isn't in app/views.", ALL),
     lint("Rails/StrictLocals", "A `render` whose locals don't match the partial's `locals:` comment.", ALL),
     lint("Rails/SilentRender", "A `render` in a tag that outputs nothing.", TEMPLATES),
@@ -208,7 +208,7 @@ pub const RULES: &[Rule] = &[
     ),
     format_rule(EMPTY_LINES, TEMPLATES, &[], &[CountOption { key: "max", default: 1 }], &[]),
     // ERB is rendered byte for byte, so its end is output.
-    format_rule(TRAILING_EMPTY_LINES, FORMATTED, &[Haml, Slim, Pug], &[], &[]),
+    format_rule(TRAILING_EMPTY_LINES, MARKUP, &[Haml, Slim, Pug], &[], &[]),
     format_rule(AROUND_BLOCK_BODY, TEMPLATES, &[], &[], &[STYLE]),
     format_rule(AROUND_ELEMENT_BODY, TEMPLATES, &[], &[], &[STYLE]),
     format_rule(AROUND_BRANCHES, TEMPLATES, &[], &[], &[STYLE]),
@@ -218,7 +218,7 @@ pub const RULES: &[Rule] = &[
     format_rule(SPACE_IN_HTML_TAG, &[Erb], &[], &[], &[]),
     // Slim and Haml always take spaces; Pug reads tabs as well as spaces.
     format_rule(INDENTATION_STYLE, &[Erb, Pug], &[Erb, Pug], &[], &[INDENT_STYLE]),
-    format_rule(TRAILING_WHITESPACE, FORMATTED, FORMATTED, &[], &[]),
+    format_rule(TRAILING_WHITESPACE, MARKUP, MARKUP, &[], &[]),
     // Renames HTML attributes, which only an app that runs Turbo and not Rails UJS wants.
     format_rule(PREFER_TURBO_ATTRIBUTES, TEMPLATES, &[], &[], &[]),
     // Style preferences: templates written either way are fine.
@@ -232,7 +232,7 @@ pub const RULES: &[Rule] = &[
     off_by_default_lint("Style/ErbTrimMode", "Both `%>` and `-%>` in one template.", &[Erb]),
     Rule {
         options: &[CountOption { key: "max", default: 100 }],
-        ..off_by_default_lint(LINE_LENGTH, "A line longer than the limit.", TEMPLATES)
+        ..off_by_default_lint(LINE_LENGTH, "A line longer than the limit.", MARKUP)
     },
     // Adds whitespace to the page, so it is for the tags where that shows nowhere.
     Rule { lists: &[BLOCK_TAGS], ..format_rule(ELEMENT_CONTENT_ON_OWN_LINE, TEMPLATES, &[], &[], &[]) },

@@ -1483,14 +1483,14 @@ impl CharState {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-enum Failure {
+pub(crate) enum Failure {
     EndOfString,
     Mismatch(char),
 }
 
 /// character-parser's `parseUntil`: the bytes from `start` to the first `delimiter` outside brackets, strings and
 /// comments, or the failure and the byte where it happened.
-fn parse_until(src: &str, delimiter: char, start: usize) -> Result<Range<usize>, (Failure, usize)> {
+pub(crate) fn parse_until(src: &str, delimiter: char, start: usize) -> Result<Range<usize>, (Failure, usize)> {
     let mut state = CharState::default();
     for (at, c) in src[start..].char_indices() {
         let at = start + at;

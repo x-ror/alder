@@ -1,11 +1,11 @@
 ---
 title: Supported syntax
-description: What the grammars highlight and what the language server parses in ERB, Haml, Slim and Skim.
+description: What the grammars highlight and what the language server parses in ERB, Haml, Slim and Skim; Pug and Liquid are under File types.
 sidebar:
   order: 10
 ---
 
-What the grammars highlight and what the language server parses. The server follows Erubi as Rails configures it, Haml 7.5 and Slim 5.2.
+What the grammars highlight and what the language server parses. The server follows Erubi as Rails configures it, Haml 7.5 and Slim 5.2. Pug (highlighted by VS Code itself, parsed as Pug 2.0.4 parses it) and Liquid are described under [File types](/vscode-ruby-templates/guides/file-types/).
 
 ## ERB
 

@@ -117,7 +117,7 @@ If Shopify's Liquid extension also contributes `liquid`, disable one of the two 
 
 ## Pug
 
-`.pug` and `.jade` files, including `pug-rails`' `.jst.pug` templates (compiled by Sprockets into JST functions, usually under `app/assets/templates`), keep VS Code's own `jade` language: its highlighting, comment toggling, folding and Emmet. The extension adds Pug snippets, syntax errors, an outline, navigation through `include` and `extends`, and whitespace-only formatting. Pug code is JavaScript, so none of the Rails lookups or checks apply to it.
+`.pug` and `.jade` files, including `pug-rails`' `.jst.pug` templates (compiled by Sprockets into JST functions, usually under `app/assets/templates`), keep VS Code's own `jade` language: its highlighting, comment toggling, folding and Emmet. The extension adds Pug snippets, syntax errors, the HTML rules, an outline, navigation through `include` and `extends`, whitespace-only formatting and the editing commands. Pug code is JavaScript, so none of the Rails lookups or checks apply to it.
 
 ```pug title="app/assets/templates/users/list.jst.pug"
 ul.users
@@ -131,7 +131,9 @@ The language server reports the first error Pug 2.0.4 raises (the Pug 2.0 that `
 
 In a template without a syntax error, the files it includes and extends are checked too (see [Include and extends](#include-and-extends) for how paths resolve): a file that doesn't exist (`Syntax/PugMissingFile`), an `extends` after another statement or a second one (`Syntax/PugExtendsNotFirst`; blank lines and `//-` comments may come first), a top-level `block` of an extending template that no layout up the chain has (`Syntax/PugUnexpectedBlock`), and, as a warning, a `+call` of a mixin that neither the template, the files it includes nor its layouts define (`Syntax/PugUnknownMixin`). The last two are left out when a file on the way is missing or doesn't parse, and the mixin check also for a template that another Pug file in the app includes or extends, since it may call that file's mixins. These follow the files on disk and run again when a Pug file is saved, created or deleted.
 
-`ruby-templates check` reports these errors too, and `rubyTemplates.pug.disabledDiagnostics` turns them off. See [Diagnostics](/vscode-ruby-templates/reference/diagnostics/).
+The HTML rules that need no Ruby run on the tags of a template Pug accepts: `Html/ImgAlt` (with the quick fix that adds `alt=""`), `Html/DuplicateId`, `Html/AnchorHref`, `Html/NestedInteractive`, `A11y/IframeTitle`, `A11y/GenericLinkText`, and `Layout/LineLength` when turned on. `Html/VoidChildren` is an error here, with Pug's message: Pug refuses to compile a void element such as `img` that holds anything but blank text. Attribute values are JavaScript, so only a string literal (`id="main"`, `href='/users'`) is a value the rules read; any other value counts as set to something unknown, and `&attributes(...)` may set any attribute, so the rules about a missing one stay silent. Tags written inside text as `#[a(href=x) here]` count; a `#{}` tag name, a `+mixin` call, the content of `script.` and other text blocks, and raw HTML lines (`<img src="x">`) are not read. A `doctype xml` template isn't HTML, so none of these run on it. `Html/DuplicateAttribute` doesn't run on Pug, since Pug refuses a repeated attribute itself (`Syntax/PugDuplicateAttribute`), and the `Rails/*`, `Turbo/*` and `Stimulus/*` rules stay off.
+
+`ruby-templates check` reports all of these too, and `rubyTemplates.pug.disabledDiagnostics` turns them off, as do the rule tables of a `.ruby-templates.toml`. See [Diagnostics](/vscode-ruby-templates/reference/diagnostics/).
 
 ### Include and extends
 
@@ -151,6 +153,10 @@ block content
 ### Formatting
 
 _Format Document_, format on save and `ruby-templates format` re-indent a Pug template one level per nesting, with the editor's tab size, in spaces or tabs; text blocks (`script.`, `style.`, comments, filters, `-` code blocks) move with their line and keep their own indentation; trailing whitespace goes where Pug doesn't output it, and the file ends with one line break. A template Pug would reject, or one whose Pug tree would change, is left as it is. _Format Selection_ is not offered. `rubyTemplates.pug.format.enabled` (or `format.enabled` under `[pug]` in a `.ruby-templates.toml`) turns it off. See [Formatting](/vscode-ruby-templates/guides/formatting/#pug).
+
+### Editing commands
+
+_Toggle Pug Line_ (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>E</kbd>), _Wrap Selection in Pug Output_ (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>W</kbd>) and _Extract Selection to Partial_, which writes an `include`, work as they do for Slim; see [Commands](/vscode-ruby-templates/guides/commands/#pug).
 
 ### Outline
 

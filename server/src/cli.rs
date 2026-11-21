@@ -34,14 +34,16 @@ Usage:
   ruby-templates format [--check | --write] [--format text|github] [--verbose] [--align-comments] <files|dirs>...
   ruby-templates format [--check] [--format text|github] [--verbose] [--align-comments] --stdin-filepath <path> [-]
 
-check   prints the diagnostics of ERB, Haml, Slim, Jbuilder and Builder templates (for Jbuilder and Builder, partials and
-        locals, not Ruby syntax errors), and with Layout/LineLength (off) the lines over its max.
-format  re-indents HTML ERB, Haml and Slim templates and fixes trailing whitespace. The rules Layout/EmptyLines,
+check   prints the diagnostics of ERB, Haml, Slim, Pug, Jbuilder and Builder templates (for Pug, its own errors, includes
+        and the HTML rules; for Jbuilder and Builder, partials and locals, not Ruby syntax errors), and with
+        Layout/LineLength (off) the lines over its max.
+format  re-indents HTML ERB, Haml, Slim and Pug templates and fixes trailing whitespace. The rules Layout/EmptyLines,
         Layout/EmptyLinesAroundBlockBody, Layout/EmptyLinesAroundElementBody and Layout/EmptyLinesAroundBranches (all
-        off) and Layout/TrailingEmptyLines (on for Haml and Slim, off for ERB) set blank lines and the final newline.
+        off; not Pug) and Layout/TrailingEmptyLines (on for Haml, Slim and Pug, off for ERB) set blank lines and the
+        final newline.
         Layout/SpaceInsideErbTag, Layout/SpaceInHtmlTag, Style/ErbCommentSyntax and Layout/SpaceAfterScriptMarker
         (all off) set spaces inside ERB and HTML tags and after Haml and Slim script markers. Layout/IndentationStyle
-        (ERB; spaces unless .editorconfig or its style say tabs) and Layout/TrailingWhitespace (on) set the indent
+        (ERB and Pug; spaces unless .editorconfig or its style say tabs) and Layout/TrailingWhitespace (on) set the indent
         character and whether line-end whitespace goes. Turbo/PreferTurboAttributes (off) renames the Rails UJS
         attributes data-confirm, data-method and data-disable-with to Turbo's. Style/AttributeQuotes, Style/BooleanAttributes,
         Style/VoidTagClosing and Style/TagNameCase (all off) set attribute quotes, boolean attributes, the end of void

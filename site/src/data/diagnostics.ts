@@ -107,10 +107,10 @@ export const diagnostics: Diagnostic[] = [
   },
   {
     code: "Html/ImgAlt",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     summary: "An image without alt text.",
     explanation:
-      'Fires for an `<img>` (`%img` in Haml, `img` in Slim) with no `alt` attribute and for an `image_tag` call whose options have no `alt:`; that one reads "`image_tag` without `alt:`". In ERB the call must be in an output tag. Not reported for an `<img>` with ERB where attributes go (`<img <%= attrs %>>`), a Haml `**attrs` or a Slim `*attrs`, an `image_tag` given a `**splat`, or `generator-unable-to-provide-required-alt`, since each may supply the text. An empty `alt=""` counts as alt text. Templates that output HTML only: not `.js.erb`, `.text.erb` or `.xml.haml`.',
+      'Fires for an `<img>` (`%img` in Haml, `img` in Slim and Pug) with no `alt` attribute and for an `image_tag` call whose options have no `alt:`; that one reads "`image_tag` without `alt:`". In ERB the call must be in an output tag. Not reported for an `<img>` with ERB where attributes go (`<img <%= attrs %>>`), a Haml `**attrs`, a Slim `*attrs` or a Pug `&attributes(…)`, an `image_tag` given a `**splat`, or `generator-unable-to-provide-required-alt`, since each may supply the text. An empty `alt=""` counts as alt text. Templates that output HTML only: not `.js.erb`, `.text.erb` or `.xml.haml`.',
     example: {
       file: "app/views/users/show.html.erb",
       lang: "erb",
@@ -124,7 +124,7 @@ export const diagnostics: Diagnostic[] = [
   },
   {
     code: "Html/DuplicateId",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     summary: "The same static id twice in one template.",
     explanation:
       "Reported at the second occurrence, naming the line of the first. Only literal values count: an id holding ERB or interpolation is left alone, and so is an element with both `#id` and `id:` in Haml (it gets one joined id). Two ids in different branches of a conditional don't clash, and content inside `<template>` isn't in the document yet. In Haml and Slim, ids are also left alone when one of them sits in a conditional, a loop or a block that the other is not in. Templates that output HTML only.",
@@ -163,7 +163,7 @@ export const diagnostics: Diagnostic[] = [
   },
   {
     code: "Html/AnchorHref",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     summary:
       "An `<a>` without an `href`, which is not a link and cannot be reached with the keyboard.",
     explanation:
@@ -181,7 +181,7 @@ export const diagnostics: Diagnostic[] = [
   },
   {
     code: "Html/NestedInteractive",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     summary:
       "An interactive element inside another: a link in a link, a form in a form.",
     explanation:
@@ -201,7 +201,7 @@ export const diagnostics: Diagnostic[] = [
   },
   {
     code: "A11y/IframeTitle",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     summary:
       "An `<iframe>` without a `title`, which screen readers use to name it.",
     explanation:
@@ -219,7 +219,7 @@ export const diagnostics: Diagnostic[] = [
   },
   {
     code: "A11y/GenericLinkText",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     summary:
       'Link text that says nothing out of context: "click here", "here", "read more".',
     explanation:
@@ -427,10 +427,10 @@ export const diagnostics: Diagnostic[] = [
   },
   {
     code: "Html/VoidChildren",
-    languages: ["haml", "slim"],
+    languages: ["haml", "slim", "pug"],
     summary: "Content inside a void element such as `img` or `input`.",
     explanation:
-      'Void elements have no end tag, so the content would end up after them. Haml reports content on the tag\'s line or nested under it. Slim reports lines nested under a void element, and "Unexpected indentation" under a tag closed with `/`. In Slim it applies to HTML templates only, not to `.xml.slim` and other formats.',
+      "Void elements have no end tag, so the content would end up after them. Haml reports content on the tag's line or nested under it. Slim reports lines nested under a void element, and \"Unexpected indentation\" under a tag closed with `/`. In Slim it applies to HTML templates only, not to `.xml.slim` and other formats. Pug refuses to compile a void element, or a tag closed with `/`, that holds anything but blank text; that is reported as an error with Pug's own message, at the first such tag, and not under a `doctype xml`.",
     example: {
       file: "app/views/users/show.html.slim",
       lang: "slim",
@@ -733,7 +733,7 @@ block sidebar
     summary:
       "A `+mixin` call with no definition in the template, the files it includes or its layouts.",
     explanation:
-      "Pug compiles the call and fails when the template renders (`pug_mixins.usr is not a function`). A template that another one includes or extends may call that one's mixins, so the call is only reported when no Pug file in the app (`app/`, or the template's folder outside one) pulls the template in, and when every file it includes and extends is there and parses. A `+#{name}` call is never reported. Here `mixins.pug` defines `mixin user(user)`.",
+      "Pug compiles the call and fails when the template renders (`pug_mixins.usr is not a function`). A template that another one includes or extends may call that one's mixins, so the call is only reported in a template inside an `app/` folder that no Pug file in it pulls in, and when every file it includes and extends is there and parses. A `+#{name}` call is never reported. Here `mixins.pug` defines `mixin user(user)`.",
     example: {
       file: "app/assets/templates/users/list.jst.pug",
       lang: "pug",
@@ -1069,7 +1069,7 @@ ul
   },
   {
     code: "Layout/LineLength",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     summary: "A line longer than the limit.",
     explanation:
       "Every line over `max` characters (100 unless set) is reported from the first character past the limit. Characters are counted, a tab is one, trailing whitespace is not counted, and a line that cannot be made shorter is skipped: one with no space after its indentation, such as a long URL, and the `# locals:` comment of strict locals. Off by default: turn it on with `enabled = true` under `[Layout.LineLength]` in .ruby-templates.toml, where `max` sets the limit.",

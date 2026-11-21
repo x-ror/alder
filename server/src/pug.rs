@@ -1,11 +1,13 @@
 //! Pug (pug-rails' `.jst.pug`, plain `.pug`): ports of `pug-lexer` and `pug-parser` that stop at the first error
 //! Pug raises, with its code, message, line and column. The JavaScript in templates isn't parsed.
 
+pub mod elements;
 pub mod lexer;
 pub mod parser;
 pub mod refs;
 
 use crate::util::{coded, error, leading_ws, LineIndex, BOM};
+use parser::{Alternate, Block, Node, NodeKind};
 use std::path::Path;
 use tower_lsp_server::ls_types::{Diagnostic, Position, Range};
 
@@ -23,6 +25,7 @@ pub mod code {
     pub const EXTENDS_NOT_FIRST: &str = "Syntax/PugExtendsNotFirst";
     pub const UNEXPECTED_BLOCK: &str = "Syntax/PugUnexpectedBlock";
     pub const UNKNOWN_MIXIN: &str = "Syntax/PugUnknownMixin";
+    pub const VOID_CHILDREN: &str = "Html/VoidChildren";
 }
 
 /// The first error Pug raises.
@@ -38,11 +41,20 @@ pub struct Error {
     pub column: usize,
 }
 
-/// Pug's first error, with Pug's message, filed under the code of the construct it is about; without one, for a file on
-/// disk, the problems with what it includes and extends.
-pub fn diagnostics(text: &str, path: Option<&Path>) -> Vec<Diagnostic> {
+/// Pug's first error, with Pug's message, filed under the code of the construct it is about; without one, the content in a
+/// void element that Pug refuses to compile and, for a file on disk, the problems with what it includes and extends. Only
+/// the codes `reports` takes are looked for, and only the first error in text with a lone `\r`.
+pub fn diagnostics(text: &str, path: Option<&Path>, reports: &dyn Fn(&str) -> bool) -> Vec<Diagnostic> {
     match parser::parse(text) {
-        Ok(tree) => path.map(|path| refs::diagnostics(text, &tree, path)).unwrap_or_default(),
+        Ok(_) if has_lone_cr(text) => vec![],
+        Ok(tree) => {
+            let mut found: Vec<Diagnostic> = Vec::new();
+            if reports(code::VOID_CHILDREN) {
+                found.extend(elements::void_children(text, &tree));
+            }
+            found.extend(path.map(|path| refs::diagnostics(text, &tree, path, reports)).unwrap_or_default());
+            found
+        }
         Err(found) => {
             let code = code_of(found.code);
             vec![coded(error(range(text, &found, code == code::INCONSISTENT_INDENT), found.message), code)]
@@ -50,8 +62,15 @@ pub fn diagnostics(text: &str, path: Option<&Path>) -> Vec<Diagnostic> {
     }
 }
 
+/// Whether `text` has a `\r` not followed by `\n`, a line break for Pug and the editor that `LineIndex` doesn't count, so
+/// the positions of what follows it would be off.
+pub fn has_lone_cr(text: &str) -> bool {
+    text.match_indices('\r').any(|(at, _)| !text[at + 1..].starts_with('\n'))
+}
+
 /// Whether Pug accepts both texts and builds the same tree from them, positions aside and without the whitespace that
-/// ends a piece of JavaScript (`- x  `), which changes nothing it does.
+/// ends an expression Pug wraps (`= x  `, `while x  `), which changes nothing it does. The end of a `-` line counts:
+/// Pug joins consecutive ones into one piece of JavaScript, where it may be inside a string.
 pub fn same_compilation(before: &str, after: &str) -> bool {
     match (parser::parse(before), parser::parse(after)) {
         (Ok(mut before), Ok(mut after)) => {
@@ -63,13 +82,12 @@ pub fn same_compilation(before: &str, after: &str) -> bool {
     }
 }
 
-fn normalize_block(block: &mut parser::Block) {
+fn normalize_block(block: &mut Block) {
     block.line = 0;
     block.nodes.iter_mut().for_each(normalize_node);
 }
 
-fn normalize_node(node: &mut parser::Node) {
-    use parser::{Alternate, NodeKind};
+fn normalize_node(node: &mut Node) {
     (node.line, node.column) = (0, 0);
     let trim = |js: &mut String| js.truncate(js.trim_end().len());
     match &mut node.kind {
@@ -79,7 +97,9 @@ fn normalize_node(node: &mut parser::Node) {
             normalize_block(&mut tag.block);
         }
         NodeKind::Code(code) => {
-            trim(&mut code.val);
+            if code.buffer {
+                trim(&mut code.val);
+            }
             code.block.iter_mut().for_each(normalize_block);
         }
         NodeKind::Conditional(conditional) => {
@@ -126,8 +146,47 @@ fn normalize_node(node: &mut parser::Node) {
     }
 }
 
+/// Every node under `block`, depth first in document order, as pug-walk visits them.
+pub(crate) fn nodes(block: &Block) -> Vec<&Node> {
+    let mut out = Vec::new();
+    push_block(block, &mut out);
+    out
+}
+
+fn push_block<'a>(block: &'a Block, out: &mut Vec<&'a Node>) {
+    block.nodes.iter().for_each(|node| push_node(node, out));
+}
+
+fn push_node<'a>(node: &'a Node, out: &mut Vec<&'a Node>) {
+    out.push(node);
+    match &node.kind {
+        NodeKind::Tag(tag) | NodeKind::MixinCall { tag, .. } => push_block(&tag.block, out),
+        NodeKind::Conditional(conditional) => {
+            push_block(&conditional.consequent, out);
+            match &conditional.alternate {
+                Some(Alternate::ElseIf(node)) => push_node(node, out),
+                Some(Alternate::Else(block)) => push_block(block, out),
+                None => {}
+            }
+        }
+        NodeKind::Each { block, alternate, .. } => {
+            push_block(block, out);
+            alternate.iter().for_each(|block| push_block(block, out));
+        }
+        NodeKind::When { block: Some(block), .. }
+        | NodeKind::While { block, .. }
+        | NodeKind::Case { block, .. }
+        | NodeKind::NamedBlock { block, .. }
+        | NodeKind::MixinDefinition { block, .. }
+        | NodeKind::Include { block, .. }
+        | NodeKind::Filter { block, .. } => push_block(block, out),
+        NodeKind::Code(code) => code.block.iter().for_each(|block| push_block(block, out)),
+        _ => {}
+    }
+}
+
 /// The template's tree, or the tree of the lines before its first error.
-pub fn parsed(text: &str) -> Option<parser::Block> {
+pub fn parsed(text: &str) -> Option<Block> {
     let error = match parser::parse(text) {
         Ok(tree) => return Some(tree),
         Err(error) => error,
@@ -165,10 +224,12 @@ fn code_of(pug_code: &str) -> &'static str {
     }
 }
 
-/// From Pug's position to the end of its line, or with `indentation`, to the end of the line's indentation.
+/// From Pug's position to the end of its line, or with `indentation`, to the end of the line's indentation. Lines are Pug's,
+/// which a lone `\r` ends as the editor's do.
 fn range(text: &str, found: &Error, indentation: bool) -> Range {
     let line = found.line.saturating_sub(1);
-    let raw = LineIndex::new(text).line(line);
+    let lines = text.split('\n').flat_map(|line| line.strip_suffix('\r').unwrap_or(line).split('\r'));
+    let raw = lines.clone().nth(line).unwrap_or_default();
     // Pug drops the byte order mark; the editor counts it.
     let bom = if line == 0 && raw.starts_with(BOM) { BOM.len_utf16() } else { 0 };
     let start = bom + found.column.saturating_sub(1);
@@ -183,7 +244,7 @@ mod tests {
 
     /// (line, start, end, code, message) of the diagnostic for `text`, 0-based as the editor gets them.
     fn found(text: &str) -> Vec<(u32, u32, u32, String, String)> {
-        diagnostics(text, None)
+        diagnostics(text, None, &|_| true)
             .into_iter()
             .map(|d| {
                 let code = crate::util::code(&d).unwrap_or_default().to_string();
@@ -234,6 +295,24 @@ mod tests {
         );
         assert_eq!(found("\u{feff}p#!x"), [at(0, 2, 5, code::INVALID_NAME, "\"!x\" is not a valid ID.")]);
         assert_eq!(found("div\r\n    p\r\n  a\r\n")[0].0, 2);
+    }
+
+    #[test]
+    fn a_lone_cr_ends_a_line_for_errors_and_leaves_out_the_rest() {
+        let message = "Inconsistent indentation. Expecting either 0 or 4 spaces/tabs.";
+        assert_eq!(found("div\r    p\r  a\r"), [at(2, 0, 2, code::INCONSISTENT_INDENT, message)]);
+        assert_eq!(
+            found("p #[b\rq"),
+            [at(0, 5, 5, code::UNCLOSED_BRACKET, "End of line was reached with no closing bracket for interpolation.")]
+        );
+        assert!(found("img\r  p\r").is_empty());
+        assert!(found("img\n  p\n").len() == 1);
+        assert!(has_lone_cr("a\rb") && has_lone_cr("a\r") && !has_lone_cr("a\r\nb\n"));
+    }
+
+    #[test]
+    fn checks_whose_rule_is_off_are_not_run() {
+        assert!(diagnostics("img\n  p\n", None, &|code| code != code::VOID_CHILDREN).is_empty());
     }
 
     #[test]

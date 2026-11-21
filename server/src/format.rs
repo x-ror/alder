@@ -547,7 +547,7 @@ mod tests {
     #[test]
     fn pug_goes_through_its_formatter() {
         let s = Settings::default();
-        assert_eq!(fmt("a.jst.pug", "div\n    p hi  \n    - x  \n\n\n", &s).as_deref(), Ok("div\n  p hi  \n  - x\n"));
+        assert_eq!(fmt("a.jst.pug", "div\n    p hi  \n    = x  \n\n\n", &s).as_deref(), Ok("div\n  p hi  \n  = x\n"));
         let tabs = Settings { indent_style: IndentStyle::Tabs, ..Settings::default() };
         assert_eq!(fmt("a.pug", "div\n  p.\n      a\n        b", &tabs).as_deref(), Ok("div\n\tp.\n\t\ta\n\t\t  b\n"));
         let skipped = fmt("a.jade", "div\n    p\n  a\n", &s).expect_err("inconsistent indentation");

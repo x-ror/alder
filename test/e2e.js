@@ -833,12 +833,32 @@ const check = (label, actual, expected) => {
     ),
     ["1:Syntax/LiquidUnclosedBlock"],
   );
+  const latestCodes = (uri) =>
+    notes
+      .filter(
+        (n) =>
+          n.method === "textDocument/publishDiagnostics" &&
+          n.params.uri === uri,
+      )
+      .at(-1)
+      ?.params.diagnostics.map((d) => `${d.range.start.line}:${d.code}`);
+  const waitForCodes = async (uri, expected) => {
+    for (
+      let waited = 0;
+      waited < 2000 &&
+      JSON.stringify(latestCodes(uri)) !== JSON.stringify(expected);
+      waited += 50
+    ) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    return latestCodes(uri);
+  };
   check(
     "pug: no Rails checks on a render",
     await diagnosticsFor(
       fileUri(path.join(views, "users", "list.jst.pug")),
       "jade",
-      '- render("users/missing")\nimg(src="x")\n',
+      '- render("users/missing")\nimg(src="x" alt="")\n',
     ),
     [],
   );
@@ -880,18 +900,14 @@ const check = (label, actual, expected) => {
     { changes: [{ uri: fileUri(missingPug), type: 1 }] },
     true,
   );
-  await new Promise((r) => setTimeout(r, 200));
+  const lateAfterCreate = [
+    "3:Syntax/PugExtendsNotFirst",
+    "2:Syntax/PugUnknownMixin",
+  ];
   check(
     "pug: a created include is found, and the mixin call then checked",
-    notes
-      .filter(
-        (n) =>
-          n.method === "textDocument/publishDiagnostics" &&
-          n.params.uri === lateUri,
-      )
-      .at(-1)
-      ?.params.diagnostics.map((d) => `${d.range.start.line}:${d.code}`),
-    ["3:Syntax/PugExtendsNotFirst", "2:Syntax/PugUnknownMixin"],
+    await waitForCodes(lateUri, lateAfterCreate),
+    lateAfterCreate,
   );
   fs.unlinkSync(missingPug);
   check(
@@ -911,6 +927,47 @@ const check = (label, actual, expected) => {
       "include row\n+nope\n",
     ),
     ["1:Syntax/PugUnknownMixin"],
+  );
+  const pugHtmlUri = fileUri(path.join(pugAssets, "card.jst.pug"));
+  const pugHtml = await diagnosticsFor(
+    pugHtmlUri,
+    "jade",
+    'img(src=user.avatarUrl)\na(href="/x")\n  a(href="/y") y\nimg.logo\n  | Logo\n',
+  );
+  check("pug: HTML rules on the tags", pugHtml, [
+    "3:Html/VoidChildren",
+    "0:Html/ImgAlt",
+    "3:Html/ImgAlt",
+    "2:Html/NestedInteractive",
+  ]);
+  const altDiagnostic = notes
+    .filter(
+      (n) =>
+        n.method === "textDocument/publishDiagnostics" &&
+        n.params.uri === pugHtmlUri,
+    )
+    .at(-1)
+    .params.diagnostics.find(
+      (d) => d.code === "Html/ImgAlt" && d.range.start.line === 0,
+    );
+  check(
+    "pug: the alt quick fix goes in the attribute list",
+    (
+      await send("textDocument/codeAction", {
+        textDocument: { uri: pugHtmlUri },
+        range: altDiagnostic.range,
+        context: { diagnostics: [altDiagnostic] },
+      })
+    ).result
+      .filter((a) => a.kind === "quickfix")
+      .map((a) => [
+        a.title,
+        Object.values(a.edit.changes)[0].map(
+          (e) =>
+            `${e.range.start.line}:${e.range.start.character} ${e.newText}`,
+        ),
+      ]),
+    [['Add `alt=""`', ['0:22  alt=""']]],
   );
   check(
     "pug documentSymbols",
@@ -1882,7 +1939,7 @@ const check = (label, actual, expected) => {
         uri: pugFormatUri,
         languageId: "jade",
         version: 1,
-        text: "ul\n    li hi  \n    - x  \n    script.\n        if (a) {\n          b();  \n        }\n\n\n",
+        text: "ul\n    li hi  \n    = x  \n    script.\n        if (a) {\n          b();  \n        }\n\n\n",
       },
     },
     true,
@@ -1897,12 +1954,12 @@ const check = (label, actual, expected) => {
   check(
     "pug formatting",
     await pugFormat(true),
-    "ul\n  li hi  \n  - x\n  script.\n    if (a) {\n      b();  \n    }\n",
+    "ul\n  li hi  \n  = x\n  script.\n    if (a) {\n      b();  \n    }\n",
   );
   check(
     "pug formatting, tabs",
     await pugFormat(false),
-    "ul\n\tli hi  \n\t- x\n\tscript.\n\t\tif (a) {\n\t\t  b();  \n\t\t}\n",
+    "ul\n\tli hi  \n\t= x\n\tscript.\n\t\tif (a) {\n\t\t  b();  \n\t\t}\n",
   );
   // Without dynamic registration nothing is advertised.
   const staticFormatting = init.result.capabilities.documentFormattingProvider;
@@ -2342,26 +2399,6 @@ const check = (label, actual, expected) => {
     [["users_path"], "`users_path` → `/users`", ["/config/routes.rb:1"]],
   );
   const unknownRouteUri = fileUri(path.join(views, "users", "links.html.erb"));
-  const latestCodes = (uri) =>
-    notes
-      .filter(
-        (n) =>
-          n.method === "textDocument/publishDiagnostics" &&
-          n.params.uri === uri,
-      )
-      .at(-1)
-      ?.params.diagnostics.map((d) => `${d.range.start.line}:${d.code}`);
-  const waitForCodes = async (uri, expected) => {
-    for (
-      let waited = 0;
-      waited < 2000 &&
-      JSON.stringify(latestCodes(uri)) !== JSON.stringify(expected);
-      waited += 50
-    ) {
-      await new Promise((r) => setTimeout(r, 50));
-    }
-    return latestCodes(uri);
-  };
   await send(
     "textDocument/didOpen",
     {

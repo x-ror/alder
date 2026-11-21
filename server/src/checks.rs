@@ -82,18 +82,15 @@ pub(crate) fn diagnostics_in(
     if uri.path().as_str().to_ascii_lowercase().ends_with(".tt") || !rules.diagnostics_enabled() {
         return vec![];
     }
-    // Liquid and Pug have none of the Rails lookups, so only their own syntax (and Pug's includes) is checked.
+    // Liquid and Pug have none of the Rails lookups: their own syntax is checked, and Pug's includes and HTML.
     let own_syntax = match doc.lang {
         TemplateLang::Liquid => Some(liquid::diagnostics(&doc.text)),
-        TemplateLang::Pug => Some(pug::diagnostics(&doc.text, util::file_path(uri).as_deref())),
+        TemplateLang::Pug => Some(pug_diagnostics(uri, doc, rules)),
         _ => None,
     };
     if let Some(found) = own_syntax {
         let reported = found.into_iter().filter(|d| util::code(d).is_none_or(|code| rules.reports(code)));
         return reported.map(|d| Diagnostic { source: Some(DIAGNOSTIC_SOURCE.into()), ..d }).collect();
-    }
-    if !doc.lang.uses_rails() {
-        return vec![];
     }
     let path = util::file_path(uri);
     let project = path.as_deref().map(|path| Project::memoized(projects, path, None));
@@ -139,6 +136,23 @@ pub(crate) fn diagnostics_in(
     out.retain(|d| (html || util::code(d) != Some(unsafe_output::UNSAFE_OUTPUT)) && util::code(d).is_none_or(|code| rules.reports(code)));
     for d in &mut out {
         d.source = Some(DIAGNOSTIC_SOURCE.into());
+    }
+    out
+}
+
+/// Pug's own checks, then the element lints on its tags and the line length; a Pug template has no Ruby to make elements.
+fn pug_diagnostics(uri: &Uri, doc: &Doc, rules: &ResolvedRules) -> Vec<Diagnostic> {
+    let mut out = pug::diagnostics(&doc.text, util::file_path(uri).as_deref(), &|code| rules.reports(code));
+    if pug::has_lone_cr(&doc.text) {
+        return out;
+    }
+    if ELEMENT_LINTS.iter().any(|code| rules.reports(code)) {
+        let markup = pug::elements::markup(&doc.text);
+        out.extend(element_lints::diagnostics(doc.lang, &doc.text, &markup, &[]));
+        out.extend(nested_interactive::diagnostics(doc.lang, &doc.text, &markup, &[]));
+    }
+    if let Some(max) = rules.line_length() {
+        out.extend(line_length::diagnostics(&doc.text, max));
     }
     out
 }
@@ -561,6 +575,14 @@ mod tests {
             assert!(codes(path, lang, text, &options).is_empty(), "{path}");
         }
         assert_eq!(codes("show.html.haml", TemplateLang::Haml, haml, &disabling_haml("A11y/IframeTitle")), ["Html/AnchorHref"]);
+        // Pug's tags, with its own settings; a `doctype xml` template isn't HTML.
+        let pug = "a x\niframe\n";
+        assert_eq!(codes("row.jst.pug", TemplateLang::Pug, pug, &options), both);
+        let pug_off = Options::from_init(Some(&serde_json::json!({ "pug": { "disabledDiagnostics": ["Html/AnchorHref"] } }))).0;
+        assert_eq!(codes("row.jst.pug", TemplateLang::Pug, pug, &pug_off), ["A11y/IframeTitle"]);
+        assert!(codes("feed.pug", TemplateLang::Pug, &format!("doctype xml\n{pug}"), &options).is_empty());
+        // Past a lone `\r` the positions, and the quick fixes' edits, would land on the wrong line.
+        assert!(codes("row.jst.pug", TemplateLang::Pug, "a x\riframe\r", &options).is_empty());
     }
 
     #[test]

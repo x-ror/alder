@@ -317,6 +317,9 @@ impl LanguageServer for Backend {
             self.app_helpers.clear();
             unknown_route::clear_cache();
         }
+        if may_change_pug_includes(&events) {
+            pug_refs::clear_cache();
+        }
         self.templates.retain(|root, _| !stale(root, &events, false));
         self.locales.retain(|root, _| !stale(root, &events, true));
         // Unresolved-render and strict-locals warnings read other templates from disk.
@@ -651,6 +654,10 @@ impl LanguageServer for Backend {
 
     async fn code_action(&self, p: CodeActionParams) -> Result<Option<CodeActionResponse>> {
         let uri = p.text_document.uri;
+        // Pug's fixes, such as an added `alt`, only edit the template.
+        if let Some((_, doc)) = self.file_doc(&uri, TemplateLang::Pug) {
+            return Ok(Some(fixes::document_fixes(&uri, &doc, &p.context.diagnostics)));
+        }
         let Some(doc) = self.template_doc(&uri) else { return Ok(None) };
         let Some(path) = util::file_path(&uri) else { return Ok(None) };
         // Asked on every cursor move; the project is only needed for a missing partial's quick fix.
@@ -1108,6 +1115,9 @@ impl Backend {
     /// Fills the app/views and locale caches of `uri`'s app in the background, so the first render or i18n request
     /// after a view opens or files change finds them ready instead of walking the app on the server task.
     fn warm_caches(&self, uri: &Uri) {
+        if self.without_rails(uri) {
+            return;
+        }
         let Some(path) = util::file_path(uri) else { return };
         let claim = |root: &PathBuf, cached: bool| !cached && self.warming.insert(root.clone());
         let views = paths::views_root(&path).filter(|views| claim(views, self.templates.contains_key(views)));
@@ -1315,6 +1325,12 @@ fn may_change_controllers(events: &[(PathBuf, FileChangeType)]) -> bool {
 /// A file under a `config` folder may add a translation or change where translations come from and the default locale.
 fn may_change_config(events: &[(PathBuf, FileChangeType)]) -> bool {
     events.iter().any(|(path, _)| path.components().any(|part| part.as_os_str() == "config"))
+}
+
+/// A Pug template may include or extend another; a folder created, moved or deleted may hold some.
+fn may_change_pug_includes(events: &[(PathBuf, FileChangeType)]) -> bool {
+    let template = |path: &Path| path.extension().is_some_and(|extension| extension == "pug" || extension == "jade");
+    events.iter().any(|(path, kind)| template(path) || *kind != FileChangeType::CHANGED)
 }
 
 /// A file in the app's helpers or controllers, or its config (the route files), may define a helper a view calls.

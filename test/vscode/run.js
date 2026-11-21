@@ -81,6 +81,18 @@ write(
 );
 write("app/views/users/_crlf_part.html.erb", "old\n");
 write("app/views/users/_self.html.erb", "<p>a</p>\n");
+write(
+  "app/assets/templates/users/toggle.jst.pug",
+  "- x++\n= y\n!= z\n//- w\nscript.\n  - not a marker\n",
+);
+write(
+  "app/assets/templates/users/wrap.jst.pug",
+  "p\n  | hello world\nitems.length > 0\n",
+);
+write(
+  "app/assets/templates/users/extract.jst.pug",
+  "ul\n  li.a\n    | one\n  li.b\n",
+);
 try {
   await runTests({
     version: process.env.VSCODE_VERSION ?? "stable",

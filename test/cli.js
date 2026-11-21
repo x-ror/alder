@@ -152,11 +152,22 @@ try {
   );
   fs.unlinkSync(liquid);
 
-  // Pug code is JavaScript: no Rails checks, only Pug's own syntax errors; its formatter does whitespace.
-  const pug = file("row.jst.pug", '- render("users/missing")\nimg(src="x")\n');
+  // Pug code is JavaScript: no Rails checks, only Pug's own errors and the HTML rules; its formatter does whitespace.
+  const pug = file(
+    "row.jst.pug",
+    '- render("users/missing")\nimg(src="x" alt="")\n',
+  );
   r = run(["check", pug]);
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
   assert.strictEqual(r.stdout, "", "valid Pug has nothing to report");
+  const avatar = file("avatar.jst.pug", 'img(src="x")\n');
+  r = run(["check", avatar]);
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+  assert.match(
+    r.stdout,
+    /avatar\.jst\.pug:1:1: warning: `<img>` without `alt`: .* \[Html\/ImgAlt\]/,
+  );
+  fs.unlinkSync(avatar);
   const brokenPug = file("cell.pug", "td\n    span\n  b\n");
   r = run(["check", brokenPug]);
   assert.strictEqual(r.status, 1, r.stdout + r.stderr);
