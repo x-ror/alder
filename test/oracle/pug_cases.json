@@ -1471,5 +1471,421 @@
     "source": "each x of xs\n  extends layout",
     "error": null,
     "outline": ["each x of xs@1:1", "extends layout.pug@2:11@2:3"]
+  },
+  {
+    "source": "a(x=1. y=2)",
+    "error": null,
+    "outline": ["a (x=1.@1:3 y=2@1:8)@1:1"]
+  },
+  {
+    "source": "a(x=/a/ y=2)",
+    "error": null,
+    "outline": ["a (x=/a/@1:3 y=2@1:9)@1:1"]
+  },
+  {
+    "source": "a(x=/a\\/b/ y=2)",
+    "error": null,
+    "outline": ["a (x=/a\\/b/@1:3 y=2@1:12)@1:1"]
+  },
+  {
+    "source": "a(x=1 /* c */ y=2)",
+    "error": null,
+    "outline": ["a (x=1 /* c */@1:3 y=2@1:15)@1:1"]
+  },
+  {
+    "source": "a(x=public y=2)",
+    "error": null,
+    "outline": ["a (x=public@1:3 y=2@1:12)@1:1"]
+  },
+  {
+    "source": "a(x=let y=2)",
+    "error": null,
+    "outline": ["a (x=let@1:3 y=2@1:9)@1:1"]
+  },
+  {
+    "source": "a(x=++ i, y=2)",
+    "error": null,
+    "outline": ["a (x=++ i@1:3 y=2@1:11)@1:1"]
+  },
+  {
+    "source": "a(x=-- i, y=2)",
+    "error": null,
+    "outline": ["a (x=-- i@1:3 y=2@1:11)@1:1"]
+  },
+  {
+    "source": "a(x=a +++ b, y=2)",
+    "error": null,
+    "outline": ["a (x=a +++ b@1:3 y=2@1:14)@1:1"]
+  },
+  {
+    "source": "a(x=class C extends B {}, y=2)",
+    "error": null,
+    "outline": ["a (x=class C extends B {}@1:3 y=2@1:27)@1:1"]
+  },
+  {
+    "source": "a(x=a?.5 : 1, y=2)",
+    "error": null,
+    "outline": ["a (x=a?.5 : 1@1:3 y=2@1:15)@1:1"]
+  },
+  {
+    "source": "a(x=o. default, y=2)",
+    "error": null,
+    "outline": ["a (x=o. default@1:3 y=2@1:17)@1:1"]
+  },
+  {
+    "source": "a(x=o./*c*/default, y=2)",
+    "error": null,
+    "outline": ["a (x=o./*c*/default@1:3 y=2@1:21)@1:1"]
+  },
+  {
+    "source": "a(x=πin, y=2)",
+    "error": null,
+    "outline": ["a (x=πin@1:3 y=2@1:10)@1:1"]
+  },
+  {
+    "source": "a(x=cafénew y=2)",
+    "error": null,
+    "outline": ["a (x=cafénew@1:3 y=2@1:13)@1:1"]
+  },
+  {
+    "source": "a(x=typeof﻿/[)]/)",
+    "error": null,
+    "outline": ["a (x=typeof﻿/[)]/@1:3)@1:1"]
+  },
+  {
+    "source": "case a\n  when typeof﻿/:/: p",
+    "error": null,
+    "outline": ["case a@1:1", "when typeof﻿/:/@2:3", "p ()@2:20"]
+  },
+  {
+    "source": "p.\n  a\n  ﻿\n  b",
+    "error": null,
+    "outline": [
+      "p. ()@1:1",
+      "text \"a\"@2:3",
+      "text \"\\n\"@3:1",
+      "text \"﻿\"@3:3",
+      "text \"\\n\"@4:1",
+      "text \"b\"@4:3"
+    ]
+  },
+  {
+    "source": "else ﻿",
+    "error": {
+      "code": "PUG:INVALID_TOKEN",
+      "message": "unexpected token \"else\"",
+      "line": 1,
+      "column": 1
+    }
+  },
+  {
+    "source": "if a\n  p\nelse ﻿\n  i",
+    "error": null,
+    "outline": ["if a@1:1", "p ()@2:3", "else@4", "i ()@4:3"]
+  },
+  {
+    "source": "p #{a} b ",
+    "error": null,
+    "outline": ["p ()@1:1", "text \"#{a} b \"@1:3"]
+  },
+  {
+    "source": "mixin foo(a b)",
+    "error": {
+      "code": "PUG:MIXIN_WITHOUT_BODY",
+      "message": "Mixin foo declared without body",
+      "line": 1,
+      "column": 1
+    }
+  },
+  {
+    "source": "mixin foo(a b)\n  p",
+    "error": {
+      "code": "PUG:MIXIN_WITHOUT_BODY",
+      "message": "Mixin foo declared without body",
+      "line": 1,
+      "column": 1
+    }
+  },
+  {
+    "source": "+\n#{a",
+    "error": {
+      "code": "PUG:NO_END_BRACKET",
+      "message": "The end of the string reached with no closing bracket } found.",
+      "line": 1,
+      "column": 6
+    }
+  },
+  {
+    "source": "+\n#{a]",
+    "error": {
+      "code": "PUG:BRACKET_MISMATCH",
+      "message": "Mismatched Bracket: ]",
+      "line": 1,
+      "column": 6
+    }
+  },
+  {
+    "source": "+\n#{a\nb",
+    "error": {
+      "code": "PUG:NO_END_BRACKET",
+      "message": "The end of the string reached with no closing bracket } found.",
+      "line": 2,
+      "column": 2
+    }
+  },
+  {
+    "source": "include a.b\\c",
+    "error": null,
+    "outline": ["include a.b\\c@1:9@1:1"]
+  },
+  {
+    "source": "+ foo",
+    "error": null,
+    "outline": ["+foo() ()@1:1"]
+  },
+  {
+    "source": "+﻿foo",
+    "error": null,
+    "outline": ["+foo() ()@1:1"]
+  },
+  {
+    "source": "+foo",
+    "error": {
+      "code": "PUG:UNEXPECTED_TEXT",
+      "message": "unexpected text \"+foo\"",
+      "line": 1,
+      "column": 1
+    }
+  },
+  {
+    "source": "+foo(﻿a=1)",
+    "error": null,
+    "outline": ["+foo() (﻿a=1@1:6)@1:1"]
+  },
+  {
+    "source": "+foo( a=1)",
+    "error": null,
+    "outline": ["+foo() ( a=1@1:6)@1:1"]
+  },
+  {
+    "source": "block ﻿a﻿",
+    "error": null,
+    "outline": ["block replace a@1:1"]
+  },
+  {
+    "source": "block a",
+    "error": null,
+    "outline": ["block replace a@1:1"]
+  },
+  {
+    "source": "include ﻿a﻿",
+    "error": null,
+    "outline": ["include a.pug@1:9@1:1"]
+  },
+  {
+    "source": "each﻿a of b\n  p",
+    "error": {
+      "code": "PUG:MALFORMED_EACH",
+      "message": "This `each` has a syntax error. `each` statements should be of the form: `each VARIABLE_NAME of JS_EXPRESSION`",
+      "line": 1,
+      "column": 5
+    }
+  },
+  {
+    "source": "each ﻿a﻿ of b\n  p",
+    "error": null,
+    "outline": ["each ﻿a﻿ of b@1:1", "p ()@2:3"]
+  },
+  {
+    "source": "each a of b\n  p",
+    "error": {
+      "code": "PUG:MALFORMED_EACH_OF_LVAL",
+      "message": "The value variable for each must either be a valid identifier (e.g. `item`) or a pair of identifiers in square brackets (e.g. `[key, value]`).",
+      "line": 1,
+      "column": 13
+    }
+  },
+  {
+    "source": "p.\n  a\n﻿\n  b",
+    "error": null,
+    "outline": [
+      "p. ()@1:1",
+      "text \"a\"@2:3",
+      "text \"\\n\"@3:1",
+      "text \"\"@3:1",
+      "text \"\\n\"@4:1",
+      "text \"b\"@4:3"
+    ]
+  },
+  {
+    "source": "p.\n  a\n\n  b",
+    "error": {
+      "code": "PUG:UNEXPECTED_TEXT",
+      "message": "unexpected text \"\n  b\"",
+      "line": 3,
+      "column": 1
+    }
+  },
+  {
+    "source": "p.\n  a\n \n  b",
+    "error": null,
+    "outline": [
+      "p. ()@1:1",
+      "text \" a\"@2:2",
+      "text \"\\n\"@3:1",
+      "text \"\"@3:2",
+      "text \"\\n\"@4:1",
+      "text \" b\"@4:2"
+    ]
+  },
+  {
+    "source": "mixin foo(a b)\n  p",
+    "error": null,
+    "outline": ["mixin foo(a b)@1:1", "p ()@2:3"]
+  },
+  {
+    "source": "p #{a} b  #{c}",
+    "error": null,
+    "outline": ["p ()@1:1", "text \"#{a} b  \"@1:3", "code= inline \"c\"@1:11"]
+  },
+  {
+    "source": "p !{a} ",
+    "error": null,
+    "outline": ["p ()@1:1", "text \"!{a} \"@1:3"]
+  },
+  {
+    "source": "p \\#{a} ",
+    "error": null,
+    "outline": ["p ()@1:1", "text \"\\\\#{a} \"@1:3"]
+  },
+  {
+    "source": "+foo(a=1)",
+    "error": {
+      "code": "PUG:SYNTAX_ERROR",
+      "message": "Syntax Error: Unexpected character ''",
+      "line": 1,
+      "column": 7
+    }
+  },
+  {
+    "source": "else ",
+    "error": {
+      "code": "PUG:ELSE_CONDITION",
+      "message": "`else` cannot have a condition, perhaps you meant `else if`",
+      "line": 1,
+      "column": 6
+    }
+  },
+  {
+    "source": "if a\n  p\nelse \n  i",
+    "error": {
+      "code": "PUG:ELSE_CONDITION",
+      "message": "`else` cannot have a condition, perhaps you meant `else if`",
+      "line": 3,
+      "column": 6
+    }
+  },
+  {
+    "source": "include a",
+    "error": null,
+    "outline": ["include a.pug@1:9@1:1"]
+  },
+  {
+    "source": "each a﻿ of b\n  p",
+    "error": null,
+    "outline": ["each a﻿ of b@1:1", "p ()@2:3"]
+  },
+  {
+    "source": "a(x=a?.b y=2)",
+    "error": {
+      "code": "PUG:SYNTAX_ERROR",
+      "message": "Syntax Error: Unexpected token",
+      "line": 1,
+      "column": 7
+    }
+  },
+  {
+    "source": "a(x=a ?? b y=2)",
+    "error": {
+      "code": "PUG:SYNTAX_ERROR",
+      "message": "Syntax Error: Unexpected token",
+      "line": 1,
+      "column": 8
+    }
+  },
+  {
+    "source": "br\n  | ﻿",
+    "error": null,
+    "outline": ["br ()@1:1", "text \"﻿\"@2:5"]
+  },
+  {
+    "source": "div\n  #{'x'}\n+\n#{a}",
+    "error": null,
+    "outline": ["div ()@1:1", "#{'x'} ()@2:3", "+#{a}() ()@3:1"]
+  },
+  {
+    "source": "a(x=1++ y=2)",
+    "error": {
+      "code": "PUG:SYNTAX_ERROR",
+      "message": "Syntax Error: Assigning to rvalue",
+      "line": 1,
+      "column": 5
+    }
+  },
+  {
+    "source": "a(x=f()\n++ y=2)",
+    "error": {
+      "code": "PUG:SYNTAX_ERROR",
+      "message": "Syntax Error: Unexpected token",
+      "line": 2,
+      "column": 1
+    }
+  },
+  {
+    "source": "a(x=function f(a) {} y=2)",
+    "error": null,
+    "outline": ["a (x=function f(a) {}@1:3 y=2@1:22)@1:1"]
+  },
+  {
+    "source": "a(x=(a) => a y=2)",
+    "error": null,
+    "outline": ["a (x=(a) => a@1:3 y=2@1:14)@1:1"]
+  },
+  {
+    "source": "a(x=new F y=2)",
+    "error": null,
+    "outline": ["a (x=new F@1:3 y=2@1:11)@1:1"]
+  },
+  {
+    "source": "a(x=...y z=2)",
+    "error": {
+      "code": "PUG:SYNTAX_ERROR",
+      "message": "Syntax Error: Unexpected token",
+      "line": 1,
+      "column": 5
+    }
+  },
+  {
+    "source": "a(x=if y=2)",
+    "error": {
+      "code": "PUG:SYNTAX_ERROR",
+      "message": "Syntax Error: Unexpected token",
+      "line": 1,
+      "column": 5
+    }
+  },
+  {
+    "source": "a(x={default: 1} y=2)",
+    "error": null,
+    "outline": ["a (x={default: 1}@1:3 y=2@1:18)@1:1"]
+  },
+  {
+    "source": "a(x=1 // c\n y=2)",
+    "error": {
+      "code": "PUG:SYNTAX_ERROR",
+      "message": "Syntax Error: Line comments not allowed in an expression",
+      "line": 1,
+      "column": 7
+    }
   }
 ]

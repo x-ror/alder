@@ -6,8 +6,9 @@
 
 use crate::format::blank_lines::LineInfo;
 use crate::format::{IndentStyle, Indented, Settings};
-use crate::pug::lexer::{lex, Kind, Token};
+use crate::pug::lexer::{is_js_whitespace, lex, unit_offset, Kind, Token};
 use crate::util::{leading_ws, raw_lines, BOM};
+use std::borrow::Cow;
 
 const BLANK_SPACE: [char; 2] = [' ', '\t'];
 
@@ -85,14 +86,16 @@ pub(crate) fn format(text: &str, settings: &Settings) -> Option<Indented> {
                     out.push_str(&prefix);
                     out.push_str(read);
                 } else if !trim {
-                    // As long as the new block indentation at most: Pug reads none of it.
-                    out.push_str(&line[..char_offset(line, prefix.len())]);
+                    // Pug reads none of a line that ends within the block's indentation, so it gets the new one.
+                    if !line.is_empty() {
+                        out.push_str(&prefix);
+                    }
                 }
             }
             Role::Continues { owner } => match ws.strip_prefix(leading_ws(rows[owner])) {
                 Some(past_owner) => {
                     out.push_str(&indent_of(owner)?);
-                    out.push_str(past_owner);
+                    out.push_str(&restyled(past_owner, settings));
                     out.push_str(tail(&line[ws.len()..]));
                 }
                 None => out.push_str(tail(line)),
@@ -102,6 +105,21 @@ pub(crate) fn format(text: &str, settings: &Settings) -> Option<Indented> {
     }
     let infos = classified.iter().map(|line| LineInfo { removable: line.role == Role::Blank, ..LineInfo::default() }).collect();
     Some(Indented { text: out, lines: infos, notes: vec![] })
+}
+
+/// Whitespace between attributes in the indentation `settings` write, a tab counted as `indent_size` columns: whole
+/// units become tabs when the style is tabs, and the columns left over stay spaces to keep an alignment.
+fn restyled<'a>(ws: &'a str, settings: &Settings) -> Cow<'a, str> {
+    let width = settings.indent_size;
+    let other = if settings.indent_style == IndentStyle::Tabs { ' ' } else { '\t' };
+    if width == 0 || !ws.contains(other) {
+        return Cow::Borrowed(ws);
+    }
+    let columns: usize = ws.chars().map(|c| if c == '\t' { width } else { 1 }).sum();
+    Cow::Owned(match settings.indent_style {
+        IndentStyle::Tabs => "\t".repeat(columns / width) + &" ".repeat(columns % width),
+        IndentStyle::Spaces => " ".repeat(columns),
+    })
 }
 
 /// The byte offset of the `n`th character of `line`, or its end.
@@ -159,6 +177,7 @@ fn classify(rows: &[&str], tokens: &[Token]) -> Option<Vec<Classified>> {
             Kind::Indent(_) | Kind::Outdent | Kind::Newline | Kind::Eos => {}
             // Pug doesn't count the line breaks in these, so the lines of the tokens after them are off.
             Kind::AndAttributes(js) | Kind::Call { name: js, .. } if js.contains('\n') => return None,
+            Kind::Call { .. } if name_on_a_later_line(rows[line], token.start.column) => return None,
             kind => {
                 let end = token.end.line - 1;
                 roles[line + 1..=end].fill(Some(Role::Inside));
@@ -188,6 +207,12 @@ fn classify(rows: &[&str], tokens: &[Token]) -> Option<Vec<Classified>> {
         Classified { role, keeps_trailing }
     });
     Some(classified.collect())
+}
+
+/// Whether the `+` at UTF-16 `column` of `row` has nothing after it on its line: the call's name is on a later one.
+fn name_on_a_later_line(row: &str, column: usize) -> bool {
+    let after_plus = unit_offset(row, column);
+    row.get(after_plus..).is_some_and(|rest| rest.chars().all(is_js_whitespace))
 }
 
 #[cfg(test)]
@@ -297,6 +322,32 @@ mod tests {
         assert!(crate::pug::parser::parse(attributes).is_ok());
         assert_eq!(reindent(attributes, &Settings::default()), None, "Pug's lines are off after it");
         assert_eq!(reindent("p", &Settings { indent_size: 0, ..Settings::default() }), None);
+        for call in ["+\nfoo\n  p\n", "+\nfoo\n//- note  \n", "+ \t\n#{foo}\n  p\n"] {
+            assert!(crate::pug::parser::parse(call).is_ok());
+            assert_eq!(reindent(call, &Settings::default()), None, "the name on the line after `+`: {call:?}");
+        }
+        assert_eq!(fmt("div\n    + \tfoo\n"), "div\n  + \tfoo\n");
+    }
+
+    #[test]
+    fn whitespace_only_lines_in_text_blocks_take_the_new_indentation() {
+        let off = |style| Settings { trailing_whitespace: false, indent_style: style, ..Settings::default() };
+        let tabbed = "div\n\tp.\n\t\ta\n\t\t\n\t\n\t\tb\n";
+        let spaced = "div\n  p.\n    a\n    \n    \n    b\n";
+        assert_eq!(reindent(tabbed, &off(IndentStyle::Spaces)).as_deref(), Some(spaced));
+        assert_eq!(reindent(spaced, &off(IndentStyle::Tabs)).as_deref(), Some("div\n\tp.\n\t\ta\n\t\t\n\t\t\n\t\tb\n"));
+        assert!(crate::pug::same_compilation(tabbed, spaced));
+    }
+
+    #[test]
+    fn continuation_lines_take_the_indentation_style_and_keep_their_alignment() {
+        let tabs = Settings { indent_style: IndentStyle::Tabs, ..Settings::default() };
+        assert_eq!(reindent("div\n  a(\n    href=\"/x\"\n  )\n", &tabs).as_deref(), Some("div\n\ta(\n\t\thref=\"/x\"\n\t)\n"));
+        assert_eq!(
+            reindent("div\n  a(href=\"/x\"\n     class=\"y\")\n", &tabs).as_deref(),
+            Some("div\n\ta(href=\"/x\"\n\t\t class=\"y\")\n")
+        );
+        assert_eq!(fmt("div\n\ta(\n\t\thref=\"/x\"\n\t\t class=\"y\")\n"), "div\n  a(\n    href=\"/x\"\n     class=\"y\")\n");
     }
 
     #[test]

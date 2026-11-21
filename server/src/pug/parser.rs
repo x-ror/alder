@@ -1,9 +1,15 @@
 //! Port of `pug-parser` 6.0.0 (Pug 3.0.4), run as Pug runs it: after `pug-strip-comments` 2.0.0 with Pug's defaults,
 //! which drop `//-` comments and their bodies, and with `.pug` implied for a path without an extension, as `pug.compile`
-//! gives it (the path keeps its written form here). The AST has Pug's nodes, each with the line and column of the token
-//! that starts it (1-based, columns in UTF-16 code units); `#[...]` in text is spliced into the text's nodes.
+//! gives it. The AST has Pug's nodes, each with the line and column of the token that starts it (1-based, columns in
+//! UTF-16 code units). Where it differs from Pug's on purpose:
+//! - `#[...]` in text is spliced into the text's nodes, and one whose expression gives several nodes (Pug's `Block`) is
+//!   spliced flat: there is no `Block` node;
+//! - a mixin call without a block has an empty one rather than none;
+//! - `FileReference::path` is the path as written; `refs::implied` adds the `.pug`;
+//! - a message Pug builds from half of a surrogate pair (`a(foo!😀)`, `]]]]😀`) has the whole character: a Rust string
+//!   can't hold half of one.
 
-use super::lexer::{lex, BlockMode, Kind, Pos, Token};
+use super::lexer::{js_trim, lex, BlockMode, Kind, Pos, Token};
 use super::Error;
 use std::collections::VecDeque;
 
@@ -642,7 +648,7 @@ impl Parser {
     fn file_reference(&mut self) -> Result<FileReference, Error> {
         let path = self.expect("path")?;
         let Kind::Path(val) = &path.kind else { unreachable!() };
-        Ok(FileReference { path: val.trim().to_string(), line: path.start.line, column: path.start.column })
+        Ok(FileReference { path: js_trim(val).to_string(), line: path.start.line, column: path.start.column })
     }
 
     fn parse_extends(&mut self) -> Result<Node, Error> {
@@ -655,7 +661,7 @@ impl Parser {
         let token = self.expect("block")?;
         let Kind::Block { name, mode } = &token.kind else { unreachable!() };
         let block = self.optional_block(token.start.line)?;
-        Ok(node(&token, NodeKind::NamedBlock { name: name.trim().to_string(), mode: *mode, block }))
+        Ok(node(&token, NodeKind::NamedBlock { name: js_trim(name).to_string(), mode: *mode, block }))
     }
 
     fn parse_mixin_block(&mut self) -> Result<Node, Error> {
@@ -1107,6 +1113,16 @@ mod tests {
             ("block", "PUG:BLOCK_OUTISDE_MIXIN", "Anonymous blocks are not allowed unless they are part of a mixin.", 1, 1),
             ("p(id=\"b\")#a", "PUG:DUPLICATE_ID", "Duplicate attribute \"id\" is not allowed.", 1, 10),
             ("p#a(id=\"b\")", "PUG:DUPLICATE_ATTRIBUTE", "Duplicate attribute \"id\" is not allowed.", 1, 5),
+            // Pug counts the line break before `#{` as a column.
+            ("+\n#{a", "PUG:NO_END_BRACKET", "The end of the string reached with no closing bracket } found.", 1, 6),
+            ("+\n#{a]", "PUG:BRACKET_MISMATCH", "Mismatched Bracket: ]", 1, 6),
+            ("+\n#{a\nb", "PUG:NO_END_BRACKET", "The end of the string reached with no closing bracket } found.", 2, 2),
+            // JavaScript's `trim` takes U+FEFF and leaves U+0085.
+            ("else \u{feff}", "PUG:INVALID_TOKEN", "unexpected token \"else\"", 1, 1),
+            ("else \u{85}", "PUG:ELSE_CONDITION", "`else` cannot have a condition, perhaps you meant `else if`", 1, 6),
+            ("p.\n  a\n\u{85}\n  b", "PUG:UNEXPECTED_TEXT", "unexpected text \"\u{85}\n  b\"", 3, 1),
+            // JavaScript's `.` doesn't take U+2028, so the parentheses are attributes.
+            ("mixin foo(a\u{2028}b)\n  p", "PUG:MIXIN_WITHOUT_BODY", "Mixin foo declared without body", 1, 1),
         ];
         for &(text, code, message, line, column) in cases {
             assert_eq!(error_of(text), (code, message.to_string(), line, column), "{text:?}");
@@ -1182,6 +1198,15 @@ mod tests {
                 "b ()@6:3"
             ]
         );
+    }
+
+    #[test]
+    fn names_and_paths_lose_javascripts_whitespace() {
+        let first = |text: &str| parse(text).unwrap().nodes.remove(0).kind;
+        assert!(matches!(first("block \u{feff}a\u{feff}"), NodeKind::NamedBlock { name, .. } if name == "a"));
+        assert!(matches!(first("block a\u{85}"), NodeKind::NamedBlock { name, .. } if name == "a\u{85}"));
+        assert!(matches!(first("include \u{feff}a\u{feff}"), NodeKind::Include { file, .. } if file.path == "a"));
+        assert!(matches!(first("each \u{feff}a\u{feff} of b\n  p"), NodeKind::EachOf { val, .. } if val == "\u{feff}a\u{feff}"));
     }
 
     #[test]

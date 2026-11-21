@@ -2,20 +2,18 @@
 //! itself: content in a void element, which pug-code-gen refuses to compile. Attribute values are JavaScript, so only a
 //! string literal is a value that can be read.
 
-use super::parser::{self, Attr, AttrValue, Block, Node, NodeKind, Tag};
-use super::{code, nodes, offset};
+use super::lexer::{is_js_whitespace, js_trim};
+use super::parser::{self, Alternate, Attr, AttrValue, Block, Code, Node, NodeKind, Tag};
+use super::{children, code, nodes, offset};
 use crate::attributes::{Attribute, Element, Value};
 use crate::util::{coded, error, LineIndex};
+use std::collections::HashMap;
 use std::ops::Range;
 use tower_lsp_server::ls_types::Diagnostic;
 
 /// `void-elements` 3.1.0, the tags pug-code-gen closes itself, outside an XML doctype.
 const VOID_ELEMENTS: [&str; 14] =
     ["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"];
-/// Keywords whose lines decide whether, or how often, the lines nested under them render.
-const CONTROL_FLOW: [&str; 13] =
-    ["if", "unless", "else", "each", "for", "while", "case", "when", "default", "mixin", "block", "append", "prepend"];
-
 /// The tags of a template Pug accepts and that outputs HTML; `#{}` tag names and mixin calls are left out.
 pub(crate) fn markup(text: &str) -> Vec<Element> {
     let Ok(tree) = parser::parse(text) else { return Vec::new() };
@@ -48,32 +46,124 @@ pub(crate) fn contents(text: &str) -> Vec<(usize, Range<usize>)> {
     nodes(&tree).into_iter().filter_map(content).collect()
 }
 
-/// pug-code-gen's `SELF_CLOSING_CONTENT`, the first one in the template: a void element or a tag closed with `/` that holds
-/// anything but blank text.
+/// Where Pug's tree puts each tag: in which tags and in which branches of control flow.
+#[derive(Default)]
+pub(crate) struct Ancestry {
+    /// By the offset each tag starts at.
+    tags: HashMap<usize, Around>,
+    /// Where each node starts that decides whether, or how often, what is in it or after it renders, in document order.
+    flow: Vec<usize>,
+}
+
+#[derive(Default, Clone)]
+struct Around {
+    /// The names of the tags around, in lower case.
+    tags: Vec<String>,
+    /// The control flow around, as where it starts and which of its branches.
+    branches: Vec<(usize, usize)>,
+}
+
+impl Ancestry {
+    /// Whether the tag starting at `at` is inside a `name` tag.
+    pub(crate) fn inside(&self, at: usize, name: &str) -> bool {
+        self.tags.get(&at).is_some_and(|around| around.tags.iter().any(|tag| tag == name))
+    }
+
+    /// Whether one of the tags starting at `first` and `second` (later) may render without the other: they are in
+    /// different branches, or control flow starts between them.
+    pub(crate) fn separated(&self, first: usize, second: usize) -> bool {
+        let branches = |at| self.tags.get(&at).map(|around| &around.branches);
+        branches(first).is_none() || branches(first) != branches(second) || self.flow.iter().any(|&at| first < at && at < second)
+    }
+}
+
+/// The ancestry of the tags of a template Pug accepts.
+pub(crate) fn ancestry(text: &str) -> Ancestry {
+    let Ok(tree) = parser::parse(text) else { return Ancestry::default() };
+    let index = LineIndex::new(text);
+    let mut found = Ancestry::default();
+    tree.nodes.iter().for_each(|node| visit(&index, node, &Around::default(), &mut found));
+    found
+}
+
+fn visit(index: &LineIndex, node: &Node, around: &Around, found: &mut Ancestry) {
+    let start = offset(index, node.line, node.column);
+    let in_branch = |branch: usize| {
+        let mut inner = around.clone();
+        inner.branches.push((start, branch));
+        inner
+    };
+    let each = |nodes: &[Node], inner: &Around, found: &mut Ancestry| nodes.iter().for_each(|child| visit(index, child, inner, found));
+    match &node.kind {
+        NodeKind::Tag(tag) => {
+            let mut inner = around.clone();
+            if !tag.interpolated {
+                found.tags.insert(start, around.clone());
+                inner.tags.push(tag.name.to_ascii_lowercase());
+            }
+            each(&tag.block.nodes, &inner, found);
+        }
+        NodeKind::Conditional(conditional) => {
+            found.flow.push(start);
+            each(&conditional.consequent.nodes, &in_branch(0), found);
+            match &conditional.alternate {
+                Some(Alternate::ElseIf(node)) => visit(index, node, &in_branch(1), found),
+                Some(Alternate::Else(block)) => each(&block.nodes, &in_branch(1), found),
+                None => {}
+            }
+        }
+        NodeKind::Each { block, alternate, .. } => {
+            found.flow.push(start);
+            each(&block.nodes, &in_branch(0), found);
+            alternate.iter().for_each(|block| each(&block.nodes, &in_branch(1), found));
+        }
+        NodeKind::EachOf { .. }
+        | NodeKind::While { .. }
+        | NodeKind::Case { .. }
+        | NodeKind::When { .. }
+        | NodeKind::MixinDefinition { .. }
+        | NodeKind::MixinCall { .. }
+        | NodeKind::NamedBlock { .. }
+        | NodeKind::MixinBlock
+        | NodeKind::Code(Code { buffer: false, .. }) => {
+            found.flow.push(start);
+            let inner = in_branch(0);
+            children(node).into_iter().for_each(|child| visit(index, child, &inner, found));
+        }
+        _ => children(node).into_iter().for_each(|child| visit(index, child, around, found)),
+    }
+}
+
+/// pug-code-gen's `SELF_CLOSING_CONTENT`, the first one in the template: a tag closed with `/` (whatever its name, `#{}` too)
+/// or a void element outside XML mode that holds anything but blank text. A `doctype` sets XML mode from where it is on.
 pub(crate) fn void_children(text: &str, tree: &Block) -> Option<Diagnostic> {
-    let xml = is_xml(tree);
-    let closed = |tag: &Tag| tag.self_closing || (!xml && VOID_ELEMENTS.contains(&tag.name.as_str()));
-    let has_content =
-        |tag: &Tag| tag.block.nodes.iter().any(|node| !matches!(&node.kind, NodeKind::Text { val, .. } if val.trim().is_empty()));
+    let has_content = |tag: &Tag| {
+        tag.block.nodes.iter().any(|node| !matches!(&node.kind, NodeKind::Text { val, .. } if val.chars().all(is_js_whitespace)))
+    };
+    let mut xml = false;
     let (node, tag) = nodes(tree).into_iter().find_map(|node| match &node.kind {
-        NodeKind::Tag(tag) if !tag.interpolated && closed(tag) && has_content(tag) => Some((node, tag)),
+        NodeKind::Doctype(name) => {
+            // An empty `doctype` keeps the one before it.
+            if !name.is_empty() {
+                xml = name.eq_ignore_ascii_case("xml");
+            }
+            None
+        }
+        NodeKind::Tag(tag) => {
+            let void = !tag.interpolated && !xml && VOID_ELEMENTS.contains(&tag.name.as_str());
+            ((tag.self_closing || void) && has_content(tag)).then_some((node, tag))
+        }
         _ => None,
     })?;
     let index = LineIndex::new(text);
     let start = offset(&index, node.line, node.column);
-    let message = format!("{0} is a self closing element: <{0}/> but contains nested content.", tag.name);
-    Some(coded(error(index.range(start, start + tag.name.len()), message), code::VOID_CHILDREN))
+    // pug-code-gen names the tag by its `name`, which an interpolated one doesn't have.
+    let (name, written) = if tag.interpolated { ("undefined", "#{}".len() + tag.name.len()) } else { (tag.name.as_str(), tag.name.len()) };
+    let message = format!("{name} is a self closing element: <{name}/> but contains nested content.");
+    Some(coded(error(index.range(start, start + written), message), code::VOID_CHILDREN))
 }
 
-/// Whether a line decides whether, or how often, what is nested under it renders: a keyword such as `if`, `each`, `mixin`
-/// or `block`, code (`- …`), or a mixin call (`+…`), whose block the mixin may render any number of times.
-pub(crate) fn controls_flow(line: &str) -> bool {
-    let line = line.trim_start();
-    let word = line.split(|c: char| !c.is_ascii_alphanumeric()).next().unwrap_or_default();
-    line.starts_with(['-', '+']) || CONTROL_FLOW.contains(&word)
-}
-
-/// pug-code-gen's XML mode, where void elements are written as any other tag.
+/// Whether the template sets pug-code-gen's XML mode anywhere: an XML document, which the HTML rules don't apply to.
 fn is_xml(tree: &Block) -> bool {
     nodes(tree).into_iter().any(|node| matches!(&node.kind, NodeKind::Doctype(name) if name.eq_ignore_ascii_case("xml")))
 }
@@ -126,9 +216,11 @@ fn value_offset(rest: &str, val: &str) -> Option<usize> {
 /// A string literal is text that can be read (where `at`, the literal's offset, is known); `true` and numbers set the attribute
 /// to something unreadable; any other JavaScript is known at render time only.
 fn expression_value(val: &str, at: Option<usize>) -> Value {
-    if let Some(content) = string_literal(val) {
-        return at.map_or(Value::Literal, |at| Value::Text(at + 1..at + 1 + content.len()));
+    if let Some(content) = static_string(val) {
+        let quote = val.len() - val.trim_start_matches(is_js_whitespace).len() + 1;
+        return at.map_or(Value::Literal, |at| Value::Text(at + quote..at + quote + content.len()));
     }
+    let val = js_trim(val);
     let number = !val.is_empty() && val.bytes().all(|b| b.is_ascii_digit() || b == b'.');
     if val == "true" || number {
         Value::Literal
@@ -137,8 +229,10 @@ fn expression_value(val: &str, at: Option<usize>) -> Value {
     }
 }
 
-/// The content of a JavaScript string literal that renders as written: no escapes, and no `${}` in a template literal.
-fn string_literal(val: &str) -> Option<&str> {
+/// The content of an attribute value that is a JavaScript string literal rendering as written: no escapes, and no `${}` in
+/// a template literal. Pug keeps the whitespace around the value (`id="a" , x`).
+pub(crate) fn static_string(val: &str) -> Option<&str> {
+    let val = js_trim(val);
     let quote = val.chars().next().filter(|c| matches!(c, '"' | '\'' | '`'))?;
     let content = val.strip_prefix(quote)?.strip_suffix(quote)?;
     let plain = !content.contains([quote, '\\', '\n']) && !(quote == '`' && content.contains("${"));
@@ -212,6 +306,14 @@ mod tests {
     }
 
     #[test]
+    fn literals_are_read_past_the_whitespace_pug_keeps() {
+        let text = "iframe(id=\"dup\" , title=\"\" , name=`x` )\n";
+        assert_eq!(spelled(text, &markup(text)[0]), [("id", "id", Some("dup")), ("title", "title", Some("")), ("name", "name", Some("x"))]);
+        assert_eq!(static_string("`signup`"), Some("signup"));
+        assert_eq!(static_string("`a${b}`"), None);
+    }
+
+    #[test]
     fn escaped_strings_and_attribute_blocks_are_not_read() {
         let text = "img(alt=\"a\\\"b\" src = 'c')&attributes(attrs)\n";
         let found = markup(text);
@@ -260,6 +362,13 @@ mod tests {
         assert_eq!(found("mixin m\n  img\n    p\n"), Some((1, 2, 5, message.clone())));
         assert_eq!(found("each x of xs\n  img= x\n"), Some((1, 2, 5, message)));
         assert_eq!(found("foo/\n  p\n").map(|d| d.3), Some("foo is a self closing element: <foo/> but contains nested content.".into()));
+        let undefined = "undefined is a self closing element: <undefined/> but contains nested content.".to_string();
+        assert_eq!(found("#{t}/\n  p\n"), Some((0, 0, 4, undefined)), "an explicit `/` whatever the name");
+        assert_eq!(found("img/\n  p\n").map(|d| d.0), Some(0));
+        // XML mode starts at the `doctype`, and another one ends it.
+        assert_eq!(found("img\n  p\ndoctype xml\n").map(|d| d.0), Some(0));
+        assert_eq!(found("doctype xml\ndoctype html\nimg\n  p\n").map(|d| d.0), Some(2));
+        assert_eq!(found("doctype xml  \nimg\n  p\n").map(|d| d.0), Some(1), "not a doctype Pug knows");
         for fine in [
             "img\n",
             "img \n",
@@ -267,7 +376,9 @@ mod tests {
             "img.\n  \n",
             "IMG x\n",
             "doctype xml\nimg\n  p\n",
-            "#{t}/\n  p\n",
+            "doctype XML\ndoctype\nimg\n  p\n",
+            "div/\n",
+            "#{t}\n  p\n",
             "script.\n  img x\n",
             "keygen x\n",
             "menuitem x\n",
@@ -277,12 +388,14 @@ mod tests {
     }
 
     #[test]
-    fn control_flow_lines() {
-        for line in ["  if x", "else if y", "each a in b", "- var x = 1", "+card", "block content", "mixin m", "when 1", "unless x"] {
-            assert!(controls_flow(line), "{line}");
-        }
-        for line in ["p.if", "#a", "iframe", "= x", "| each", "blockquote"] {
-            assert!(!controls_flow(line), "{line}");
-        }
+    fn ancestry_follows_the_tree() {
+        let text = "svg: a x\np#x\nblock_item\np#x\nif x\n  #a\nelse\n  #b\ntemplate: #t\n";
+        let found = ancestry(text);
+        let at = |needle: &str| text.find(needle).unwrap();
+        assert!(found.inside(at("a x"), "svg") && !found.inside(at("p#x"), "svg"));
+        assert!(found.inside(at("#t"), "template"));
+        assert!(!found.separated(at("p#x"), at("p#x\nif x")), "`block_item` is a tag");
+        assert!(found.separated(at("#a"), at("#b")), "two branches");
+        assert!(found.separated(at("p#x\nif x"), at("#t")), "an `if` between");
     }
 }

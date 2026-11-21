@@ -36,6 +36,7 @@ pub(crate) fn diagnostics(lang: TemplateLang, text: &str, markup: &[Element], he
     let index = LineIndex::new(text);
     let lines: Vec<(usize, &str)> = lines_with_offsets(text).collect();
     let report = |at: &Range<usize>, message: String, code: &str| coded(warning(index.range(at.start, at.end), message), code);
+    let ancestry = (lang == TemplateLang::Pug).then(|| pug::elements::ancestry(text));
     let mut out = Vec::new();
     if lang != TemplateLang::Erb {
         for element in markup.iter().chain(helpers).filter(|element| element.name == "img") {
@@ -48,7 +49,7 @@ pub(crate) fn diagnostics(lang: TemplateLang, text: &str, markup: &[Element], he
             }
         }
         out.extend(
-            duplicate_ids(lang, text, &lines, markup, &index)
+            duplicate_ids(text, &lines, markup, &index, ancestry.as_ref())
                 .into_iter()
                 .map(|(at, message)| report(&at, message, html_lint::code::DUPLICATE_ID)),
         );
@@ -61,7 +62,7 @@ pub(crate) fn diagnostics(lang: TemplateLang, text: &str, markup: &[Element], he
                     .map(|(at, message)| report(&at, message, DUPLICATE_ATTRIBUTE)),
             );
         }
-        out.extend(anchor_without_href(lang, text, &lines, &index, element).map(|at| {
+        out.extend(anchor_without_href(lang, text, &lines, &index, element, ancestry.as_ref()).map(|at| {
             report(
                 &at,
                 "`<a>` without `href` is not a link and the keyboard can't reach it; use a `<button>` for an action".into(),
@@ -101,56 +102,60 @@ fn missing_alt(text: &str, element: &Element) -> Option<(Range<usize>, String)> 
 
 /// Static ids used twice that no control flow separates. Both ids must sit in the same blocks and no `if`, `else`, loop
 /// or block may start between them, since one of them may then not be rendered; ids inside a template's shared blocks count.
+/// Pug's are placed by its tree (`ancestry`), the others by their lines' indentation.
 fn duplicate_ids(
-    lang: TemplateLang,
     text: &str,
     lines: &[(usize, &str)],
     elements: &[Element],
     index: &LineIndex,
+    ancestry: Option<&pug::elements::Ancestry>,
 ) -> Vec<(Range<usize>, String)> {
-    let mut seen: HashMap<&str, usize> = HashMap::new();
+    let in_template = |element: &Element, id_start: usize| match ancestry {
+        Some(ancestry) => ancestry.inside(element.at.start, "template"),
+        None => ancestors(lines, index.line_of(id_start)).iter().any(|&line| tag_name(lines[line].1) == "template"),
+    };
+    let separated = |first: (usize, usize), second: (usize, usize)| match ancestry {
+        Some(ancestry) => ancestry.separated(first.1, second.1),
+        None => separated_by_control_flow(lines, index.line_of(first.0), index.line_of(second.0)),
+    };
+    // Each id's first use: where its value and its element start.
+    let mut seen: HashMap<&str, (usize, usize)> = HashMap::new();
     let mut out = Vec::new();
     for element in elements.iter().filter(|element| element.name != "template") {
         let mut ids = element.attributes.iter().filter(|attribute| attribute.name == "id");
         // Haml joins an `#id` and an `id:` into one id.
         let (Some(id), None) = (ids.next(), ids.next()) else { continue };
         let Value::Text(range) = &id.value else { continue };
-        if range.is_empty() {
-            continue;
-        }
         // A `<template>`'s content isn't in the document yet.
-        if ancestors(lines, index.line_of(range.start)).iter().any(|&line| tag_name(lines[line].1) == "template") {
+        if range.is_empty() || in_template(element, range.start) {
             continue;
         }
         let name = &text[range.clone()];
-        let Some(first) = seen.insert(name, range.start) else { continue };
-        if !separated_by_control_flow(lang, lines, index.line_of(first), index.line_of(range.start)) {
-            out.push((range.clone(), html_lint::duplicate_id_message(name, index.line_of(first) + 1)));
+        let this = (range.start, element.at.start);
+        let Some(first) = seen.insert(name, this) else { continue };
+        if !separated(first, this) {
+            out.push((range.clone(), html_lint::duplicate_id_message(name, index.line_of(first.0) + 1)));
         }
     }
     out
 }
 
-fn separated_by_control_flow(lang: TemplateLang, lines: &[(usize, &str)], first: usize, second: usize) -> bool {
-    let between = lines.get(first + 1..second).is_some_and(|inner| inner.iter().any(|(_, line)| controls_flow(lang, line)));
-    between || enclosing_control_flow(lang, lines, first) != enclosing_control_flow(lang, lines, second)
+fn separated_by_control_flow(lines: &[(usize, &str)], first: usize, second: usize) -> bool {
+    let between = lines.get(first + 1..second).is_some_and(|inner| inner.iter().any(|(_, line)| controls_flow(line)));
+    between || enclosing_control_flow(lines, first) != enclosing_control_flow(lines, second)
 }
 
-/// The lines of control flow that a line is nested in, innermost first, its own included: Pug's block expansion puts an
-/// element on the line of the keyword or mixin call that holds it (`when 1: #a`, `+m: #a`).
-fn enclosing_control_flow(lang: TemplateLang, lines: &[(usize, &str)], line: usize) -> Vec<usize> {
+/// The lines of control flow that a line is nested in, innermost first, its own included.
+fn enclosing_control_flow(lines: &[(usize, &str)], line: usize) -> Vec<usize> {
     let mut found = ancestors(lines, line);
     found.insert(0, line);
-    found.retain(|&at| controls_flow(lang, lines[at].1));
+    found.retain(|&at| controls_flow(lines[at].1));
     found
 }
 
-/// Whether a line may leave a later element unrendered: Haml and Slim Ruby that branches, Pug's keywords and code.
-fn controls_flow(lang: TemplateLang, line: &str) -> bool {
-    match lang {
-        TemplateLang::Pug => pug::elements::controls_flow(line),
-        _ => ruby_of(line).is_some_and(branches),
-    }
+/// Whether a Haml or Slim line may leave a later element unrendered: Ruby that branches.
+fn controls_flow(line: &str) -> bool {
+    ruby_of(line).is_some_and(branches)
 }
 
 /// The lines a line is nested in by indentation, innermost first.
@@ -167,7 +172,7 @@ fn ancestors(lines: &[(usize, &str)], line: usize) -> Vec<usize> {
     found
 }
 
-/// The element a Haml, Slim or Pug line starts: `svg` for `%svg.icon{…}`, `svg.icon` and `svg(viewBox="0 0 1 1")`.
+/// The element a Haml or Slim line starts: `svg` for `%svg.icon{…}` and `svg.icon`.
 fn tag_name(line: &str) -> &str {
     let line = line.trim_start().trim_start_matches('%');
     &line[..line.find(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '-' | ':' | '_'))).unwrap_or(line.len())]
@@ -219,6 +224,7 @@ fn anchor_without_href(
     lines: &[(usize, &str)],
     index: &LineIndex,
     element: &Element,
+    ancestry: Option<&pug::elements::Ancestry>,
 ) -> Option<Range<usize>> {
     let has = |name: &str| element.attribute(name).is_some();
     let linked = element.attributes.iter().any(|attribute| attribute.name == "href" || attribute.name.ends_with(":href"));
@@ -227,8 +233,9 @@ fn anchor_without_href(
     if element.name != "a" || exempt || element.may_have_more() || element.at.is_empty() {
         return None;
     }
-    let in_svg = match lang {
-        TemplateLang::Erb => {
+    let in_svg = match (lang, ancestry) {
+        (_, Some(ancestry)) => ancestry.inside(element.at.start, "svg"),
+        (TemplateLang::Erb, _) => {
             text[..element.at.start].to_ascii_lowercase().rsplit_once("<svg").is_some_and(|(_, after)| !after.contains("</svg"))
         }
         _ => ancestors(lines, index.line_of(element.at.start)).iter().any(|&line| tag_name(lines[line].1) == "svg"),
@@ -615,6 +622,13 @@ mod tests {
         assert_eq!(pug(id, "#a\np#a\n"), ["a"]);
         assert_eq!(pug(id, "div(id=\"a\")\np\n  span#a x\n"), ["a"]);
         assert_eq!(pug(id, "p: #a\n#a\n"), ["a"]);
+        // Pug keeps the spaces before a comma in the value.
+        assert_eq!(pug(id, "div(id=\"dup\" , class=\"a\")\ndiv(id=\"dup\")\n"), ["dup"]);
+        // Control flow is what Pug lexes as such: `block_item` is a tag, `if-card` an `if` (JavaScript's `\b` is before `-`).
+        for tag in ["block_item", "blockquote", "mixins", "whiles", "cases"] {
+            assert_eq!(pug(id, &format!("p#x\n{tag}\np#x\n")), ["x"], "{tag}");
+        }
+        assert!(pug(id, "p#x\nif-card\np#x\n").is_empty());
         for text in [
             "if x\n  #a\nelse\n  #a\n",
             "#a\nunless x\n  p\n#a\n",
@@ -627,14 +641,26 @@ mod tests {
             "p(id=x)\np(id=x)\n",
             "p(id=`a${i}`)\np(id=`a${i}`)\n",
             "template\n  #a\n#a\n",
+            "template: #a\n#a\n",
+            "if x: #a\nelse: #a\n",
+            "each x in xs\n  #a\nelse\n  #a\n",
         ] {
             assert!(pug(id, text).is_empty(), "{text}");
         }
         assert_eq!(pug(ANCHOR_HREF, "a.btn(data-action=\"click->menu#open\") Menu\n"), ["a"]);
-        for text in ["a(href=url) x\n", "a&attributes(attrs) x\n", "svg\n  a x\n", "a#top\n", "a(name=\"top\")\n", "a(:href=\"u\") x\n"] {
+        for text in [
+            "a(href=url) x\n",
+            "a&attributes(attrs) x\n",
+            "svg\n  a x\n",
+            "svg: a x\n",
+            "a#top\n",
+            "a(name=\"top\")\n",
+            "a(:href=\"u\") x\n",
+        ] {
             assert!(pug(ANCHOR_HREF, text).is_empty(), "{text}");
         }
         assert_eq!(pug(IFRAME_TITLE, "iframe(src=\"https://e.com/\" + id)\n"), ["iframe"]);
+        assert_eq!(pug(ANCHOR_HREF, "svg\na x\n"), ["a"]);
         for text in ["iframe(src=x title=video.title)\n", "iframe(src=x aria-label=\"V\")\n", "iframe(src=x)&attributes(a)\n"] {
             assert!(pug(IFRAME_TITLE, text).is_empty(), "{text}");
         }

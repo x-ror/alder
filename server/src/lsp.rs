@@ -1329,7 +1329,7 @@ fn may_change_config(events: &[(PathBuf, FileChangeType)]) -> bool {
 
 /// A Pug template may include or extend another; a folder created, moved or deleted may hold some.
 fn may_change_pug_includes(events: &[(PathBuf, FileChangeType)]) -> bool {
-    let template = |path: &Path| path.extension().is_some_and(|extension| extension == "pug" || extension == "jade");
+    let template = |path: &Path| TemplateLang::from_file_name(&path.to_string_lossy()) == Some(TemplateLang::Pug);
     events.iter().any(|(path, kind)| template(path) || *kind != FileChangeType::CHANGED)
 }
 
@@ -1597,6 +1597,16 @@ mod tests {
         assert!(may_change_controllers(&event("/r/app", FileChangeType::DELETED)));
         assert!(!may_change_controllers(&event("/r/app/views/users/_card.erb", FileChangeType::CHANGED)));
         assert!(!may_change_controllers(&event("/r/app", FileChangeType::CHANGED)));
+    }
+
+    #[test]
+    fn pug_includes_are_dropped_when_a_template_changes_whatever_its_extensions_case() {
+        let event = |path: &str, kind| vec![(PathBuf::from(path), kind)];
+        for path in ["/r/app/a.pug", "/r/app/B.PUG", "/r/app/c.Jade"] {
+            assert!(may_change_pug_includes(&event(path, FileChangeType::CHANGED)), "{path}");
+        }
+        assert!(!may_change_pug_includes(&event("/r/app/a.erb", FileChangeType::CHANGED)));
+        assert!(may_change_pug_includes(&event("/r/app/views", FileChangeType::DELETED)));
     }
 
     #[test]

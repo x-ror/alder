@@ -3,7 +3,7 @@ import path from "path";
 import {
   togglePugMarker,
   togglePugLines,
-  inTextBlock,
+  lineKinds,
   looksLikeExpression,
   textStart,
   wrapPug,
@@ -20,6 +20,10 @@ for (const [line, next] of [
   ["//- note", "- note"],
   ["//- if (x)", "- if (x)"],
   ["//- var x = 1", "- var x = 1"],
+  ["//-  var x = 1", "- var x = 1"],
+  ["- const { a } = obj", "//- const { a } = obj"],
+  ["//- const { a } = obj", "- const { a } = obj"],
+  ["//- let [a, b] = pair", "- let [a, b] = pair"],
   ["//- TODO fix this", null],
   ["//- do this later", null],
   ["\t-x", "\t= x"],
@@ -58,32 +62,31 @@ const nested = [
   "  c",
   "// d",
   "  e",
-  'div(class="a b").',
-  "  f",
-  "div",
+  "//- f",
   "  g",
-  "a(href=x) Read more.",
+  'div(class="a b").',
   "  h",
+  "div",
+  "  i",
+  "a(href=x) Read more.",
+  "  j",
+  "script(type=fn()).",
+  "  k",
+  "+card(a).",
+  "  l",
+  "div: p.",
+  "  m",
+  "script(",
+  '  type="module"',
+  ").",
+  "  n",
+  "o",
 ];
-assert.deepStrictEqual(
-  nested.map((_, i) => inTextBlock(nested, i)),
-  [
-    false,
-    true,
-    false,
-    true,
-    false,
-    true,
-    false,
-    true,
-    false,
-    true,
-    false,
-    false,
-    false,
-    false,
-  ],
-);
+assert.deepStrictEqual(lineKinds(nested), [
+  ...["pug", "text", "pug", "raw", "pug", "raw", "pug", "text", "pug", "raw"],
+  ...["pug", "text", "pug", "pug", "pug", "pug", "pug", "text", "pug", "text"],
+  ...["pug", "text", "pug", "attributes", "attributes", "text", "pug"],
+]);
 
 for (const [code, expression] of [
   ["user.name", true],
@@ -98,6 +101,11 @@ for (const [code, expression] of [
   ["a == 1 && b => c", true],
   ["p { color: red }", false],
   ["", false],
+  ["in", false],
+  ["with", false],
+  ["a in", false],
+  ["index", true],
+  ["x.in", true],
 ]) {
   assert.strictEqual(looksLikeExpression(code), expression, code);
 }
@@ -108,6 +116,8 @@ for (const [line, start] of [
   ["|Hi", 1],
   ['a.btn#x(href="/a b" data-x=(1)) Go', 32],
   ["li: a(href=x) more", 14],
+  ["li:  a(href=x) more", 15],
+  ['a(title="it\\"s (a)") Hello', 21],
   ["p&attributes(a) b", 16],
   ["#{t} b", 5],
   ["<p>Hi</p>", 0],
@@ -147,6 +157,17 @@ assert.strictEqual(wrapped(4, 10, 11), "  var a = #{b};");
 assert.strictEqual(wrapped(5, 10, 15), null, "a keyword's code");
 assert.strictEqual(wrapped(6, 0, 3), null, "a tag with a block");
 assert.strictEqual(wrapped(8, 9, 10), null, "a comment");
+assert.strictEqual(
+  wrapPug(["//", "  hello name"], 1, 8, 12).text,
+  "#{name}",
+  "a buffered comment's block interpolates",
+);
+assert.strictEqual(wrapPug(["//- x", "  hello name"], 1, 8, 12), null);
+assert.strictEqual(wrapPug(["+card(", "  user.name + 1", ")"], 1, 0, 16), null);
+assert.deepStrictEqual(
+  togglePugLines(["div: p.", "  - x", "+card(a).", "  = y"], [1, 3]),
+  [],
+);
 
 const wrapLine = (line, start, end) => {
   const w = wrapPug([line], 0, start, end);
@@ -163,6 +184,7 @@ for (const [line, start, end, result] of [
   ["p a #[strong b c] d", 15, 18, null],
   ["p a #[br] d", 6, 6, null],
   ["p a #[em #{b}] d", 11, 12, null],
+  ['p #{"a\\"{"} world', 12, 17, 'p #{"a\\"{"} #{world}'],
 ]) {
   assert.strictEqual(wrapLine(line, start, end), result, `${line} ${start}`);
 }
@@ -209,10 +231,25 @@ assert.deepStrictEqual(pugExtractBlock(list, sel(3, 0, 4, 9)).lines, [
   "  var x = 1;",
 ]);
 assert.strictEqual(pugExtractBlock(list, sel(6, 0, 6, 0)), null);
+const link = ["div", "  a(", '    href="/x"', "  )", "    | Go", "  p"];
+assert.deepStrictEqual(pugExtractBlock(link, sel(1, 0, 1, 4)).lines, [
+  "a(",
+  '  href="/x"',
+  ")",
+  "  | Go",
+]);
+assert.deepStrictEqual(
+  pugExtractBlock(["p.", "  block"], sel(0, 0, 1, 7)).lines,
+  ["p.", "  block"],
+);
+const mixins = ["mixin outer", "  block", "  mixin inner", "    p hi"];
+assert.deepStrictEqual(pugExtractBlock(mixins, sel(0, 0, 0, 5)).lines, mixins);
 for (const [lines, selection] of [
   [list, sel(5, 4, 5, 8)],
   [["div", "    p", "  span"], sel(1, 0, 2, 6)],
   [["extends layout", "block content"], sel(0, 0, 1, 5)],
+  [link, sel(2, 0, 2, 13)],
+  [mixins, sel(1, 0, 3, 8)],
   [["if x", "  p", "else", "  q"], sel(0, 0, 1, 3)],
   [["if x", "  p", "else", "  q"], sel(2, 0, 3, 3)],
   [["case x", "  when 1", "    p", "  when 2"], sel(1, 0, 2, 5)],

@@ -1,26 +1,58 @@
 //! Pug document symbols, from Pug's own tree.
 
 use super::{block_end, Symbols, LANDMARKS};
-use crate::pug::lexer::BlockMode;
-use crate::pug::parser::{Alternate, AttrValue, Block, Node, NodeKind, Tag};
-use crate::pug::{self, parsed};
+use crate::pug;
+use crate::pug::elements::static_string;
+use crate::pug::lexer::{lex, BlockMode, Kind, Pos, Token};
+use crate::pug::parser::{self, Alternate, AttrValue, Block, Node, NodeKind, Tag};
 use crate::util::LineIndex;
+use std::collections::HashMap;
 use tower_lsp_server::ls_types::{DocumentSymbol, SymbolKind};
 
 /// Outline: tags with a `#id` or `.class`, a literal `id` or a landmark name, `block`s and `mixin` definitions, each
-/// spanning its line and the lines nested under it. With a syntax error, the symbols of the lines above it.
+/// spanning its line and the lines of what Pug nests under it, a `#[…]` tag its brackets. With a syntax error, the symbols
+/// of the lines above it; none for text with a lone `\r`, a line break for Pug that `LineIndex` doesn't count.
 pub fn document_symbols(text: &str) -> Vec<DocumentSymbol> {
-    let Some(tree) = parsed(text) else { return Vec::new() };
+    if pug::has_lone_cr(text) {
+        return Vec::new();
+    }
+    let Some(source) = pug::parsable(text) else { return Vec::new() };
+    let (Ok(tree), Ok(tokens)) = (parser::parse(source), lex(source)) else { return Vec::new() };
     let index = LineIndex::new(text);
-    let mut outline = Outline { text, lines: text.split('\n').collect(), index: &index, symbols: Symbols::new(&index) };
+    let mut outline =
+        Outline { text, lines: text.split('\n').collect(), index: &index, inline: inline_ends(&tokens), symbols: Symbols::new(&index) };
     outline.block(&tree);
     outline.symbols.finish()
+}
+
+/// Where each `#[…]` ends, past its `]`, by where the tag in it starts.
+fn inline_ends(tokens: &[Token]) -> HashMap<Pos, Pos> {
+    let mut open = Vec::new();
+    let mut ends = HashMap::new();
+    for (i, token) in tokens.iter().enumerate() {
+        match token.kind {
+            Kind::StartPugInterpolation => open.push(i + 1),
+            Kind::EndPugInterpolation => {
+                if let Some(first) = open.pop().and_then(|first| tokens.get(first)) {
+                    ends.insert(first.start, token.end);
+                }
+            }
+            _ => {}
+        }
+    }
+    ends
+}
+
+/// The last line, 1-based, of a node and what Pug nests under it.
+fn last_line(node: &Node) -> usize {
+    pug::children(node).into_iter().map(last_line).fold(node.line, usize::max)
 }
 
 struct Outline<'a> {
     text: &'a str,
     lines: Vec<&'a str>,
     index: &'a LineIndex<'a>,
+    inline: HashMap<Pos, Pos>,
     symbols: Symbols<'a>,
 }
 
@@ -89,7 +121,10 @@ impl Outline<'_> {
             let implicit_div = !tag.interpolated && self.text[self.offset(node)..].starts_with(['.', '#']);
             return Some(if implicit_div { shorthand } else { name + &shorthand });
         }
-        if let Some(id) = tag.attrs.iter().filter(|attr| attr.name == "id").find_map(|attr| string_literal(&attr.val)) {
+        if let Some(id) = tag.attrs.iter().filter(|attr| attr.name == "id").find_map(|attr| match &attr.val {
+            AttrValue::Expr(val) => static_string(val).filter(|id| !id.is_empty()),
+            _ => None,
+        }) {
             return Some(format!("{name}#{id}"));
         }
         LANDMARKS.contains(&name.as_str()).then_some(name)
@@ -97,24 +132,21 @@ impl Outline<'_> {
 
     fn add(&mut self, node: &Node, name: String, kind: SymbolKind) {
         let start = self.offset(node);
-        let line = node.line.saturating_sub(1).min(self.lines.len() - 1);
+        let line_of = |line: usize| line.saturating_sub(1).min(self.lines.len() - 1);
         let line_end = |line: usize| self.index.line_start(line) + self.index.line(line).trim_end().len();
-        let selection = (start, line_end(line).max(start));
-        let range = (start, line_end(block_end(&self.lines, line, 1)).max(start));
+        if let Some(end) = self.inline.get(&Pos { line: node.line, column: node.column }) {
+            let end = pug::offset(self.index, end.line, end.column).max(start);
+            self.symbols.add(name, kind, (start, end), (start, end));
+            return;
+        }
+        let selection = (start, line_end(line_of(node.line)).max(start));
+        let range = (start, line_end(block_end(&self.lines, line_of(last_line(node)), 1)).max(start));
         self.symbols.add(name, kind, range, selection);
     }
 
     fn offset(&self, node: &Node) -> usize {
         pug::offset(self.index, node.line, node.column)
     }
-}
-
-/// The text of a quoted attribute value without interpolation or escapes: `main` for `id="main"`.
-fn string_literal(value: &AttrValue) -> Option<&str> {
-    let AttrValue::Expr(expr) = value else { return None };
-    let quote = expr.chars().next().filter(|c| matches!(c, '"' | '\''))?;
-    let inner = expr.strip_prefix(quote)?.strip_suffix(quote)?;
-    (!inner.is_empty() && !inner.contains([quote, '\\'])).then_some(inner)
 }
 
 #[cfg(test)]
@@ -166,6 +198,27 @@ mod tests {
         let symbols = document_symbols("\u{feff}p 😀 #[span#a x]\n");
         assert_eq!(names(&symbols), ["span#a"]);
         assert_eq!(symbols[0].selection_range.start, Position::new(0, 8));
+    }
+
+    #[test]
+    fn inline_tags_span_their_brackets() {
+        assert_eq!(names(&document_symbols("p #[a#x hi] #[b#y bye]\n")), ["a#x", "b#y"]);
+        assert_eq!(names(&document_symbols("p See #[a.link(href=\"/\") docs]\n  span#child more\n")), ["a.link", "span#child"]);
+        assert_eq!(names(&document_symbols("p #[a#x #[b#y z]]\n")), ["a#x[b#y]"]);
+        let symbols = document_symbols("p #[a#x hi] after\n");
+        assert_eq!(symbols[0].range, Range::new(Position::new(0, 4), Position::new(0, 11)));
+    }
+
+    #[test]
+    fn children_are_what_pug_nests() {
+        let text = "section#main(\n  data-a=\"1\"\n)\n  .card\n    p hi\n";
+        assert_eq!(names(&document_symbols(text)), ["section#main[.card]"]);
+        assert_eq!(names(&document_symbols("form(id=`signup`)\nform(id=\"a\" , method=\"post\")\n")), ["form#signup", "form#a"]);
+    }
+
+    #[test]
+    fn a_lone_cr_gives_no_symbols() {
+        assert!(document_symbols("nav#top\r  section#a\r").is_empty());
     }
 
     #[test]

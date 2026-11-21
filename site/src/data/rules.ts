@@ -2581,7 +2581,7 @@ enabled = false`,
     status: "available",
     code: "Html/VoidChildren",
     today:
-      "Haml reports content on the tag's line or nested under it; Slim reports lines nested under a void element, in HTML templates only. Pug refuses to compile a void element (or a tag closed with `/`) with any content but blank text, so there it is an error with Pug's message at the first such tag; a Pug `doctype xml` allows content in `img` and the like, as Pug does.",
+      "Haml reports content on the tag's line or nested under it; Slim reports lines nested under a void element, in HTML templates only. Pug refuses to compile a void element (or a tag closed with `/`) with any content but blank text, so there it is an error with Pug's message at the first such tag; after a Pug `doctype xml` (until another `doctype`) `img` and the like may hold content, as in Pug.",
     setting: {
       label: "Turn it off",
       code: `[Html.VoidChildren]

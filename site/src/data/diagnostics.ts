@@ -430,7 +430,7 @@ export const diagnostics: Diagnostic[] = [
     languages: ["haml", "slim", "pug"],
     summary: "Content inside a void element such as `img` or `input`.",
     explanation:
-      "Void elements have no end tag, so the content would end up after them. Haml reports content on the tag's line or nested under it. Slim reports lines nested under a void element, and \"Unexpected indentation\" under a tag closed with `/`. In Slim it applies to HTML templates only, not to `.xml.slim` and other formats. Pug refuses to compile a void element, or a tag closed with `/`, that holds anything but blank text; that is reported as an error with Pug's own message, at the first such tag, and not under a `doctype xml`.",
+      "Void elements have no end tag, so the content would end up after them. Haml reports content on the tag's line or nested under it. Slim reports lines nested under a void element, and \"Unexpected indentation\" under a tag closed with `/`. In Slim it applies to HTML templates only, not to `.xml.slim` and other formats. Pug refuses to compile a void element, or a tag closed with `/`, that holds anything but blank text; that is reported as an error with Pug's own message, at the first such tag. A tag closed with `/` counts whatever its name, `#{…}` too; a void element doesn't after a `doctype xml`, until a `doctype` with another name.",
     example: {
       file: "app/views/users/show.html.slim",
       lang: "slim",
@@ -713,7 +713,7 @@ extends ../layout
     languages: ["pug"],
     summary: "A `block` of an extending template that its layouts don't have.",
     explanation:
-      "pug-linker raises `PUG:UNEXPECTED_BLOCK` for a block at the top level of an extending template, `append` and `prepend` included, whose name no layout up the `extends` chain has (with the files they include) and no other block of the template nests. Not reported when a layout or one of its includes is missing or has a syntax error. Here `layout.pug` has `block content` only.",
+      "pug-linker raises `PUG:UNEXPECTED_BLOCK` for a block at the top level of an extending template, `append` and `prepend` included, whose name isn't in its layout once linked: no layout up the `extends` chain has it (with the files they include), a layout that replaces a block drops the blocks that block held, and a block the template nests in another counts only inside one the layout has. Blocks of a file the template includes at its top level count as its own and are reported on the `include` line. Not reported when a file on the way is missing, has a syntax error or includes itself. Here `layout.pug` has `block content` only.",
     example: {
       file: "app/assets/templates/users/index.jst.pug",
       lang: "pug",

@@ -5,19 +5,21 @@ import { leadingWhitespace } from "./text.js";
 import { extractBlock } from "./partial.js";
 
 // `-` code, `=` and `!=` output, and `//-`, a comment Pug drops; `//` is an HTML comment and stays.
-const MARKER_RE = /^([ \t]*)(!=|=|\/\/-|-)[ \t]?(.+)$/;
+const MARKER_RE = /^([ \t]*)(!=|=|\/\/-|-)[ \t]*(\S.*)$/;
 const NEXT_MARKER = { "-": "=", "=": "!=", "!=": "//-", "//-": "-" };
-// Lines whose deeper-indented lines are text that doesn't interpolate: comments, `-` alone (code) and filters.
-const RAW_PARENT_RE = /^[ \t]*(\/\/|-[ \t]*$|:[\w-])/;
-// A tag ending in `.` (`script.`), whose deeper-indented lines are text with `#{}` in it.
-const TEXT_TAG_RE =
-  /^[ \t]*(?:[\w:-]+|#\{[^}]*\})?(?:[#.][\w-]+|\([^)]*\)|&attributes\([^)]*\))*\.[ \t]*$/;
+// Lines whose deeper-indented lines are text Pug doesn't interpolate: `//-` (never output), `-` alone (code) and filters.
+const RAW_PARENT_RE = /^[ \t]*(\/\/-|-[ \t]*$|:[\w-])/;
+// A buffered comment: its deeper-indented lines are output with `#{}` interpolated, unlike the text on its own line.
+const COMMENT_PARENT_RE = /^[ \t]*\/\/(?!-)/;
+// What follows the tags of a line whose deeper-indented lines are text with `#{}` in it (`script.`, `+card(a).`, `li: p.`).
+const TEXT_TAG_END_RE = /^\.[ \t]*$/;
+const BLOCK_EXPANSION_RE = /^: +/;
 // Line starts where a whole-line `= …` would turn Pug's own syntax into code.
 const PUG_LINE_START_RE = /^(?:[-=|<+:]|!=|\/\/)/;
 // Lines Pug reads as a keyword before it tries a tag.
 const KEYWORD_RE =
   /^(?:if|unless|else|each|for|while|case|when|default|mixin|block|append|prepend|include|extends?|doctype|yield)\b/;
-// JavaScript words that may stand between two operands, and the statements that are no expression.
+// JavaScript words that may stand between two operands, and the reserved words no expression starts with.
 const OPERATOR_WORDS = new Set([
   "in",
   "instanceof",
@@ -28,13 +30,14 @@ const OPERATOR_WORDS = new Set([
   "await",
 ]);
 const STATEMENT_RE =
-  /^(?:var|let|const|if|else|for|while|do|switch|function|return|throw|try|catch|class|break|continue)\b/;
+  /^(?:var|let|const|if|else|for|while|do|switch|function|return|throw|try|catch|finally|class|break|continue|in|instanceof|with|case|default|debugger|enum|export|import|extends)\b/;
 // Statements a `//-` comment can hold as code rather than prose: `if (`, `} else {`, `var x =`, `function f(`.
 const CODE_STATEMENT_RE =
-  /^(?:(?:if|for|while|switch|catch)\s*\(|\}|(?:else|do|try|finally)\s*\{|(?:var|let|const)\s+[\w$]+\s*=|function\b[^(]*\()/;
+  /^(?:(?:if|for|while|switch|catch)\s*\(|\}|(?:else|do|try|finally)\s*\{|(?:var|let|const)\s+(?:[\w$]+|\{[^}]*\}|\[[^\]]*\])\s*=|function\b[^(]*\()/;
 // What an expression can start with (an operand or a unary operator) and can't end with (a binary operator; `x++` can).
 const EXPRESSION_START_RE = /^[\w$([{!+\-~]/;
-const OPERATOR_END_RE = /(?:^|[^+-])[-+]$|[*/%=<>&|^!~?:,.]$/;
+const OPERATOR_END_RE =
+  /(?:^|[^+-])[-+]$|[*/%=<>&|^!~?:,.]$|(?<![\w$.])(?:in|instanceof|typeof|new|void|delete)$/;
 const MIXIN_BLOCK_RE = /^[ \t]*block[ \t]*$/;
 const MIXIN_RE = /^[ \t]*mixin\b/;
 // Lines that continue the `if`, `case` or `each` above them, which Pug refuses on their own.
@@ -51,21 +54,46 @@ function hasNested(lines, n) {
   return next !== undefined && isDeeper(next, leadingWhitespace(lines[n]));
 }
 
-/** The line that makes line `n` text: a comment, `-` alone, a filter or a `tag.`; null when line `n` is Pug. */
-function textBlockOwner(lines, n) {
-  let indent = leadingWhitespace(lines[n]).length;
-  for (let i = n - 1; i >= 0 && indent > 0; i--) {
-    if (!lines[i].trim()) continue;
-    const own = leadingWhitespace(lines[i]).length;
-    if (own >= indent) continue;
-    if (RAW_PARENT_RE.test(lines[i]) || TEXT_TAG_RE.test(lines[i]))
-      return lines[i];
-    indent = own;
-  }
+/** The text block that `head`, whose tags end at `end`, opens: `{ indent, kind }`, or null when its deeper lines are Pug. */
+function textBlockOf(head, end) {
+  const indent = leadingWhitespace(head).length;
+  if (RAW_PARENT_RE.test(head)) return { indent, kind: "raw" };
+  if (COMMENT_PARENT_RE.test(head) || TEXT_TAG_END_RE.test(head.slice(end)))
+    return { indent, kind: "text" };
   return null;
 }
 
-const inTextBlock = (lines, n) => textBlockOwner(lines, n) !== null;
+/**
+ * What Pug reads each line as: "pug"; "text" (with `#{}`) or "raw" under a line that makes its deeper lines text; or
+ * "attributes" from the line after one that leaves an attribute list open up to the line that closes it.
+ */
+function lineKinds(lines) {
+  const kinds = [];
+  let block = null;
+  let openHead = null;
+  for (const line of lines) {
+    if (openHead !== null) {
+      kinds.push("attributes");
+      openHead += `\n${line}`;
+      const end = lineTagsEnd(openHead);
+      if (end >= 0) {
+        block = textBlockOf(openHead, end);
+        openHead = null;
+      }
+    } else if (
+      block &&
+      (!line.trim() || leadingWhitespace(line).length > block.indent)
+    ) {
+      kinds.push(block.kind);
+    } else {
+      kinds.push("pug");
+      const end = lineTagsEnd(line);
+      block = end < 0 ? null : textBlockOf(line, end);
+      if (end < 0) openHead = line;
+    }
+  }
+  return kinds;
+}
 
 /**
  * Whether `code` can be a JavaScript expression, which Pug requires after `=` and in `#{}`: it starts and ends as one, its
@@ -104,9 +132,9 @@ function groupEnd(line, at) {
   for (let i = at; i < line.length; i++) {
     const c = line[i];
     if (c === "'" || c === '"' || c === "`") {
-      const close = line.indexOf(c, i + 1);
-      if (close < 0) return -1;
-      i = close;
+      i++;
+      while (i < line.length && line[i] !== c) i += line[i] === "\\" ? 2 : 1;
+      if (i >= line.length) return -1;
     } else if (c === "(" || c === "[" || c === "{") depth++;
     else if (c === ")" || c === "]" || c === "}") {
       depth--;
@@ -135,22 +163,33 @@ function tagHeadEnd(line, i) {
   }
 }
 
+/** The end of the tag heads from `i`, block expansion (`li: a`) included; `i` when there is none, -1 when one doesn't close. */
+function tagsEnd(line, i) {
+  for (;;) {
+    const head = tagHeadEnd(line, i);
+    if (head <= i) return head;
+    const expansion = BLOCK_EXPANSION_RE.exec(line.slice(head));
+    if (!expansion) return head;
+    i = head + expansion[0].length;
+  }
+}
+
+/** The end of the tags a line starts with, a mixin call's included; -1 when an attribute list stays open. */
+function lineTagsEnd(line) {
+  const i = leadingWhitespace(line).length;
+  if (KEYWORD_RE.test(line.slice(i))) return i;
+  return tagsEnd(line, line[i] === "+" ? i + 1 : i);
+}
+
 /** The column where a line's inline text starts: after `| `, a tag's head and its space, or at a `<`; -1 when it has none. */
 function textStart(line) {
-  let i = leadingWhitespace(line).length;
-  if (line[i] === "|") return line[i + 1] === " " ? i + 2 : i + 1;
-  if (line[i] === "<") return i;
-  if (KEYWORD_RE.test(line.slice(i))) return -1;
-  for (;;) {
-    const head = i;
-    i = tagHeadEnd(line, i);
-    if (i <= head) return -1;
-    if (line.startsWith(": ", i)) {
-      i += 2;
-      continue;
-    }
-    return line[i] === " " ? i + 1 : -1;
-  }
+  const first = leadingWhitespace(line).length;
+  if (line[first] === "|")
+    return line[first + 1] === " " ? first + 2 : first + 1;
+  if (line[first] === "<") return first;
+  if (KEYWORD_RE.test(line.slice(first))) return -1;
+  const end = tagsEnd(line, first);
+  return end > first && line[end] === " " ? end + 1 : -1;
 }
 
 /** Whether Pug reads `content` as a tag with no inline text (`user.name`, `t('x')`, `a: b`) rather than as code. */
@@ -201,15 +240,16 @@ function togglePugMarker(line) {
  * a line with nested lines: Pug refuses a block under `=` or `!=`, and a `//-` comment's nested lines are its text.
  */
 function togglePugLines(lines, targets) {
+  const kinds = lineKinds(lines);
   return [...targets]
-    .filter((n) => !inTextBlock(lines, n) && !hasNested(lines, n))
+    .filter((n) => kinds[n] === "pug" && !hasNested(lines, n))
     .map((n) => [n, togglePugMarker(lines[n])])
     .filter(([, text]) => text !== null);
 }
 
 /**
  * What replaces columns `start`..`end` of line `n`: `{ start, end, text }`. A whole line of content becomes `= content`,
- * a selection in text (after a tag, after `|`, in a `tag.` block) `#{selection}`, an empty one `#{}` to type in. Null where
+ * a selection in text (after a tag, after `|`, in a `tag.` or `//` block) `#{selection}`, an empty one `#{}` to type in. Null where
  * Pug would refuse either or read it differently: Pug syntax or a block after `=`, a line Pug reads as a tag (`user.name`),
  * `#{}` in code, in another interpolation, a keyword line or a tag's head, and a selection that can't be a JavaScript
  * expression.
@@ -228,9 +268,9 @@ function wrapPug(lines, n, start, end) {
     text: `#{${selected}${INTERPOLATION_CLOSE}`,
   };
   if (inInterpolationHead(line, from, to)) return null;
-  const owner = textBlockOwner(lines, n);
-  if (owner !== null)
-    return TEXT_TAG_RE.test(owner) && expression ? interpolated : null;
+  const kind = lineKinds(lines)[n];
+  if (kind !== "pug")
+    return kind === "text" && expression ? interpolated : null;
   if (wholeLine) {
     const output =
       !hasNested(lines, n) &&
@@ -248,32 +288,40 @@ function wrapPug(lines, n, start, end) {
 
 /**
  * The whole lines to move into an included file for `selection`, with the lines nested under them, so a tag keeps its
- * text block; or a reason it can't move: it starts in a text block or deeper than it ends, holds `extends`, or would leave
- * an `else`, `when` or `default` without its `if`, `case` or `each`. Returns `{ range, indent, lines }` as `extractBlock`
+ * text block, and the rest of an attribute list a moved line opens; or a reason it can't move: it starts in a text block,
+ * an attribute list or deeper than it ends, holds `extends` or a mixin's `block` without its `mixin`, or would leave an
+ * `else`, `when` or `default` without its `if`, `case` or `each`. Returns `{ range, indent, lines }` as `extractBlock`
  * does, or `{ refused }`, or null when only blank lines are selected.
  */
 function pugExtractBlock(lines, selection) {
   const block = extractBlock(lines, selection, true);
   if (!block) return null;
   const { indent } = block;
+  const kinds = lineKinds(lines);
+  const start = block.range.start.line;
   let last = block.range.end.line;
   for (let i = last + 1; i < lines.length; i++) {
-    if (isDeeper(lines[i], indent)) last = i;
+    if (kinds[i] === "attributes" || isDeeper(lines[i], indent)) last = i;
     else if (lines[i].trim()) break;
   }
-  const moved = lines.slice(block.range.start.line, last + 1);
-  const first = moved.find((l) => l.trim());
+  const moved = lines.slice(start, last + 1);
+  const firstLine = moved.findIndex((l) => l.trim()) + start;
+  const first = lines[firstLine];
   const after = lines.slice(last + 1).find((l) => l.trim());
-  if (inTextBlock(lines, lines.indexOf(first, block.range.start.line)))
+  if (kinds[firstLine] === "attributes")
+    return { refused: "The selection starts inside an attribute list." };
+  if (kinds[firstLine] !== "pug")
     return { refused: "The selection starts inside a text block." };
   if (leadingWhitespace(first) !== indent)
     return { refused: "The selection starts deeper than it ends." };
-  if (moved.some((l) => EXTENDS_RE.test(l)))
+  const pugLines = moved
+    .map((_, i) => i + start)
+    .filter((n) => kinds[n] === "pug");
+  if (pugLines.some((n) => EXTENDS_RE.test(lines[n])))
     return { refused: "`extends` must stay the template's first line." };
-  if (
-    moved.some((l) => MIXIN_BLOCK_RE.test(l)) &&
-    !moved.some((l) => MIXIN_RE.test(l))
-  )
+  const outsideMixin = (n) =>
+    MIXIN_BLOCK_RE.test(lines[n]) && !underMixin(lines, kinds, start, n);
+  if (pugLines.some(outsideMixin))
     return { refused: "A mixin's `block` must stay in the mixin." };
   const continues = (l) =>
     CONTINUATION_RE.test(l) && leadingWhitespace(l) === indent;
@@ -292,6 +340,19 @@ function pugExtractBlock(lines, selection) {
       l.startsWith(indent) ? l.slice(indent.length) : l.trimStart(),
     ),
   };
+}
+
+/** Whether Pug line `n` is nested under a `mixin` line from line `from` on. */
+function underMixin(lines, kinds, from, n) {
+  let indent = leadingWhitespace(lines[n]).length;
+  for (let i = n - 1; i >= from && indent > 0; i--) {
+    if (kinds[i] !== "pug" || !lines[i].trim()) continue;
+    const own = leadingWhitespace(lines[i]).length;
+    if (own >= indent) continue;
+    if (MIXIN_RE.test(lines[i])) return true;
+    indent = own;
+  }
+  return false;
 }
 
 /** The new file for `name` from `file`: in its folder, with its extensions (`list.jst.pug` → `row.jst.pug`). */
@@ -320,7 +381,7 @@ export {
   INTERPOLATION_CLOSE,
   togglePugMarker,
   togglePugLines,
-  inTextBlock,
+  lineKinds,
   looksLikeExpression,
   textStart,
   wrapPug,

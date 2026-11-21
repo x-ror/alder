@@ -2,8 +2,10 @@
 //! them: `pug.compile` adds `.pug` to a path without an extension, and pug-load reads a relative path from the template's
 //! folder and an absolute one from `basedir`, here the app's asset root.
 
+use super::lexer::{is_js_whitespace, BlockMode};
 use super::parser::{self, Block, FileReference, Node, NodeKind};
-use super::{code, nodes, offset, parsed};
+use super::{children, code, nodes, offset, parsed};
+use crate::lang::TemplateLang;
 use crate::rails::paths;
 use crate::util::{coded, error, lexically_normal, warning, LineIndex};
 use dashmap::DashMap;
@@ -58,16 +60,21 @@ pub struct Candidate {
     pub file: PathBuf,
 }
 
-/// Node's `path.extname(path) != ""`.
-fn has_extension(path: &str) -> bool {
-    let name = path.trim_end_matches('/').rsplit('/').next().unwrap_or_default();
+/// Node's `path.extname(path) != ""`, which on Windows also splits at `\` and skips a drive (`C:`).
+fn has_extension(path: &str, windows: bool) -> bool {
+    let is_separator = |c: char| c == '/' || (windows && c == '\\');
+    let path = match path.as_bytes() {
+        [drive, b':', ..] if windows && drive.is_ascii_alphabetic() => &path[2..],
+        _ => path,
+    };
+    let name = path.trim_end_matches(is_separator).rsplit(is_separator).next().unwrap_or_default();
     name != ".." && name.rfind('.').is_some_and(|dot| dot > 0)
 }
 
 /// The path Pug reads for `path`: `pug.compile` adds `.pug` when it has no extension, so `include row` never finds
 /// pug-rails' `row.jst.pug`.
 pub fn implied(path: &str) -> Cow<'_, str> {
-    if has_extension(path) {
+    if has_extension(path, cfg!(windows)) {
         Cow::Borrowed(path)
     } else {
         Cow::Owned(format!("{path}.pug"))
@@ -131,8 +138,8 @@ impl<'a> Source<'a> {
 
     fn file_ref(&self, keyword: Keyword, file: &FileReference) -> FileRef {
         let at = offset(&self.index, file.line, file.column);
-        // Pug's column is past the spaces after the keyword, not past a tab.
-        let start = at + self.text[at..].len() - self.text[at..].trim_start_matches([' ', '\t']).len();
+        // Pug's column is past the spaces after the keyword, not past the rest of the whitespace it trims.
+        let start = at + self.text[at..].len() - self.text[at..].trim_start_matches(is_js_whitespace).len();
         FileRef { keyword, path: file.path.clone(), start, end: start + file.path.len() }
     }
 }
@@ -165,12 +172,12 @@ pub fn hover(current: &Path, r: &FileRef) -> String {
 }
 
 /// The keyword, the byte column where the last part of the path starts and the path typed before byte `col`, in a line
-/// that starts with `include `, `include:filter ` or `extends `.
+/// that starts with `include `, `include:filter `, `extends ` or `extend `.
 pub fn path_prefix(line: &str, col: usize) -> Option<(Keyword, usize, &str)> {
     static TYPING: LazyLock<regex::Regex> =
-        LazyLock::new(|| regex::Regex::new(r"^[ \t]*(include(?::[\w-]+(?:\([^)]*\))?)*|extends) +(.*)$").unwrap());
+        LazyLock::new(|| regex::Regex::new(r"^[ \t]*(include(?::[\w-]+(?:\([^)]*\))?)*|extends?) +(.*)$").unwrap());
     let found = TYPING.captures(line.get(..col)?)?;
-    let keyword = if found[1].starts_with("extends") { Keyword::Extends } else { Keyword::Include };
+    let keyword = if found[1].starts_with("extend") { Keyword::Extends } else { Keyword::Include };
     let typed = found.get(2)?;
     let last_part = typed.as_str().rfind('/').map_or(0, |slash| slash + 1);
     Some((keyword, typed.start() + last_part, typed.as_str()))
@@ -200,7 +207,8 @@ pub fn candidates(current: &Path, keyword: Keyword, typed: &str) -> Vec<Candidat
             if keyword == Keyword::Extends && !(name.ends_with(".pug") || name.ends_with(".jade")) {
                 return None;
             }
-            let label = name.strip_suffix(".pug").filter(|stem| !has_extension(stem)).map_or_else(|| name.clone(), str::to_string);
+            let label =
+                name.strip_suffix(".pug").filter(|stem| !has_extension(stem, cfg!(windows))).map_or_else(|| name.clone(), str::to_string);
             Some(Candidate { label, folder: false, file })
         })
         .collect();
@@ -251,27 +259,21 @@ fn misplaced_extends(source: &Source, tree: &Block) -> Vec<Diagnostic> {
         .collect()
 }
 
-/// pug-linker's `UNEXPECTED_BLOCK`: a block of an extending template's own top level that its layouts don't have.
+/// pug-linker's `UNEXPECTED_BLOCK`: a block of an extending template's own top level, or of a file it includes there, that
+/// isn't in its layout once linked. Pug stops at the first; each is reported, on the line of the block or the `include`.
 fn unexpected_blocks(source: &Source, tree: &Block, current: &Path, linker: &mut Linker) -> Vec<Diagnostic> {
-    let Some(layout) = layout_of(tree) else { return Vec::new() };
-    let own: Vec<(&Node, &str, &Block)> = tree
-        .nodes
-        .iter()
-        .filter_map(|node| match &node.kind {
-            NodeKind::NamedBlock { name, block, .. } => Some((node, name.as_str(), block)),
-            _ => None,
-        })
-        .collect();
-    let Some(mut known) = linker.follow(current, &layout.path, Lookup::LayoutBlocks) else { return Vec::new() };
-    // A block nested in one of the template's own takes that one's place in the layout, so the layout has it too.
-    for (_, _, block) in &own {
-        let Some(nested) = linker.block_names(block, current) else { return Vec::new() };
-        known.extend(nested);
+    if layout_of(tree).is_none() {
+        return Vec::new();
     }
-    own.into_iter()
-        .filter(|(_, name, _)| !known.contains(*name))
-        .map(|(node, name, _)| {
-            let message = format!("Unexpected block {name}");
+    let Some((_, unexpected)) = linker.link(tree, current) else { return Vec::new() };
+    unexpected
+        .into_iter()
+        .map(|(top, name)| {
+            let node = &tree.nodes[top];
+            let message = match &node.kind {
+                NodeKind::Include { file, .. } => format!("Unexpected block {name} in {}", file.path),
+                _ => format!("Unexpected block {name}"),
+            };
             coded(error(source.rest_of_line(source.node_start(node)), message), code::UNEXPECTED_BLOCK)
         })
         .collect()
@@ -327,8 +329,7 @@ fn pulled_in(root: &Path) -> Option<HashSet<PathBuf>> {
         entry.depth() == 0 || !(name.starts_with('.') || SKIPPED_FOLDERS.contains(&name.as_ref()))
     };
     let is_template = |entry: &walkdir::DirEntry| {
-        let name = entry.file_name().to_string_lossy();
-        entry.file_type().is_file() && (name.ends_with(".pug") || name.ends_with(".jade"))
+        entry.file_type().is_file() && TemplateLang::from_file_name(&entry.file_name().to_string_lossy()) == Some(TemplateLang::Pug)
     };
     let mut found = HashSet::new();
     for (visited, entry) in WalkDir::new(root).into_iter().filter_entry(wanted).enumerate() {
@@ -338,7 +339,7 @@ fn pulled_in(root: &Path) -> Option<HashSet<PathBuf>> {
         let Some(entry) = entry.ok().filter(is_template) else { continue };
         let file = entry.path();
         let Ok(text) = std::fs::read_to_string(file) else { continue };
-        if !(text.contains("include") || text.contains("extends")) {
+        if !(text.contains("include") || text.contains("extend")) {
             continue;
         }
         // A template that doesn't parse doesn't compile, so it pulls in nothing.
@@ -348,16 +349,42 @@ fn pulled_in(root: &Path) -> Option<HashSet<PathBuf>> {
     Some(found)
 }
 
-/// What `Linker::follow` looks for in a file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum Lookup {
-    /// `block_names` of an included file, none when it extends a layout.
-    IncludedBlocks,
-    LayoutBlocks,
-    Mixins,
+type Names = HashSet<String>;
+
+/// How many named blocks linking may make before it gives up, not knowing: Pug copies an included file's blocks for each
+/// `include`, which a few files can make many.
+const MAX_BLOCKS: usize = 100_000;
+
+/// A file's named blocks as pug-linker sees them, the rest of the tree left out: every item holds a named block.
+#[derive(Debug)]
+enum Flat {
+    Named {
+        name: String,
+        mode: BlockMode,
+        nodes: Vec<Flat>,
+    },
+    /// The blocks in a mixin definition, which an extending template's top level hands to its layout.
+    Mixin(Vec<Flat>),
+    /// The blocks under any other node.
+    Nested(Vec<Flat>),
+    /// The blocks of an included file, shared by every `include` of it: files that include each other many ways would
+    /// otherwise copy them once per path.
+    Included(Rc<Vec<Flat>>),
 }
 
-type Names = HashSet<String>;
+/// A named block once linked: the blocks it holds, and the layout's blocks it was linked to (pug-linker's `parents`).
+struct Named {
+    name: String,
+    mode: BlockMode,
+    nodes: Vec<usize>,
+    parents: Vec<usize>,
+}
+
+/// What pug-linker's `link` gives for a template: the tree (its layout's, when it extends one) and its `declaredBlocks`.
+struct Linked {
+    roots: Vec<usize>,
+    declared: HashMap<String, Vec<usize>>,
+}
 
 /// Follows includes and layouts as pug-linker does. Every lookup gives `None` when a file on the way is missing, doesn't
 /// parse or includes itself again (Pug then recurses until its stack runs out), since what it would add is unknown.
@@ -365,36 +392,23 @@ struct Linker {
     open: Vec<PathBuf>,
     /// Each file read, `None` when it can't be read or doesn't parse.
     trees: HashMap<PathBuf, Option<Rc<Block>>>,
-    /// What a lookup found in a file. It is the same wherever the file is reached from: one that reaches an open file is
-    /// in a cycle with it.
-    found: HashMap<(Lookup, PathBuf), Option<Names>>,
+    /// The mixins a file and what it includes and extends define, and the blocks an included file adds. Each is the same
+    /// wherever the file is reached from: one that reaches an open file is in a cycle with it.
+    mixins: HashMap<PathBuf, Option<Names>>,
+    included: HashMap<PathBuf, Option<Rc<Vec<Flat>>>>,
+    /// The named blocks of the trees being linked, which linking changes as pug-linker changes Pug's nodes.
+    blocks: Vec<Named>,
 }
 
 impl Linker {
     fn new(current: &Path) -> Self {
-        Linker { open: vec![current.to_path_buf()], trees: HashMap::new(), found: HashMap::new() }
-    }
-
-    /// `lookup` on the tree of the file `path`, written in `from`, names.
-    fn follow(&mut self, from: &Path, path: &str, lookup: Lookup) -> Option<Names> {
-        let file = resolve(from, path)?;
-        if let Some(found) = self.found.get(&(lookup, file.clone())) {
-            return found.clone();
+        Linker {
+            open: vec![current.to_path_buf()],
+            trees: HashMap::new(),
+            mixins: HashMap::new(),
+            included: HashMap::new(),
+            blocks: Vec::new(),
         }
-        if self.open.contains(&file) {
-            return None;
-        }
-        let tree = self.tree(&file)?;
-        self.open.push(file.clone());
-        let found = match lookup {
-            Lookup::IncludedBlocks if layout_of(&tree).is_some() => Some(Names::new()),
-            Lookup::IncludedBlocks => self.block_names(&tree, &file),
-            Lookup::LayoutBlocks => self.layout_block_names(&tree, &file),
-            Lookup::Mixins => self.mixin_names(&tree, &file),
-        };
-        self.open.pop();
-        self.found.insert((lookup, file), found.clone());
-        found
     }
 
     fn tree(&mut self, file: &Path) -> Option<Rc<Block>> {
@@ -402,28 +416,199 @@ impl Linker {
         self.trees.entry(file.to_path_buf()).or_insert_with(read).clone()
     }
 
-    /// The blocks in `block` and in the files it includes; an included file that extends a layout loses its blocks.
-    fn block_names(&mut self, block: &Block, file: &Path) -> Option<Names> {
-        let mut names = Names::new();
-        for node in nodes(block) {
-            match &node.kind {
-                NodeKind::NamedBlock { name, .. } => {
-                    names.insert(name.clone());
-                }
-                NodeKind::Include { file: included, .. } => names.extend(self.follow(file, &included.path, Lookup::IncludedBlocks)?),
-                _ => {}
-            }
+    /// `look` on the tree of the file `path`, written in `from`, names, with that file open; `None` in a cycle.
+    fn within<T>(&mut self, from: &Path, path: &str, look: impl FnOnce(&mut Self, &Block, &Path) -> Option<T>) -> Option<T> {
+        let file = resolve(from, path)?;
+        if self.open.contains(&file) {
+            return None;
         }
-        Some(names)
+        let tree = self.tree(&file)?;
+        self.open.push(file.clone());
+        let found = look(self, &tree, &file);
+        self.open.pop();
+        found
     }
 
-    /// The blocks a template that extends `tree` can fill: its own and its includes', and its layouts' up the chain.
-    fn layout_block_names(&mut self, tree: &Block, file: &Path) -> Option<Names> {
-        let mut names = self.block_names(tree, file)?;
-        if let Some(layout) = layout_of(tree) {
-            names.extend(self.follow(file, &layout.path, Lookup::LayoutBlocks)?);
+    /// pug-linker's `link` of `tree`, the template `file`, and the blocks of its top level its layout lacks, each with the
+    /// index of the top-level node it comes from.
+    fn link(&mut self, tree: &Block, file: &Path) -> Option<(Linked, Vec<(usize, String)>)> {
+        let layout = layout_of(tree);
+        let (mut roots, mut expected, mut mixins) = (Vec::new(), Vec::new(), Vec::new());
+        for (top, node) in tree.nodes.iter().enumerate().skip(usize::from(layout.is_some())) {
+            let items = self.flatten_node(node, file)?;
+            let mut pending: Vec<&Flat> = items.iter().rev().collect();
+            while let Some(item) = pending.pop() {
+                match item {
+                    Flat::Included(items) => pending.extend(items.iter().rev()),
+                    Flat::Named { .. } => {
+                        let id = self.instantiate(item)?;
+                        roots.push(id);
+                        expected.push((top, id));
+                    }
+                    Flat::Mixin(items) => {
+                        let ids = self.instantiate_all(items)?;
+                        mixins.extend(&ids);
+                        roots.extend(ids);
+                    }
+                    Flat::Nested(items) => roots.extend(self.instantiate_all(items)?),
+                }
+            }
         }
-        Some(names)
+        let declared = self.declared(&roots);
+        let Some(layout) = layout else { return Some((Linked { roots, declared }, Vec::new())) };
+        let (mut parent, _) = self.within(file, &layout.path, |linker, tree, file| linker.link(tree, file))?;
+        self.extend(&parent.declared, &roots);
+        let found = self.names_under(&parent.roots);
+        let unexpected =
+            expected.into_iter().map(|(top, id)| (top, self.blocks[id].name.clone())).filter(|(_, name)| !found.contains(name)).collect();
+        parent.declared.extend(declared);
+        parent.roots.splice(0..0, mixins);
+        Some((parent, unexpected))
+    }
+
+    /// The blocks of a node and what it includes, as `applyIncludes` leaves them: an included file that extends a layout
+    /// has none left.
+    fn flatten_node(&mut self, node: &Node, file: &Path) -> Option<Vec<Flat>> {
+        let under = |linker: &mut Self, nodes: Vec<&Node>| -> Option<Vec<Flat>> {
+            let mut out = Vec::new();
+            for node in nodes {
+                out.extend(linker.flatten_node(node, file)?);
+            }
+            Some(out)
+        };
+        let holding = |items: Vec<Flat>, hold: fn(Vec<Flat>) -> Flat| if items.is_empty() { Vec::new() } else { vec![hold(items)] };
+        Some(match &node.kind {
+            NodeKind::NamedBlock { name, mode, block } => {
+                vec![Flat::Named { name: name.clone(), mode: *mode, nodes: under(self, block.nodes.iter().collect())? }]
+            }
+            NodeKind::Include { file: included, block } => {
+                // Where its yield puts the include's own blocks isn't followed.
+                if nodes(block).iter().any(|node| matches!(node.kind, NodeKind::NamedBlock { .. })) {
+                    return None;
+                }
+                let items = self.included_blocks(file, &included.path)?;
+                if items.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![Flat::Included(items)]
+                }
+            }
+            NodeKind::MixinDefinition { block, .. } => holding(under(self, block.nodes.iter().collect())?, Flat::Mixin),
+            _ => holding(under(self, children(node))?, Flat::Nested),
+        })
+    }
+
+    /// The blocks the file `path` written in `from` names adds where it is included.
+    fn included_blocks(&mut self, from: &Path, path: &str) -> Option<Rc<Vec<Flat>>> {
+        let file = resolve(from, path)?;
+        if let Some(found) = self.included.get(&file) {
+            return found.clone();
+        }
+        let found = self.within(from, path, |linker, tree, file| {
+            if layout_of(tree).is_some() {
+                return Some(Rc::new(Vec::new()));
+            }
+            let mut out = Vec::new();
+            for node in &tree.nodes {
+                out.extend(linker.flatten_node(node, file)?);
+            }
+            Some(Rc::new(out))
+        });
+        self.included.insert(file, found.clone());
+        found
+    }
+
+    fn instantiate(&mut self, item: &Flat) -> Option<usize> {
+        let Flat::Named { name, mode, nodes } = item else { return None };
+        let nodes = self.instantiate_all(nodes)?;
+        if self.blocks.len() >= MAX_BLOCKS {
+            return None;
+        }
+        self.blocks.push(Named { name: name.clone(), mode: *mode, nodes, parents: Vec::new() });
+        Some(self.blocks.len() - 1)
+    }
+
+    /// The linked blocks of `items`, the containers between them left out.
+    fn instantiate_all(&mut self, items: &[Flat]) -> Option<Vec<usize>> {
+        let mut out = Vec::new();
+        for item in items {
+            match item {
+                Flat::Named { .. } => out.push(self.instantiate(item)?),
+                Flat::Mixin(items) | Flat::Nested(items) => out.extend(self.instantiate_all(items)?),
+                Flat::Included(items) => out.extend(self.instantiate_all(items)?),
+            }
+        }
+        Some(out)
+    }
+
+    /// `findDeclaredBlocks`: the blocks under `roots` that replace their layout's, by name, in document order.
+    fn declared(&self, roots: &[usize]) -> HashMap<String, Vec<usize>> {
+        let mut declared: HashMap<String, Vec<usize>> = HashMap::new();
+        let mut stack: Vec<usize> = roots.iter().rev().copied().collect();
+        while let Some(id) = stack.pop() {
+            let block = &self.blocks[id];
+            if block.mode == BlockMode::Replace {
+                declared.entry(block.name.clone()).or_default().push(id);
+            }
+            stack.extend(block.nodes.iter().rev());
+        }
+        declared
+    }
+
+    /// pug-linker's `extend`: each block under `roots` replaces, appends to or prepends to the layout's of its name, and
+    /// those it was linked to before; one inside a block of the same name is left alone.
+    fn extend(&mut self, layout: &HashMap<String, Vec<usize>>, roots: &[usize]) {
+        let mut open = HashSet::new();
+        for &id in roots {
+            self.extend_block(layout, id, &mut open);
+        }
+    }
+
+    fn extend_block(&mut self, layout: &HashMap<String, Vec<usize>>, id: usize, open: &mut HashSet<String>) {
+        let name = self.blocks[id].name.clone();
+        let linked = open.insert(name.clone());
+        if linked {
+            let mut targets = Vec::new();
+            layout.get(&name).into_iter().flatten().for_each(|&target| self.with_parents(target, &mut targets));
+            let (own, mode) = (self.blocks[id].nodes.clone(), self.blocks[id].mode);
+            for &target in &targets {
+                let held = &mut self.blocks[target].nodes;
+                match mode {
+                    BlockMode::Append => held.extend(&own),
+                    BlockMode::Prepend => {
+                        held.splice(0..0, own.iter().copied());
+                    }
+                    BlockMode::Replace => *held = own.clone(),
+                }
+            }
+            self.blocks[id].parents = targets;
+        }
+        for child in self.blocks[id].nodes.clone() {
+            self.extend_block(layout, child, open);
+        }
+        if linked {
+            open.remove(&name);
+        }
+    }
+
+    /// `flattenParentBlocks`: a block after the blocks it was linked to, theirs first.
+    fn with_parents(&self, id: usize, out: &mut Vec<usize>) {
+        for &parent in &self.blocks[id].parents {
+            self.with_parents(parent, out);
+        }
+        out.push(id);
+    }
+
+    /// The names of the blocks in the tree `roots` starts.
+    fn names_under(&self, roots: &[usize]) -> Names {
+        let mut seen = HashSet::new();
+        let mut stack = roots.to_vec();
+        while let Some(id) = stack.pop() {
+            if seen.insert(id) {
+                stack.extend(&self.blocks[id].nodes);
+            }
+        }
+        seen.into_iter().map(|id| self.blocks[id].name.clone()).collect()
     }
 
     /// The mixins `tree`, the files it includes and its layouts define.
@@ -435,12 +620,22 @@ impl Linker {
                     names.insert(name.clone());
                 }
                 NodeKind::Include { file: other, .. } | NodeKind::Extends { file: other } => {
-                    names.extend(self.follow(file, &other.path, Lookup::Mixins)?);
+                    names.extend(self.mixins_of(file, &other.path)?);
                 }
                 _ => {}
             }
         }
         Some(names)
+    }
+
+    fn mixins_of(&mut self, from: &Path, path: &str) -> Option<Names> {
+        let file = resolve(from, path)?;
+        if let Some(found) = self.mixins.get(&file) {
+            return found.clone();
+        }
+        let found = self.within(from, path, |linker, tree, file| linker.mixin_names(tree, file));
+        self.mixins.insert(file, found.clone());
+        found
     }
 }
 
@@ -486,6 +681,28 @@ mod tests {
         }
     }
 
+    /// Node's `path.posix.extname` and `path.win32.extname`, whatever the platform the test runs on.
+    #[test]
+    fn extensions_follow_the_platforms_separators() {
+        for (path, posix, windows) in [
+            ("a.b\\c", true, false),
+            ("a\\b.c", true, true),
+            ("dir\\.a", true, false),
+            ("x\\..", true, false),
+            ("a.b\\", true, true),
+            ("C:.a", true, false),
+            ("C:a.b", true, true),
+            ("c:\\x\\y.pug", true, true),
+            ("a.b/c", false, false),
+            ("dir/.a", false, false),
+            ("..a", true, true),
+            ("...", true, true),
+            (".", false, false),
+        ] {
+            assert_eq!((has_extension(path, false), has_extension(path, true)), (posix, windows), "{path}");
+        }
+    }
+
     #[test]
     fn relative_paths_resolve_from_the_folder_and_absolute_ones_from_the_asset_root() {
         let root = temp("resolve");
@@ -508,6 +725,8 @@ mod tests {
         let offset = text.find("notes").unwrap() + 2;
         assert_eq!(ref_at(text, offset).map(|r| r.path), Some("notes.md".to_string()));
         assert_eq!(ref_at("include a\np #[b", 9).map(|r| r.path), Some("a".to_string()), "lines above a syntax error");
+        let spaced = "include \u{a0}missing \u{feff}\n";
+        assert_eq!(file_refs(spaced).iter().map(|r| &spaced[r.start..r.end]).collect::<Vec<_>>(), ["missing"]);
     }
 
     #[test]
@@ -615,6 +834,79 @@ mod tests {
     }
 
     #[test]
+    fn a_block_is_expected_where_the_linked_layout_has_it() {
+        let root = temp("linked");
+        write_files(
+            &root,
+            &[
+                ("layout.pug", "block content\n"),
+                ("ghost.pug", "extends layout\nblock ghost\n  block ghost\n"),
+                ("both.pug", "extends layout\nblock ghost\n  block also_bad\nblock also_bad\n"),
+                ("nested.pug", "extends layout\nblock content\n  block inner\nblock inner\n"),
+                ("base.pug", "block outer\n  block inner\n"),
+                ("replaced.pug", "extends base\nblock outer\n  p replaced\n"),
+                ("appended.pug", "extends base\nblock append outer\n  p more\n"),
+                ("page.pug", "extends replaced\nblock inner\n  p hi\n"),
+                ("page-appended.pug", "extends appended\nblock inner\n  p hi\n"),
+                ("mid-nested.pug", "extends base\nblock outer\n  block deeper\n"),
+                ("page-deeper.pug", "extends mid-nested\nblock deeper\nblock inner\n"),
+            ],
+        );
+        let unexpected = |name: &str| format!("Unexpected block {name}");
+        assert_eq!(found(&root, "ghost.pug"), [at(1, code::UNEXPECTED_BLOCK, &unexpected("ghost"))], "not its own block's");
+        assert_eq!(
+            found(&root, "both.pug"),
+            [at(1, code::UNEXPECTED_BLOCK, &unexpected("ghost")), at(3, code::UNEXPECTED_BLOCK, &unexpected("also_bad"))]
+        );
+        assert!(found(&root, "nested.pug").is_empty(), "the layout's block holds it");
+        assert_eq!(found(&root, "page.pug"), [at(1, code::UNEXPECTED_BLOCK, &unexpected("inner"))], "replaced away");
+        assert!(found(&root, "page-appended.pug").is_empty(), "appending keeps it");
+        assert_eq!(found(&root, "page-deeper.pug"), [at(2, code::UNEXPECTED_BLOCK, &unexpected("inner"))]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn blocks_an_extending_template_includes_are_its_own() {
+        let root = temp("included-blocks");
+        write_files(
+            &root,
+            &[
+                ("layout.pug", "block content\n"),
+                ("blocks.pug", "block nope\nblock content\n"),
+                ("page.pug", "extends layout\ninclude blocks\n"),
+                ("fills.pug", "extends layout\nblock content\n  include blocks\n"),
+                ("extending.pug", "extends layout\nblock nope\n"),
+                ("quiet.pug", "extends layout\ninclude extending\n"),
+                ("lost.pug", "extends layout\ninclude gone\nblock nope\n"),
+                ("self.pug", "extends layout\ninclude self\nblock nope\n"),
+            ],
+        );
+        assert_eq!(found(&root, "page.pug"), [at(1, code::UNEXPECTED_BLOCK, "Unexpected block nope in blocks")]);
+        assert!(found(&root, "fills.pug").is_empty(), "inside a block the layout has");
+        assert!(found(&root, "quiet.pug").is_empty(), "an included file that extends loses its blocks");
+        let gone = format!("Missing file {}", crate::util::slash_path(&root.join("gone.pug")));
+        assert_eq!(found(&root, "lost.pug"), [at(1, code::MISSING_FILE, &gone)], "unknown on the way");
+        assert!(found(&root, "self.pug").is_empty(), "a cycle");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn extend_is_extends() {
+        let root = temp("extend");
+        write_files(
+            &root,
+            &[
+                ("app/assets/templates/lay.pug", "block x\n  +foo\n"),
+                ("app/assets/templates/child.pug", "extend lay\nmixin foo\n  p\nblock x\nblock y\n"),
+            ],
+        );
+        assert!(found(&root, "app/assets/templates/lay.pug").is_empty(), "its mixin comes from the template that extends it");
+        assert_eq!(found(&root, "app/assets/templates/child.pug"), [at(4, code::UNEXPECTED_BLOCK, "Unexpected block y")]);
+        assert_eq!(path_prefix("extend lay", 10), Some((Keyword::Extends, 7, "lay")));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn mixins_from_includes_and_layouts() {
         let root = temp("mixins");
         write_files(
@@ -665,26 +957,39 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    #[test]
-    fn a_file_reached_by_many_paths_is_followed_once() {
-        // Each level includes both files of the next: 2^40 paths to the last level.
+    /// Each level includes both files of the next: 2^40 paths to the last level, which holds `last`.
+    fn diamond(name: &str, last: &str) -> PathBuf {
         const LEVELS: usize = 40;
-        let root = temp("diamond");
+        let root = temp(name);
         let mut files: Vec<(String, String)> = (0..LEVELS)
             .flat_map(|level| {
                 let next = format!("include a{0}\ninclude b{0}\n", level + 1);
                 [(format!("app/a{level}.pug"), next.clone()), (format!("app/b{level}.pug"), next)]
             })
             .collect();
-        files.extend([(format!("app/a{LEVELS}.pug"), "mixin m\n  p\n".into()), (format!("app/b{LEVELS}.pug"), String::new())]);
+        files.extend([(format!("app/a{LEVELS}.pug"), last.into()), (format!("app/b{LEVELS}.pug"), String::new())]);
         files.push(("app/page.pug".into(), "extends a0\nblock x\n+m\n+n\n".into()));
         let files: Vec<(&str, &str)> = files.iter().map(|(path, text)| (path.as_str(), text.as_str())).collect();
         write_files(&root, &files);
-        let message = "Mixin `n` is not defined here, in an included file or in a layout";
+        root
+    }
+
+    const UNKNOWN_N: &str = "Mixin `n` is not defined here, in an included file or in a layout";
+
+    #[test]
+    fn a_file_reached_by_many_paths_is_followed_once() {
+        let root = diamond("diamond", "mixin m\n  p\n");
         assert_eq!(
             found(&root, "app/page.pug"),
-            [at(1, code::UNEXPECTED_BLOCK, "Unexpected block x"), at(3, code::UNKNOWN_MIXIN, message)]
+            [at(1, code::UNEXPECTED_BLOCK, "Unexpected block x"), at(3, code::UNKNOWN_MIXIN, UNKNOWN_N)]
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn blocks_copied_by_too_many_includes_are_not_linked() {
+        let root = diamond("diamond_blocks", "mixin m\n  p\nblock y\n");
+        assert_eq!(found(&root, "app/page.pug"), [at(3, code::UNKNOWN_MIXIN, UNKNOWN_N)]);
         let _ = std::fs::remove_dir_all(&root);
     }
 }

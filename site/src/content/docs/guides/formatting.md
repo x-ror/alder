@@ -51,7 +51,7 @@ A file Haml or Slim would reject is left unchanged, and so is any result that wo
 
 ## Pug
 
-`.pug`, `.jade` and `pug-rails`' `.jst.pug` templates get whitespace only: the indentation, trailing whitespace and the final newline. Each line that starts a node is indented one level per nesting. A text block (`script.`, `style.`, `p.`, a `//` or `//-` comment, a filter, a `-` code block) moves to one level below its line, and the indentation its lines have past the block's own stays, since Pug outputs it. The lines of a multi-line attribute list or mixin call move with their line, and a value that goes on over several lines (an object, a template literal) keeps every byte.
+`.pug`, `.jade` and `pug-rails`' `.jst.pug` templates get whitespace only: the indentation, trailing whitespace and the final newline. Each line that starts a node is indented one level per nesting. A text block (`script.`, `style.`, `p.`, a `//` or `//-` comment, a filter, a `-` code block) moves to one level below its line, and the indentation its lines have past the block's own stays, since Pug outputs it. The lines of a multi-line attribute list or mixin call move with their line (between attributes, their indentation past the line's takes the indentation style, a tab counted as one level and what is left over kept as spaces), and a value that goes on over several lines (an object, a template literal) keeps every byte.
 
 ```pug title="Before"
 ul
@@ -71,7 +71,7 @@ ul
           "#{user.id}");
 ```
 
-Pug reads tabs as well as spaces, so `Layout/IndentationStyle` applies to it as to ERB (see [below](#indentation-width-and-line-endings)). A file is left unchanged when Pug would reject it (inconsistent indentation, tabs and spaces mixed in one line's indentation, any syntax error), when it has a lone CR line break or an `&attributes(...)` over several lines, and when the result, parsed again, is not the same Pug tree, as for a tab-indented text block one of whose lines goes on with spaces past the tabs. The tree is compared without line numbers and without the spaces that end a piece of JavaScript (`- x  `), which change nothing it does. _Format Selection_ is not offered for Pug, as for Slim: a line nests under any less indented line, so re-indenting some lines without the ones around them can change the nesting.
+Pug reads tabs as well as spaces, so `Layout/IndentationStyle` applies to it as to ERB (see [below](#indentation-width-and-line-endings)). A file is left unchanged when Pug would reject it (inconsistent indentation, tabs and spaces mixed in one line's indentation, any syntax error), when it has a lone CR line break, an `&attributes(...)` over several lines or a mixin call whose name is on the line after its `+`, and when the result, parsed again, is not the same Pug tree, as for a tab-indented text block one of whose lines goes on with spaces past the tabs. The tree is compared without line numbers and without the spaces that end a piece of JavaScript (`- x  `), which change nothing it does. _Format Selection_ is not offered for Pug, as for Slim: a line nests under any less indented line, so re-indenting some lines without the ones around them can change the nesting.
 
 The [rules reference](/vscode-ruby-templates/reference/rules/) lists the formatting rules, which are configured in a `.ruby-templates.toml`.
 

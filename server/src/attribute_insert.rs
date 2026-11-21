@@ -208,6 +208,8 @@ mod tests {
         assert_eq!(img("img(src=`:)`)\n").as_deref(), Some("img(src=`:)` alt=\"\")\n"));
         assert_eq!(img("img(src=/\\)/.source)\n").as_deref(), Some("img(src=/\\)/.source alt=\"\")\n"));
         assert_eq!(img("img(src=\")\")\n").as_deref(), Some("img(src=\")\" alt=\"\")\n"));
+        assert_eq!(img("img(src=public)\n").as_deref(), Some("img(src=public alt=\"\")\n"));
+        assert_eq!(img("img(src=1.)\n").as_deref(), Some("img(src=1. alt=\"\")\n"));
         // Pug would read `alt` as part of the comment's line, not as an attribute.
         assert_eq!(img("img(src=x //\n)\n"), None);
     }

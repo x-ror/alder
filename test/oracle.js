@@ -268,6 +268,10 @@ const checkExpectation = (
   );
 };
 
+// `check` ends a message, on its last line when it has several, with its rule, ` [Syntax/Ruby]`, which the official
+// message doesn't have.
+const withoutRule = (message) => message.replace(/ \[[A-Z]\w*\/\w+\]$/, "");
+
 // Diagnostics by absolute file path: [{line, column, severity, message}].
 const oursByPath = ({ extension }, files) => {
   const known = new Set(files.map((file) => path.resolve(file)));
@@ -282,19 +286,18 @@ const oursByPath = ({ extension }, files) => {
   for (const text of r.stdout.split("\n")) {
     const m = text.match(diagnostic);
     if (m) {
-      // `check` ends a message's first line with its rule, ` [Syntax/Ruby]`, which the official message doesn't have.
       last = {
         line: Number(m[2]),
         column: Number(m[3]),
         severity: m[4],
-        message: m[5].replace(/ \[[A-Z]\w*\/\w+\]$/, ""),
+        message: withoutRule(m[5]),
       };
       const file = path.resolve(m[1]);
       if (!known.has(file))
         throw new Error(`check reported an unknown file: ${m[1]}`);
       byPath.set(file, [...(byPath.get(file) ?? []), last]);
     } else if (last && text) {
-      last.message += `\n${text}`;
+      last.message = withoutRule(`${last.message}\n${text}`);
     }
   }
   return byPath;

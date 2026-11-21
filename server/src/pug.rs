@@ -57,6 +57,9 @@ pub fn diagnostics(text: &str, path: Option<&Path>, reports: &dyn Fn(&str) -> bo
         }
         Err(found) => {
             let code = code_of(found.code);
+            if !reports(code) {
+                return vec![];
+            }
             vec![coded(error(range(text, &found, code == code::INCONSISTENT_INDENT), found.message), code)]
         }
     }
@@ -89,7 +92,7 @@ fn normalize_block(block: &mut Block) {
 
 fn normalize_node(node: &mut Node) {
     (node.line, node.column) = (0, 0);
-    let trim = |js: &mut String| js.truncate(js.trim_end().len());
+    let trim = |js: &mut String| js.truncate(js.trim_end_matches(lexer::is_js_whitespace).len());
     match &mut node.kind {
         NodeKind::Tag(tag) | NodeKind::MixinCall { tag, .. } => {
             tag.attrs.iter_mut().for_each(|attr| (attr.line, attr.column) = (0, 0));
@@ -159,19 +162,25 @@ fn push_block<'a>(block: &'a Block, out: &mut Vec<&'a Node>) {
 
 fn push_node<'a>(node: &'a Node, out: &mut Vec<&'a Node>) {
     out.push(node);
+    children(node).into_iter().for_each(|child| push_node(child, out));
+}
+
+/// The nodes right under `node`, in pug-walk's order; an `else if` is one of its `if`'s.
+pub(crate) fn children(node: &Node) -> Vec<&Node> {
+    let mut out: Vec<&Node> = Vec::new();
     match &node.kind {
-        NodeKind::Tag(tag) | NodeKind::MixinCall { tag, .. } => push_block(&tag.block, out),
+        NodeKind::Tag(tag) | NodeKind::MixinCall { tag, .. } => out.extend(&tag.block.nodes),
         NodeKind::Conditional(conditional) => {
-            push_block(&conditional.consequent, out);
+            out.extend(&conditional.consequent.nodes);
             match &conditional.alternate {
-                Some(Alternate::ElseIf(node)) => push_node(node, out),
-                Some(Alternate::Else(block)) => push_block(block, out),
+                Some(Alternate::ElseIf(node)) => out.push(node),
+                Some(Alternate::Else(block)) => out.extend(&block.nodes),
                 None => {}
             }
         }
         NodeKind::Each { block, alternate, .. } => {
-            push_block(block, out);
-            alternate.iter().for_each(|block| push_block(block, out));
+            out.extend(&block.nodes);
+            alternate.iter().for_each(|block| out.extend(&block.nodes));
         }
         NodeKind::When { block: Some(block), .. }
         | NodeKind::EachOf { block, .. }
@@ -180,20 +189,26 @@ fn push_node<'a>(node: &'a Node, out: &mut Vec<&'a Node>) {
         | NodeKind::NamedBlock { block, .. }
         | NodeKind::MixinDefinition { block, .. }
         | NodeKind::Include { block, .. }
-        | NodeKind::Filter { block, .. } => push_block(block, out),
-        NodeKind::Code(code) => code.block.iter().for_each(|block| push_block(block, out)),
+        | NodeKind::Filter { block, .. } => out.extend(&block.nodes),
+        NodeKind::Code(code) => code.block.iter().for_each(|block| out.extend(&block.nodes)),
         _ => {}
     }
+    out
 }
 
 /// The template's tree, or the tree of the lines before its first error.
 pub fn parsed(text: &str) -> Option<Block> {
+    parsable(text).and_then(|text| parser::parse(text).ok())
+}
+
+/// The template, or the lines before its first error when those parse.
+pub(crate) fn parsable(text: &str) -> Option<&str> {
     let error = match parser::parse(text) {
-        Ok(tree) => return Some(tree),
+        Ok(_) => return Some(text),
         Err(error) => error,
     };
     let before: usize = text.split_inclusive('\n').take(error.line.saturating_sub(1)).map(str::len).sum();
-    parser::parse(&text[..before]).ok()
+    parser::parse(&text[..before]).is_ok().then(|| &text[..before])
 }
 
 /// The byte offset of Pug's 1-based line and UTF-16 column, which don't count the byte order mark.
@@ -319,6 +334,7 @@ mod tests {
     #[test]
     fn checks_whose_rule_is_off_are_not_run() {
         assert!(diagnostics("img\n  p\n", None, &|code| code != code::VOID_CHILDREN).is_empty());
+        assert!(diagnostics("div\n    p\n  a\n", None, &|code| code != code::INCONSISTENT_INDENT).is_empty());
     }
 
     #[test]

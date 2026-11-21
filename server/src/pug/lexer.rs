@@ -17,7 +17,8 @@ macro_rules! regex {
     };
 }
 
-// pug-lexer's regular expressions, with JavaScript's ASCII `\w` and `\b` spelled out.
+// pug-lexer's regular expressions, with JavaScript's ASCII `\w` and `\b` spelled out, its `\s` as `is_js_whitespace`
+// has it, and its `.` as `[^\n\r\u{2028}\u{2029}]`: Rust's `.` stops only at `\n`.
 regex!(COMMENT, r"^//(-)?([^\n]*)");
 regex!(TAG, r"^([A-Za-z0-9_](?:[-:A-Za-z0-9_]*[A-Za-z0-9_])?)");
 regex!(FILTER, r"^:([A-Za-z0-9_\-]+)");
@@ -25,7 +26,7 @@ regex!(DOCTYPE, r"^doctype *([^\n]*)");
 regex!(ID, r"^#([A-Za-z0-9_-]+)");
 regex!(CLASS, r"^\.([_a-zA-Z0-9\-]*[_a-zA-Z][_a-zA-Z0-9\-]*)");
 regex!(CLASS_WITHOUT_LETTER, r"^\.[_a-zA-Z0-9\-]+");
-// The name quoted in an invalid id or class message: JavaScript's `.` stops at line terminators, its `[^...]` doesn't.
+// The name quoted in an invalid id or class message.
 regex!(INVALID_NAME, r"[^\n\r\u{2028}\u{2029}][^ \t(#.:]*");
 regex!(TEXT, r"^(?:\| ?| )([^\n]+)");
 regex!(TEXT_SPACE, r"^( )");
@@ -49,17 +50,16 @@ regex!(WHEN_MORE, r":([^:\n]+)");
 regex!(WHEN_WORD, r"^when(?-u:\b)");
 regex!(DEFAULT, r"^default");
 regex!(DEFAULT_WORD, r"^default(?-u:\b)");
-regex!(CALL, r"^\+(\s*)(([-A-Za-z0-9_]+)|(#\{))");
+regex!(CALL, r"^\+([\s\x{FEFF}--\x{85}]*)(([-A-Za-z0-9_]+)|(#\{))");
 regex!(CALL_ARGUMENTS, r"^ *\(");
-regex!(CALL_ATTRIBUTES, r"^\s*[-A-Za-z0-9_]+ *=");
-regex!(MIXIN, r"^mixin +([-A-Za-z0-9_]+)(?: *\((.*)\))? *");
+regex!(CALL_ATTRIBUTES, r"^[\s\x{FEFF}--\x{85}]*[-A-Za-z0-9_]+ *=");
+regex!(MIXIN, r"^mixin +([-A-Za-z0-9_]+)(?: *\(([^\n\r\u{2028}\u{2029}]*)\))? *");
 regex!(CONDITIONAL, r"^(if|unless|else if|else)(?-u:\b)([^\n]*)");
 regex!(WHILE, r"^while +([^\n]+)");
 regex!(WHILE_WORD, r"^while(?-u:\b)");
 regex!(EACH, r"^(?:each|for) +([a-zA-Z_$][A-Za-z0-9_$]*)(?: *, *([a-zA-Z_$][A-Za-z0-9_$]*))? * in *([^\n]+)");
 regex!(EACH_WORD, r"^(?:each|for)(?-u:\b)");
 regex!(EACH_DASHED, r"^- *(?:each|for) +([a-zA-Z_$][A-Za-z0-9_$]*)(?: *, *([a-zA-Z_$][A-Za-z0-9_$]*))? +in +([^\n]+)");
-// JavaScript's `.` in `(.*?)`: no line terminator.
 regex!(EACH_OF, r"^(?:each|for) ([^\n\r\u{2028}\u{2029}]*?) of *([^\n]+)");
 regex!(EACH_OF_VALUE, r"^(?:[a-zA-Z_$][A-Za-z0-9_$]*|\[ *[a-zA-Z_$][A-Za-z0-9_$]* *, *[a-zA-Z_$][A-Za-z0-9_$]* *\])$");
 regex!(EACH_OF_DASHED, r"^- *(?:each|for) +([a-zA-Z_$][A-Za-z0-9_$]*)(?: *, *([a-zA-Z_$][A-Za-z0-9_$]*))? +of +([^\n]+)");
@@ -68,9 +68,10 @@ regex!(BLOCK_CODE, r"^-");
 regex!(ATTRIBUTES_BLOCK, r"^&attributes(?-u:\b)");
 regex!(SLASH, r"^/");
 regex!(COLON, r"^: +");
-regex!(STRING_INTERPOLATION, r"(\\)?([#!])\{");
+// The text after the `{` must reach the end without a line terminator other than `\n`.
+regex!(STRING_INTERPOLATION, r"(\\)?([#!])\{([^\r\u{2028}\u{2029}]*)$");
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Pos {
     pub line: usize,
     pub column: usize,
@@ -255,6 +256,19 @@ fn is_space(c: char) -> bool {
     matches!(c, ' ' | '\n' | '\t')
 }
 
+/// JavaScript's whitespace, what its `\s` and `trim` take: Unicode's, with U+FEFF and without U+0085.
+pub(crate) fn is_js_whitespace(c: char) -> bool {
+    c == BOM || (c.is_whitespace() && c != '\u{85}')
+}
+
+pub(crate) fn js_trim(s: &str) -> &str {
+    s.trim_matches(is_js_whitespace)
+}
+
+fn is_js_line_terminator(c: char) -> bool {
+    matches!(c, '\n' | '\r' | '\u{2028}' | '\u{2029}')
+}
+
 fn mismatched_bracket(close: char) -> String {
     format!("Mismatched Bracket: {close}")
 }
@@ -412,17 +426,6 @@ impl Lexer {
         }
     }
 
-    /// Moves the position to the end of `text`, which starts at the current position.
-    fn step_over(&mut self, text: &str) {
-        match text.rfind('\n') {
-            Some(last) => {
-                self.increment_line(text.matches('\n').count());
-                self.column += units(&text[last + 1..]);
-            }
-            None => self.column += units(text),
-        }
-    }
-
     fn top(&self) -> usize {
         self.indent_stack.last().copied().unwrap_or(0)
     }
@@ -469,8 +472,13 @@ impl Lexer {
         match parse_until(self.rest(), close, skip + 1) {
             Ok(range) => Ok(range),
             Err((failure, at)) => {
-                let before = self.rest()[..at].to_string();
-                self.step_over(&before);
+                // Pug looks for line breaks from the bracket on, so one before it counts as a column.
+                let after_bracket = &self.rest()[skip..at];
+                let lines = after_bracket.matches('\n').count();
+                let line_start = after_bracket.rfind('\n').map_or(0, |n| skip + n + 1);
+                let columns = units(&self.rest()[line_start..at]);
+                self.increment_line(lines);
+                self.column += columns;
                 Err(match failure {
                     Failure::EndOfString => {
                         self.error("PUG:NO_END_BRACKET", format!("The end of the string reached with no closing bracket {close} found."))
@@ -714,8 +722,7 @@ impl Lexer {
                 self.push(make(before), at);
             }
             let must_escape = &caps[2] == "#";
-            let rest = &value[caps.get(0).map_or(0, |m| m.end())..];
-            return self.add_string_interpolation(make, rest, must_escape);
+            return self.add_string_interpolation(make, &caps[3], must_escape);
         }
         let value = format!("{prefix}{value}");
         let at = self.pos();
@@ -828,11 +835,11 @@ impl Lexer {
         let Some((whole, captured)) = re.captures(self.rest()).map(|caps| (caps[0].to_string(), caps[1].to_string())) else {
             return false;
         };
-        let mut name = captured.trim();
+        let mut name = js_trim(&captured);
         let mut comment = "";
         if let Some(at) = name.find("//") {
             comment = &name[at..];
-            name = name[..at].trim();
+            name = js_trim(&name[..at]);
         }
         if name.is_empty() {
             return false;
@@ -875,7 +882,7 @@ impl Lexer {
         let Some(Scanned { start, val }) = self.scan_end_of_line(&PATH) else {
             return false;
         };
-        let path = val.unwrap_or_default().trim().to_string();
+        let path = js_trim(&val.unwrap_or_default()).to_string();
         if path.is_empty() {
             return false;
         }
@@ -984,7 +991,7 @@ impl Lexer {
 
     fn conditional(&mut self) -> Result<bool, Error> {
         let Some((whole, keyword, js)) =
-            CONDITIONAL.captures(self.rest()).map(|caps| (caps[0].to_string(), caps[1].to_string(), caps[2].trim().to_string()))
+            CONDITIONAL.captures(self.rest()).map(|caps| (caps[0].to_string(), caps[1].to_string(), js_trim(&caps[2]).to_string()))
         else {
             return Ok(false);
         };
@@ -1054,7 +1061,7 @@ impl Lexer {
             self.consume(whole.len());
             let start = self.pos();
             self.column += units(&whole);
-            if !EACH_OF_VALUE.is_match(val.trim()) {
+            if !EACH_OF_VALUE.is_match(js_trim(&val)) {
                 return Err(self.error(
                     "PUG:MALFORMED_EACH_OF_LVAL",
                     "The value variable for each must either be a valid identifier (e.g. `item`) or a pair of identifiers in square brackets (e.g. `[key, value]`).",
@@ -1365,7 +1372,7 @@ impl Lexer {
         while let Some(after) = rest.get(at + 1..) {
             let line = &after[..after.find('\n').unwrap_or(after.len())];
             let width = self.line_indentation(line);
-            if width < indents && !line.trim().is_empty() {
+            if width < indents && !line.chars().all(is_js_whitespace) {
                 if width > self.top() {
                     return Err(width);
                 }
@@ -1509,7 +1516,7 @@ impl CharState {
 
     /// character-parser's `isRegexp`: whether a `/` here starts a regular expression rather than dividing.
     fn regexp_can_start(&self) -> bool {
-        let mut before = self.history.iter().rev().copied().skip_while(|c| c.is_whitespace()).peekable();
+        let mut before = self.history.iter().rev().copied().skip_while(|&c| is_js_whitespace(c)).peekable();
         match before.peek().copied() {
             Some(')') => false,
             Some('}') => true,
@@ -1594,42 +1601,257 @@ fn is_keyword(word: &str) -> bool {
     KEYWORDS.contains(&word)
 }
 
-/// Stands in for `is-expression` where Pug only asks whether an attribute value is complete before a space or a
-/// comma: balanced, without an open `?` of a conditional, and not ending in an operator or an operator keyword.
+/// Stands in for `is-expression` (acorn 7, ES2019, not strict) where Pug only asks whether an attribute value is complete
+/// before a space or a comma: balanced, without an open `?` of a conditional (`?.` and `??` are ES2020), a `class` or
+/// `function` with its body, no statement keyword, and ending in an operand or a postfix `++`/`--`.
 fn looks_complete(code: &str) -> bool {
-    let code = code.trim();
-    if code.is_empty() {
+    let Some(tokens) = js_tokens(code) else {
         return false;
-    }
-    let chars: Vec<char> = code.chars().collect();
-    let mut state = CharState::default();
+    };
+    let mut brackets = Vec::new();
+    // The bracket depths of the `class` and `function` words whose body hasn't closed.
+    let mut bodies: Vec<usize> = Vec::new();
     let mut open_conditionals = 0i32;
-    for (i, &c) in chars.iter().enumerate() {
-        if !state.is_nesting() {
-            let optional = matches!(chars.get(i + 1), Some('.' | '?')) || (i > 0 && chars[i - 1] == '?');
-            match c {
-                '?' if !optional => open_conditionals += 1,
-                ':' => open_conditionals -= 1,
-                _ => {}
+    for token in &tokens {
+        match token.kind {
+            Js::Open(close) => brackets.push(close),
+            Js::Close(c) => {
+                if brackets.pop() != Some(c) {
+                    return false;
+                }
+                let depth = brackets.len();
+                bodies.retain(|&at| at <= depth);
+                if c == '}' && bodies.last() == Some(&depth) {
+                    bodies.pop();
+                }
             }
-        }
-        if state.parse_char(c).is_err() {
-            return false;
+            Js::Question if brackets.is_empty() => open_conditionals += 1,
+            Js::Colon if brackets.is_empty() => open_conditionals -= 1,
+            Js::Spread if brackets.is_empty() => return false,
+            Js::Reserved(Reserved::Body) => bodies.push(brackets.len()),
+            // Inside brackets a statement keyword may be in a function's body or an object's key.
+            Js::Reserved(Reserved::Statement) if brackets.is_empty() => return false,
+            _ => {}
         }
     }
-    if state.is_nesting() || open_conditionals > 0 {
+    if !brackets.is_empty() || !bodies.is_empty() || open_conditionals > 0 {
         return false;
     }
-    if code.ends_with("++") || code.ends_with("--") {
-        return true;
+    match tokens.as_slice() {
+        [.., before, last] if last.kind == Js::Update => !last.newline_before && matches!(before.kind, Js::Name | Js::Close(')' | ']')),
+        [.., last] => last.kind.ends_operand(),
+        [] => false,
     }
-    if code.ends_with(|c: char| is_punctuator(Some(c)) && !matches!(c, ')' | ']' | '}')) {
-        return false;
+}
+
+/// What a reserved word is in an expression. `let`, `yield`, `static` and the other words only strict mode reserves are
+/// identifiers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Reserved {
+    Value,
+    Operator,
+    /// `class` and `function`, complete with their `{...}`.
+    Body,
+    /// Never in an expression, but as a property name or key.
+    Statement,
+}
+
+fn reserved(word: &str) -> Option<Reserved> {
+    Some(match word {
+        "this" | "super" | "null" | "true" | "false" => Reserved::Value,
+        "new" | "typeof" | "void" | "delete" | "in" | "instanceof" | "extends" => Reserved::Operator,
+        "class" | "function" => Reserved::Body,
+        "break" | "case" | "catch" | "const" | "continue" | "debugger" | "default" | "do" | "else" | "enum" | "export" | "finally"
+        | "for" | "if" | "import" | "return" | "switch" | "throw" | "try" | "var" | "while" | "with" => Reserved::Statement,
+        _ => return None,
+    })
+}
+
+/// A JavaScript token, as far as `looks_complete` tells them apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Js {
+    /// An identifier, or any word after `.`.
+    Name,
+    Reserved(Reserved),
+    /// A number, string, template literal or regular expression.
+    Literal,
+    /// An opening bracket, by the character that closes it.
+    Open(char),
+    Close(char),
+    /// `++` or `--`.
+    Update,
+    Spread,
+    Dot,
+    Question,
+    Colon,
+    Operator,
+}
+
+impl Js {
+    fn ends_operand(self) -> bool {
+        matches!(self, Js::Name | Js::Literal | Js::Close(_) | Js::Reserved(Reserved::Value))
     }
-    let before_word = code.trim_end_matches(|c: char| c.is_ascii_alphanumeric() || c == '_' || c == '$');
-    let word = &code[before_word.len()..];
-    let operand_keyword = is_keyword(word) && word != "this" && word != "super";
-    !operand_keyword || before_word.ends_with('.')
+}
+
+#[derive(Debug, Clone, Copy)]
+struct JsToken {
+    kind: Js,
+    newline_before: bool,
+}
+
+/// The tokens of `code`, or `None` where acorn stops: an unclosed string, template, regular expression or comment, a line
+/// comment (`is-expression` refuses them), or a character no token starts with.
+fn js_tokens(code: &str) -> Option<Vec<JsToken>> {
+    let chars: Vec<char> = code.chars().collect();
+    let mut tokens: Vec<JsToken> = Vec::new();
+    let mut newline_before = false;
+    let mut i = 0;
+    while let Some(&c) = chars.get(i) {
+        let start = i;
+        let next = chars.get(i + 1).copied();
+        let previous = tokens.last().map(|t| t.kind);
+        i += 1;
+        let kind = match c {
+            _ if is_js_line_terminator(c) => {
+                newline_before = true;
+                continue;
+            }
+            _ if is_js_whitespace(c) => continue,
+            '/' if next == Some('/') => return None,
+            '/' if next == Some('*') => {
+                let body = &chars[start + 2..];
+                let len = body.windows(2).position(|pair| pair == ['*', '/'])?;
+                newline_before |= body[..len].iter().any(|&c| is_js_line_terminator(c));
+                i = start + 2 + len + 2;
+                continue;
+            }
+            '/' if previous.is_none_or(|p| !p.ends_operand() && p != Js::Update) => {
+                i = regexp_end(&chars, start)?;
+                Js::Literal
+            }
+            '\'' | '"' => {
+                i = string_end(&chars, start)?;
+                Js::Literal
+            }
+            '`' => {
+                i = template_end(&chars, start)?;
+                Js::Literal
+            }
+            '.' if next.is_some_and(|n| n.is_ascii_digit()) => {
+                i = number_end(&chars, start);
+                Js::Literal
+            }
+            '0'..='9' => {
+                i = number_end(&chars, start);
+                Js::Literal
+            }
+            '.' if chars.get(i..i + 2) == Some(&['.', '.'][..]) => {
+                i += 2;
+                Js::Spread
+            }
+            '.' => Js::Dot,
+            '+' | '-' if next == Some(c) => {
+                i += 1;
+                Js::Update
+            }
+            '?' => Js::Question,
+            ':' => Js::Colon,
+            ')' | ']' | '}' => Js::Close(c),
+            '(' | '[' | '{' => Js::Open(closing_bracket(c)?),
+            _ if is_punctuator(Some(c)) => Js::Operator,
+            _ if c.is_alphabetic() || c == '_' || c == '$' => {
+                while chars.get(i).is_some_and(|&c| is_identifier_part(c)) {
+                    i += 1;
+                }
+                let word: String = chars[start..i].iter().collect();
+                match reserved(&word) {
+                    Some(kind) if previous != Some(Js::Dot) => Js::Reserved(kind),
+                    _ => Js::Name,
+                }
+            }
+            _ => return None,
+        };
+        tokens.push(JsToken { kind, newline_before });
+        newline_before = false;
+    }
+    Some(tokens)
+}
+
+fn is_identifier_part(c: char) -> bool {
+    c.is_alphanumeric() || matches!(c, '_' | '$' | '\u{200c}' | '\u{200d}')
+}
+
+/// The end of the number at `start`: `1`, `1.`, `.5`, `1e-3`, `0x1f`.
+fn number_end(chars: &[char], start: usize) -> usize {
+    let digits = |mut i: usize| {
+        while chars.get(i).is_some_and(char::is_ascii_digit) {
+            i += 1;
+        }
+        i
+    };
+    if chars[start] == '0' && chars.get(start + 1).is_some_and(|c| matches!(c, 'x' | 'X' | 'o' | 'O' | 'b' | 'B')) {
+        return start + 2 + chars[start + 2..].iter().take_while(|c| c.is_ascii_alphanumeric()).count();
+    }
+    let mut i = digits(start);
+    if chars.get(i) == Some(&'.') {
+        i = digits(i + 1);
+    }
+    if chars.get(i).is_some_and(|c| matches!(c, 'e' | 'E')) {
+        let sign = usize::from(chars.get(i + 1).is_some_and(|c| matches!(c, '+' | '-')));
+        i = digits(i + 1 + sign);
+    }
+    i
+}
+
+/// The end of the string whose quote is at `open`; a line break can't be in it.
+fn string_end(chars: &[char], open: usize) -> Option<usize> {
+    let mut i = open + 1;
+    loop {
+        match *chars.get(i)? {
+            '\\' => i += 1,
+            '\n' | '\r' => return None,
+            c if c == chars[open] => return Some(i + 1),
+            _ => {}
+        }
+        i += 1;
+    }
+}
+
+/// The end of the template literal at `open`, with what its `${...}` hold.
+fn template_end(chars: &[char], open: usize) -> Option<usize> {
+    let mut state = CharState::default();
+    for (i, &c) in chars.iter().enumerate().skip(open) {
+        state.parse_char(c).ok()?;
+        if !state.is_nesting() {
+            return Some(i + 1);
+        }
+    }
+    None
+}
+
+/// The end of the regular expression at `open`, its flags included.
+fn regexp_end(chars: &[char], open: usize) -> Option<usize> {
+    let mut i = open + 1;
+    let mut in_class = false;
+    loop {
+        let c = *chars.get(i)?;
+        if is_js_line_terminator(c) {
+            return None;
+        }
+        match c {
+            '\\' => i += 1,
+            '[' => in_class = true,
+            ']' => in_class = false,
+            '/' if !in_class => break,
+            _ => {}
+        }
+        i += 1;
+    }
+    i += 1;
+    while chars.get(i).is_some_and(|&c| is_identifier_part(c)) {
+        i += 1;
+    }
+    Some(i)
 }
 
 #[cfg(test)]
@@ -1696,14 +1918,123 @@ mod tests {
         assert_eq!(parse_until("(a", ')', 1), Err((Failure::EndOfString, 2)));
     }
 
+    /// Checked against is-expression 4.0.0 (acorn 7.4.1).
     #[test]
     fn attribute_values_end_where_is_expression_would_say() {
-        for complete in ["a", "'x'", "f(a, b)", "a ? b : c", "a.new", "x++", "this", "[1, 2]", "`t ${a}`"] {
-            assert!(looks_complete(complete), "{complete}");
+        let complete = [
+            "a",
+            "'x'",
+            "f(a, b)",
+            "a ? b : c",
+            "a.new",
+            "x++",
+            "this",
+            "[1, 2]",
+            "`t ${a}`",
+            "1.",
+            "/a/",
+            "/a\\/b/",
+            "/[/]/g",
+            "1 /* c */",
+            "public",
+            "let",
+            "yield",
+            "(a)++",
+            "a[0] --",
+            "class C extends B {}",
+            "function f(a) { return a }",
+            "a?.5 : 1",
+            "o. default",
+            "o./*c*/default",
+            "πin",
+            "cafénew",
+            "{default: 1}",
+            "x\u{feff}",
+        ];
+        for code in complete {
+            assert!(looks_complete(code), "{code}");
         }
-        for incomplete in ["", "a +", "a ?", "a ? b", "new", "typeof", "(a", "'x", "() =>", "a.", "a ? b :"] {
-            assert!(!looks_complete(incomplete), "{incomplete}");
+        let incomplete = [
+            "",
+            "a +",
+            "a ?",
+            "a ? b",
+            "new",
+            "typeof",
+            "(a",
+            "'x",
+            "() =>",
+            "a.",
+            "a ? b :",
+            "++",
+            "-- ",
+            "a +++",
+            "a\n++",
+            "class C",
+            "class C extends B",
+            "function f(a)",
+            "a?.b",
+            "a ?? b",
+            "1 // c",
+            "/* c */",
+            "if",
+            "...y",
+            "x\u{85}",
+            "enum",
+        ];
+        for code in incomplete {
+            assert!(!looks_complete(code), "{code}");
         }
+    }
+
+    fn attribute_values(text: &str) -> Vec<String> {
+        lex(text).unwrap().into_iter().filter_map(|t| if let Kind::Attribute { val, .. } = t.kind { val } else { None }).collect()
+    }
+
+    /// pug-lexer 5.0.1's attribute values for the same templates.
+    #[test]
+    fn attributes_split_where_pug_splits() {
+        let cases = [
+            ("a(x=1. y=2)", "1."),
+            ("a(x=/a/ y=2)", "/a/"),
+            ("a(x=/a\\/b/ y=2)", "/a\\/b/"),
+            ("a(x=1 /* c */ y=2)", "1 /* c */"),
+            ("a(x=public y=2)", "public"),
+            ("a(x=++ i, y=2)", "++ i"),
+            ("a(x=-- i, y=2)", "-- i"),
+            ("a(x=a +++ b, y=2)", "a +++ b"),
+            ("a(x=class C extends B {}, y=2)", "class C extends B {}"),
+            ("a(x=a?.5 : 1, y=2)", "a?.5 : 1"),
+            ("a(x=o. default, y=2)", "o. default"),
+            ("a(x=o./*c*/default, y=2)", "o./*c*/default"),
+            ("a(x=πin, y=2)", "πin"),
+            ("a(x=cafénew y=2)", "cafénew"),
+        ];
+        for (text, first) in cases {
+            assert_eq!(attribute_values(text), [first, "2"], "{text}");
+        }
+    }
+
+    #[test]
+    fn whitespace_is_javascripts() {
+        assert!(is_js_whitespace('\u{feff}') && is_js_whitespace('\u{a0}') && !is_js_whitespace('\u{85}'));
+        assert_eq!(js_trim("\u{feff} a\u{85}"), "a\u{85}");
+        // character-parser skips it before `typeof`, so the `/` starts a regular expression.
+        assert_eq!(attribute_values("a(x=typeof\u{feff}/[)]/)"), ["typeof\u{feff}/[)]/"]);
+        assert_eq!(tokens("+\u{feff}foo")[0], ("call", String::new(), (1, 1), (1, 6)));
+        assert_eq!(lex("+\u{85}foo").unwrap_err().code, "PUG:UNEXPECTED_TEXT");
+        assert!(matches!(&lex("+foo(\u{feff}a=1)").unwrap()[0].kind, Kind::Call { args: None, .. }));
+        // A line of U+FEFF is blank in a text block.
+        let texts: Vec<_> =
+            tokens("p.\n  a\n\u{feff}\n  b").into_iter().filter(|t| t.0 == "text").map(|(_, val, start, _)| (val, start)).collect();
+        assert_eq!(texts, [("a".to_string(), (2, 3)), (String::new(), (3, 1)), ("b".to_string(), (4, 3))]);
+    }
+
+    #[test]
+    fn line_terminators_are_javascripts() {
+        let texts: Vec<_> = tokens("p #{a} b\u{2028} #{c}").into_iter().map(|(kind, val, ..)| (kind, val)).collect();
+        assert_eq!(texts[1..3], [("text", "#{a} b\u{2028} ".to_string()), ("interpolated-code", "c".to_string())]);
+        assert!(matches!(&lex("mixin foo(a\u{2028}b)").unwrap()[0].kind, Kind::Mixin { args: None, .. }));
     }
 
     #[test]
