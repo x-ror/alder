@@ -17,19 +17,19 @@ import { registerRoutes } from "./railsRoutes.js";
 import { registerErbAutoClose } from "./erbAutoClose.js";
 
 const COMMANDS = {
-  "lamina.toggleErbTag": toggleErbTag,
-  "lamina.toggleErbLineComment": toggleErbLineComment,
-  "lamina.wrapInErb": wrapInErb,
-  "lamina.convertToHaml": () => convert("haml"),
-  "lamina.convertToSlim": () => convert("slim"),
-  "lamina.convertToErb": () => convert("erb"),
-  "lamina.extractPartial": extractPartial,
-  "lamina.switchRelated": switchRelated,
-  "lamina.toggleHamlPrefix": toggleActiveHamlLines,
-  "lamina.toggleSlimTag": toggleSlimTag,
-  "lamina.wrapInSlim": wrapInSlim,
-  "lamina.togglePugLine": togglePugLine,
-  "lamina.wrapInPug": wrapInPug,
+  "alder.toggleErbTag": toggleErbTag,
+  "alder.toggleErbLineComment": toggleErbLineComment,
+  "alder.wrapInErb": wrapInErb,
+  "alder.convertToHaml": () => convert("haml"),
+  "alder.convertToSlim": () => convert("slim"),
+  "alder.convertToErb": () => convert("erb"),
+  "alder.extractPartial": extractPartial,
+  "alder.switchRelated": switchRelated,
+  "alder.toggleHamlPrefix": toggleActiveHamlLines,
+  "alder.toggleSlimTag": toggleSlimTag,
+  "alder.wrapInSlim": wrapInSlim,
+  "alder.togglePugLine": togglePugLine,
+  "alder.wrapInPug": wrapInPug,
 };
 
 function activate(context) {

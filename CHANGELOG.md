@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.2
+
+- **Breaking:** renamed the project to **Alder**: VS Code extension `x-ror.alder`, settings and commands `alder.*`, routes notification `alder/routes`, diagnostic source `alder`, npm package `@x-ror/alder`, CLI binary `alder` (`ALDER_BINARY`), language server `alder-ls`, config file `.alder.toml`, repository `x-ror/alder`, and docs at `https://x-ror.github.io/alder/`. Lamina 1.1.1 never reached the Marketplace or npm.
+
 ## 1.1.1
 
 The project is now called Lamina; the first release under that name.

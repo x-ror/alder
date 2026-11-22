@@ -5,7 +5,7 @@ sidebar:
   order: 3
 ---
 
-Each example is a file from a Rails app, highlighted here with the extension's own Slim grammar. Every one passes `lamina check` without a message and is already formatted (`lamina format --check`). The server parses Slim as Slim 5.2 does, reports the first error Slim's parser would raise with its message, line and column, and checks the Ruby in code lines, attributes and `#{}` with Prism. The same views are on the [ERB examples](/lamina/examples/erb/) and [Haml examples](/lamina/examples/haml/) pages.
+Each example is a file from a Rails app, highlighted here with the extension's own Slim grammar. Every one passes `alder check` without a message and is already formatted (`alder format --check`). The server parses Slim as Slim 5.2 does, reports the first error Slim's parser would raise with its message, line and column, and checks the Ruby in code lines, attributes and `#{}` with Prism. The same views are on the [ERB examples](/alder/examples/erb/) and [Haml examples](/alder/examples/haml/) pages.
 
 ## Layout with `content_for` and `yield`
 
@@ -133,7 +133,7 @@ div data-controller="clipboard" data-clipboard-success-class="copied"
 
 ## Embedded CSS and JavaScript engines
 
-Engine bodies are highlighted in their own language, and `#{}` inside them as Ruby. The formatter moves an engine's body with its line. Other engines, such as `less:`, get Slim's error `Expected tag` (code `unknown-engine`) unless they are listed in `lamina.slim.extraEngines`.
+Engine bodies are highlighted in their own language, and `#{}` inside them as Ruby. The formatter moves an engine's body with its line. Other engines, such as `less:`, get Slim's error `Expected tag` (code `unknown-engine`) unless they are listed in `alder.slim.extraEngines`.
 
 ```slim title="app/views/projects/_progress.html.slim"
 /# locals: (project:)

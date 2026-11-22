@@ -22,10 +22,10 @@ const startListeners = new Set();
 // stop() hands concurrent callers one shared promise, so overlapping restarts would each start a server.
 let queue = Promise.resolve();
 
-const log = (msg) => output?.appendLine(`[lamina] ${msg}`);
+const log = (msg) => output?.appendLine(`[alder] ${msg}`);
 
 function serverBinaryName() {
-  return process.platform === "win32" ? "lamina-ls.exe" : "lamina-ls";
+  return process.platform === "win32" ? "alder-ls.exe" : "alder-ls";
 }
 
 /** Locate the language server: setting → bundled per-platform binary → dev build → PATH. */
@@ -127,7 +127,7 @@ async function doStart(context) {
   const command = findServer(context);
   log(`starting language server: ${command}`);
 
-  // The server caches app/views listings, parsed locales (and the config that sets their default locale and sources), the helpers and routes files that define route helpers and the Stimulus controllers app/javascript registers, and a changed Gemfile.lock or .ruby-version changes its framework gates and the Ruby grammar, and a .lamina.toml changes which rules apply, and a Pug file changes what the templates that include or extend it find; these events invalidate them. The folder globs
+  // The server caches app/views listings, parsed locales (and the config that sets their default locale and sources), the helpers and routes files that define route helpers and the Stimulus controllers app/javascript registers, and a changed Gemfile.lock or .ruby-version changes its framework gates and the Ruby grammar, and a .alder.toml changes which rules apply, and a Pug file changes what the templates that include or extend it find; these events invalidate them. The folder globs
   // catch deleting/renaming a whole app/ or config/ tree, which VS Code reports as one event for the folder.
   // Created once: restarts reuse them instead of piling up live watchers.
   if (!watchers) {
@@ -140,7 +140,7 @@ async function doStart(context) {
       "**/config/importmap.rb",
       "**/Gemfile.lock",
       "**/.ruby-version",
-      "**/.lamina.toml",
+      "**/.alder.toml",
       "**/*.{pug,jade}",
       "**/{app,config,app/views,config/locales}",
     ].map((glob) => vscode.workspace.createFileSystemWatcher(glob));
@@ -148,7 +148,7 @@ async function doStart(context) {
   }
   const started = new LanguageClient(
     SECTION,
-    "Lamina Language Server",
+    "Alder Language Server",
     { command, transport: TransportKind.stdio },
     {
       // Scheme-less selectors also match git diff sides and chat code blocks, duplicating diagnostics.
@@ -206,8 +206,8 @@ async function doStart(context) {
     client = undefined;
     await disposeQuietly(started);
     const msg =
-      `Lamina language server failed to start (${command}). ` +
-      "Install the package built for your platform, build the server from the repository with `bun run build:server`, or set lamina.server.path.";
+      `Alder language server failed to start (${command}). ` +
+      "Install the package built for your platform, build the server from the repository with `bun run build:server`, or set alder.server.path.";
     log(`${msg}\n${e?.message || e}`);
     offerHelp(msg).catch((err) => log(`opening help: ${err?.message ?? err}`));
   }
@@ -241,10 +241,10 @@ const notifyServer = (method, params) =>
 
 /** Starts the server, restarting it on the restart command or a change to a setting it reads; returns its log. */
 function registerServer(context) {
-  output = vscode.window.createOutputChannel("Lamina", { log: true });
+  output = vscode.window.createOutputChannel("Alder", { log: true });
   context.subscriptions.push(
     output,
-    vscode.commands.registerCommand("lamina.restartServer", () =>
+    vscode.commands.registerCommand("alder.restartServer", () =>
       restartClient(context),
     ),
     vscode.workspace.onDidChangeConfiguration((e) => {

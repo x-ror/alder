@@ -1,12 +1,12 @@
-<p align="center"><img src="images/icon.png" alt="Lamina" width="128"></p>
+<p align="center"><img src="images/icon.png" alt="Alder" width="128"></p>
 
-# Lamina: Ruby Templates (ERB, Haml, Slim, Pug, Liquid)
+# Alder: Ruby Templates (ERB, Haml, Slim, Pug, Liquid)
 
-[![VS Marketplace](https://vsmarketplacebadges.dev/version-short/x-ror.lamina.svg)](https://marketplace.visualstudio.com/items?itemName=x-ror.lamina)
-[![Open VSX](https://img.shields.io/open-vsx/v/x-ror/lamina?label=Open%20VSX)](https://open-vsx.org/extension/x-ror/lamina)
-[![npm](https://img.shields.io/npm/v/@x-ror/lamina?label=npm%20CLI)](https://www.npmjs.com/package/@x-ror/lamina)
-[![Socket](https://socket.dev/api/badge/npm/package/@x-ror/lamina)](https://socket.dev/npm/package/@x-ror/lamina)
-[![build](https://github.com/x-ror/lamina/actions/workflows/build.yml/badge.svg)](https://github.com/x-ror/lamina/actions/workflows/build.yml)
+[![VS Marketplace](https://vsmarketplacebadges.dev/version-short/x-ror.alder.svg)](https://marketplace.visualstudio.com/items?itemName=x-ror.alder)
+[![Open VSX](https://img.shields.io/open-vsx/v/x-ror/alder?label=Open%20VSX)](https://open-vsx.org/extension/x-ror/alder)
+[![npm](https://img.shields.io/npm/v/@x-ror/alder?label=npm%20CLI)](https://www.npmjs.com/package/@x-ror/alder)
+[![Socket](https://socket.dev/api/badge/npm/package/@x-ror/alder)](https://socket.dev/npm/package/@x-ror/alder)
+[![build](https://github.com/x-ror/alder/actions/workflows/build.yml/badge.svg)](https://github.com/x-ror/alder/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **Rails view tooling for VS Code: one extension for ERB, Haml and Slim.** It highlights your templates, finds errors as you type, formats them, and understands your Rails app: partials, components, helpers, routes, instance variables, translations and Stimulus controllers. Pug and Liquid templates get a smaller share, without the Rails features.
@@ -21,7 +21,7 @@ Built for Rails developers who work in `app/views` every day, and for teams that
 
 ## Getting started
 
-1. Install **Lamina** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=x-ror.lamina) or [Open VSX](https://open-vsx.org/extension/x-ror/lamina).
+1. Install **Alder** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=x-ror.alder) or [Open VSX](https://open-vsx.org/extension/x-ror/alder).
 2. Open a Rails project and any view. That's it: highlighting, checks, navigation and formatting work immediately.
 3. Optional: turn on format on save, e.g. `"[erb]": { "editor.formatOnSave": true }` (also `[haml]`, `[slim]`, and `[jade]` for Pug).
 
@@ -29,15 +29,15 @@ Requires VS Code 1.100 or newer, on Linux (x64, arm64), macOS (Apple silicon, In
 
 ## Documentation
 
-The full documentation is at [x-ror.github.io/lamina](https://x-ror.github.io/lamina/):
+The full documentation is at [x-ror.github.io/alder](https://x-ror.github.io/alder/):
 
-- [Getting started](https://x-ror.github.io/lamina/getting-started/)
-- Guides: [errors as you type](https://x-ror.github.io/lamina/guides/checks/), [Rails navigation and completion](https://x-ror.github.io/lamina/guides/rails-navigation/), [file types](https://x-ror.github.io/lamina/guides/file-types/), [formatting](https://x-ror.github.io/lamina/guides/formatting/), [commands](https://x-ror.github.io/lamina/guides/commands/), [command line for CI](https://x-ror.github.io/lamina/guides/command-line/), [settings](https://x-ror.github.io/lamina/guides/settings/), [supported syntax](https://x-ror.github.io/lamina/guides/syntax/), [compatibility](https://x-ror.github.io/lamina/guides/compatibility/) and [troubleshooting](https://x-ror.github.io/lamina/guides/troubleshooting/)
-- [Diagnostics reference](https://x-ror.github.io/lamina/reference/diagnostics/): every check, with its code
-- [Rules and `.lamina.toml`](https://x-ror.github.io/lamina/reference/rules/#configuration): turn checks off per project, folder or file; it wins over the VS Code settings
-- [Changelog](https://x-ror.github.io/lamina/changelog/)
+- [Getting started](https://x-ror.github.io/alder/getting-started/)
+- Guides: [errors as you type](https://x-ror.github.io/alder/guides/checks/), [Rails navigation and completion](https://x-ror.github.io/alder/guides/rails-navigation/), [file types](https://x-ror.github.io/alder/guides/file-types/), [formatting](https://x-ror.github.io/alder/guides/formatting/), [commands](https://x-ror.github.io/alder/guides/commands/), [command line for CI](https://x-ror.github.io/alder/guides/command-line/), [settings](https://x-ror.github.io/alder/guides/settings/), [supported syntax](https://x-ror.github.io/alder/guides/syntax/), [compatibility](https://x-ror.github.io/alder/guides/compatibility/) and [troubleshooting](https://x-ror.github.io/alder/guides/troubleshooting/)
+- [Diagnostics reference](https://x-ror.github.io/alder/reference/diagnostics/): every check, with its code
+- [Rules and `.alder.toml`](https://x-ror.github.io/alder/reference/rules/#configuration): turn checks off per project, folder or file; it wins over the VS Code settings
+- [Changelog](https://x-ror.github.io/alder/changelog/)
 
-[Contributing](CONTRIBUTING.md) covers building, testing and the project layout. Found a bug or missing a Rails feature? [Open an issue](https://github.com/x-ror/lamina/issues).
+[Contributing](CONTRIBUTING.md) covers building, testing and the project layout. Found a bug or missing a Rails feature? [Open an issue](https://github.com/x-ror/alder/issues).
 
 ## License
 

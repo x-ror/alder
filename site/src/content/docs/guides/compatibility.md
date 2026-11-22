@@ -1,17 +1,17 @@
 ---
 title: Compatibility
-description: How Lamina works with Ruby LSP, other template extensions, Emmet, engines and gems, generator templates and Slim options.
+description: How Alder works with Ruby LSP, other template extensions, Emmet, engines and gems, generator templates and Slim options.
 sidebar:
   order: 11
 ---
 
 ## Ruby LSP
 
-Ruby LSP and this extension both register the `erb` language id and work side by side: Ruby LSP for `.rb` files, this extension for templates. If both add diagnostics, completion or formatting to ERB, see [Troubleshooting](/lamina/guides/troubleshooting/#other-extensions-for-the-same-languages).
+Ruby LSP and this extension both register the `erb` language id and work side by side: Ruby LSP for `.rb` files, this extension for templates. If both add diagnostics, completion or formatting to ERB, see [Troubleshooting](/alder/guides/troubleshooting/#other-extensions-for-the-same-languages).
 
 ## Other Haml or Slim extensions
 
-VS Code picks one grammar per language, so disable the other extension to avoid surprises (see [Troubleshooting](/lamina/guides/troubleshooting/)). To let another extension format, turn off `lamina.<lang>.format.enabled`.
+VS Code picks one grammar per language, so disable the other extension to avoid surprises (see [Troubleshooting](/alder/guides/troubleshooting/)). To let another extension format, turn off `alder.<lang>.format.enabled`.
 
 ## Emmet
 

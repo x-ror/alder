@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn nested_paths_have_no_backslashes() {
-        let root = std::env::temp_dir().join(format!("lamina-rails-relative-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-rails-relative-{}", std::process::id()));
         let nested = root.join("app/views/users/admin/_card.html.erb");
         crate::util::write_files(&root, &[("app/views/users/admin/_card.html.erb", "")]);
         let found = files_under(&root, usize::MAX);
@@ -209,7 +209,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn files_under_follows_symlinked_dirs() {
-        let root = std::env::temp_dir().join(format!("lamina-symlink-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-symlink-{}", std::process::id()));
         let shared = root.join("shared/cards");
         std::fs::create_dir_all(&shared).unwrap();
         std::fs::write(shared.join("_card.html.erb"), "").unwrap();

@@ -114,36 +114,36 @@ jobs:
         if: matrix.test
         run: bun server/check-samples.js
         env:
-          LAMINA: server/target/${{ matrix.target }}/release/lamina${{ matrix.ext }}
+          ALDER: server/target/${{ matrix.target }}/release/alder${{ matrix.ext }}
       - name: LSP end to end
         if: matrix.test
         run: bun test/e2e.js
         env:
-          LAMINA_LS: server/target/${{ matrix.target }}/release/lamina-ls${{ matrix.ext }}
+          ALDER_LS: server/target/${{ matrix.target }}/release/alder-ls${{ matrix.ext }}
       - name: Command line
         if: matrix.test
         run: bun test/cli.js
         env:
-          LAMINA: server/target/${{ matrix.target }}/release/lamina${{ matrix.ext }}
+          ALDER: server/target/${{ matrix.target }}/release/alder${{ matrix.ext }}
       - name: Rule examples
         if: matrix.test
         run: bun test/rules.js
         env:
-          LAMINA: server/target/${{ matrix.target }}/release/lamina${{ matrix.ext }}
+          ALDER: server/target/${{ matrix.target }}/release/alder${{ matrix.ext }}
       - name: npm package
         if: matrix.test
         run: bun test/npm.js
         env:
-          LAMINA: server/target/${{ matrix.target }}/release/lamina${{ matrix.ext }}
+          ALDER: server/target/${{ matrix.target }}/release/alder${{ matrix.ext }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: server-${{ matrix.dir }}
-          path: server/target/${{ matrix.target }}/release/lamina-ls${{ matrix.ext }}
+          path: server/target/${{ matrix.target }}/release/alder-ls${{ matrix.ext }}
       # The command line goes to npm, not into the .vsix.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cli-${{ matrix.dir }}
-          path: server/target/${{ matrix.target }}/release/lamina${{ matrix.ext }}
+          path: server/target/${{ matrix.target }}/release/alder${{ matrix.ext }}
 
   extension:
     needs: [lint, server]
@@ -174,7 +174,7 @@ jobs:
           for d in .pkg/server-*; do
             plat=${d#.pkg/server-}
             rm -rf bin && mkdir -p bin && cp -r $d bin/$plat
-            bunx @vscode/vsce package --no-dependencies --target $plat --out lamina-$plat.vsix
+            bunx @vscode/vsce package --no-dependencies --target $plat --out alder-$plat.vsix
           done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: vsix, path: "*.vsix" }
@@ -226,7 +226,7 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { name: npm, path: npm-dist }
       # Artifacts lose the executable bit.
-      - run: chmod +x npm-dist/*/bin/lamina*
+      - run: chmod +x npm-dist/*/bin/alder*
       # A version already out is skipped, so a failed run can be re-run. A pre-release goes to the `next` tag, so
       # `npm install` keeps getting the last release.
       - env:

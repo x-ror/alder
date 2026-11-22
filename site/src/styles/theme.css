@@ -2,8 +2,8 @@
 @import "./tokens.css";
 
 :root {
-  --sl-font: var(--lamina-font);
-  --sl-font-mono: var(--lamina-font-mono);
+  --sl-font: var(--alder-font);
+  --sl-font-mono: var(--alder-font-mono);
   --sl-text-h1: clamp(2.25rem, 1.6rem + 2.4vw, 3.25rem);
   --sl-line-height-headings: 1.12;
 }
@@ -17,13 +17,13 @@
   --sl-color-gray-5: #c9c8ce;
   --sl-color-gray-6: #ebeaee;
   --sl-color-gray-7: #f5f5f3;
-  --sl-color-black: var(--lamina-card);
+  --sl-color-black: var(--alder-card);
   --sl-color-accent-low: #e6e7ee;
-  --sl-color-accent: var(--lamina-link);
+  --sl-color-accent: var(--alder-link);
   --sl-color-accent-high: #232a40;
-  --sl-color-text-accent: var(--lamina-link);
-  --sl-color-bg-sidebar: var(--lamina-card);
-  --sl-color-hairline: var(--lamina-hairline);
+  --sl-color-text-accent: var(--alder-link);
+  --sl-color-bg-sidebar: var(--alder-card);
+  --sl-color-hairline: var(--alder-hairline);
   --sl-color-hairline-light: #ebeaee;
 }
 
@@ -37,20 +37,20 @@
     --sl-color-gray-4: #75747d;
     --sl-color-gray-5: #44434b;
     --sl-color-gray-6: #2b2a31;
-    --sl-color-black: var(--lamina-card);
+    --sl-color-black: var(--alder-card);
     --sl-color-accent-low: #2c2f3d;
-    --sl-color-accent: var(--lamina-link);
+    --sl-color-accent: var(--alder-link);
     --sl-color-accent-high: #dfe2ee;
-    --sl-color-text-accent: var(--lamina-link);
-    --sl-color-bg-sidebar: var(--lamina-card);
-    --sl-color-hairline: var(--lamina-hairline);
+    --sl-color-text-accent: var(--alder-link);
+    --sl-color-bg-sidebar: var(--alder-card);
+    --sl-color-hairline: var(--alder-hairline);
   }
 }
 
 /* The header is the card itself, divided from the page by one rule. */
 header.header {
-  background-color: var(--lamina-card);
-  border-bottom: 1px solid var(--lamina-hairline);
+  background-color: var(--alder-card);
+  border-bottom: 1px solid var(--alder-hairline);
 }
 
 .site-title {
@@ -64,7 +64,7 @@ header.header {
 
 /* One focus ring everywhere. */
 :focus-visible {
-  outline: 2px solid var(--lamina-focus);
+  outline: 2px solid var(--alder-focus);
   outline-offset: 2px;
 }
 
@@ -95,8 +95,8 @@ h1#_top {
 .sidebar-content a[aria-current="page"],
 .sidebar-content a[aria-current="page"]:hover,
 .sidebar-content a[aria-current="page"]:focus {
-  background-color: var(--lamina-code-bg);
-  color: var(--lamina-ink);
+  background-color: var(--alder-code-bg);
+  color: var(--alder-ink);
   font-weight: 650;
 }
 
@@ -107,7 +107,7 @@ h1#_top {
 /* Previous / next: plain links, not panels. */
 .pagination-links a {
   padding: 0.625rem 0.875rem;
-  border-color: var(--lamina-hairline);
+  border-color: var(--alder-hairline);
   box-shadow: none;
 }
 
@@ -138,11 +138,11 @@ h1#_top {
 .page-meta {
   margin: 0;
   font-size: 0.9375rem;
-  color: var(--lamina-ink-muted);
+  color: var(--alder-ink-muted);
 }
 
 .page-meta time {
-  color: var(--lamina-ink);
+  color: var(--alder-ink);
 }
 
 /* Along the header's lower edge, driven by the scroll position itself; browsers without scroll timelines show no bar. */
@@ -156,7 +156,7 @@ h1#_top {
     position: absolute;
     inset: auto 0 -1px;
     height: 3px;
-    background: var(--lamina-seal);
+    background: var(--alder-seal);
     transform-origin: 0 50%;
     /* Longhands: the minifier folds a full set into the `animation` shorthand, which can't carry a timeline. */
     animation-name: reading-progress;
@@ -193,9 +193,9 @@ h1#_top {
 }
 
 .focus-toggle[aria-pressed="true"] {
-  border-color: var(--lamina-hairline);
-  background: var(--lamina-code-bg);
-  color: var(--lamina-ink);
+  border-color: var(--alder-hairline);
+  background: var(--alder-code-bg);
+  color: var(--alder-ink);
 }
 
 :root[data-focus] {

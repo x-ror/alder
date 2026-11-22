@@ -1,5 +1,5 @@
 // The npm packages end to end: assemble them from the local release build, pack, install into a temp project
-// offline, and run the `lamina` bin through the wrapper.
+// offline, and run the `alder` bin through the wrapper.
 import assert from "assert";
 import { execFileSync, spawnSync } from "child_process";
 import fs from "fs";
@@ -9,17 +9,17 @@ import { assemble } from "../npm/assemble.js";
 
 const exe = process.platform === "win32" ? ".exe" : "";
 const built =
-  process.env.LAMINA ??
+  process.env.ALDER ??
   path.join(
     import.meta.dirname,
     "..",
     "server",
     "target",
     "release",
-    `lamina${exe}`,
+    `alder${exe}`,
   );
 const root = fs.realpathSync(
-  fs.mkdtempSync(path.join(os.tmpdir(), "lamina-npm-")),
+  fs.mkdtempSync(path.join(os.tmpdir(), "alder-npm-")),
 );
 // npm and the bin are .cmd files on Windows, which spawn only runs through a shell, unquoted.
 const windows = process.platform === "win32";
@@ -39,7 +39,7 @@ try {
     `cli-${process.platform}-${process.arch}`,
   );
   fs.mkdirSync(binaries, { recursive: true });
-  fs.copyFileSync(built, path.join(binaries, `lamina${exe}`));
+  fs.copyFileSync(built, path.join(binaries, `alder${exe}`));
   const folders = assemble(
     path.dirname(binaries),
     path.join(root, "packages"),
@@ -67,7 +67,7 @@ try {
   fs.mkdirSync(project);
   fs.writeFileSync(
     path.join(project, "package.json"),
-    '{ "name": "lamina-npm-test", "private": true }\n',
+    '{ "name": "alder-npm-test", "private": true }\n',
   );
   npm(
     ["install", "--offline", "--no-audit", "--no-fund", ...tarballs],
@@ -78,7 +78,7 @@ try {
     project,
     "node_modules",
     ".bin",
-    `lamina${process.platform === "win32" ? ".cmd" : ""}`,
+    `alder${process.platform === "win32" ? ".cmd" : ""}`,
   );
   const run = (args, input) =>
     spawnSync(windows ? `"${bin}"` : bin, quoted(args), {

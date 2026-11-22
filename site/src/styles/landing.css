@@ -22,7 +22,7 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid var(--lamina-focus);
+  outline: 2px solid var(--alder-focus);
   outline-offset: 2px;
   border-radius: 2px;
 }
@@ -31,9 +31,9 @@ body {
 
 .page {
   min-height: 100vh;
-  background: var(--lamina-card);
-  color: var(--lamina-ink);
-  font-family: var(--lamina-font);
+  background: var(--alder-card);
+  color: var(--alder-ink);
+  font-family: var(--alder-font);
   font-size: 1.0625rem;
   line-height: 1.6;
   font-optical-sizing: auto;
@@ -44,12 +44,12 @@ body {
   margin: 0 auto;
   padding: 1.5rem clamp(1.25rem, 5vw, 4.5rem) 3rem;
   font-size: 0.9375rem;
-  color: var(--lamina-ink-muted);
-  border-top: 1px solid var(--lamina-hairline);
+  color: var(--alder-ink-muted);
+  border-top: 1px solid var(--alder-hairline);
 }
 
 .page__link {
-  color: var(--lamina-link);
+  color: var(--alder-link);
   text-underline-offset: 0.2em;
 }
 
@@ -59,8 +59,8 @@ body {
   top: -4rem;
   z-index: 10;
   padding: 0.75rem 1rem;
-  background: var(--lamina-card);
-  color: var(--lamina-ink);
+  background: var(--alder-card);
+  color: var(--alder-ink);
   font-weight: 650;
 }
 
@@ -79,14 +79,14 @@ body {
   max-width: 78rem;
   margin: 0 auto;
   padding: 1rem clamp(1.25rem, 5vw, 4.5rem);
-  border-bottom: 1px solid var(--lamina-hairline);
+  border-bottom: 1px solid var(--alder-hairline);
 }
 
 .site-header__brand {
   display: inline-flex;
   align-items: center;
   gap: 0.625rem;
-  color: var(--lamina-ink);
+  color: var(--alder-ink);
   font-weight: 750;
   font-size: 1.125rem;
   letter-spacing: -0.01em;
@@ -109,17 +109,17 @@ body {
 .site-header__link {
   display: inline-block;
   padding-block: 0.375rem;
-  color: var(--lamina-ink-muted);
+  color: var(--alder-ink-muted);
   font-weight: 550;
   text-decoration: none;
   border-bottom: 2px solid transparent;
   transition:
-    color 150ms var(--lamina-ease-out),
-    border-color 150ms var(--lamina-ease-out);
+    color 150ms var(--alder-ease-out),
+    border-color 150ms var(--alder-ease-out);
 }
 
 .site-header__link:hover {
-  color: var(--lamina-ink);
+  color: var(--alder-ink);
   border-bottom-color: currentColor;
 }
 
@@ -158,7 +158,7 @@ body {
   max-width: 62ch;
   margin: 1rem 0 0;
   font-size: clamp(1.0625rem, 1rem + 0.3vw, 1.1875rem);
-  color: var(--lamina-ink-muted);
+  color: var(--alder-ink-muted);
   text-wrap: pretty;
 }
 
@@ -186,7 +186,7 @@ body {
 }
 
 .menu-card__link {
-  color: var(--lamina-link);
+  color: var(--alder-link);
   font-weight: 600;
   text-underline-offset: 0.2em;
   text-decoration-thickness: 1px;
@@ -208,12 +208,12 @@ body {
   margin: 0;
   padding: 0;
   list-style: none;
-  border-top: 1px solid var(--lamina-hairline);
-  border-bottom: 1px solid var(--lamina-hairline);
+  border-top: 1px solid var(--alder-hairline);
+  border-bottom: 1px solid var(--alder-hairline);
 }
 
 .course-index__item + .course-index__item {
-  border-left: 1px solid var(--lamina-hairline);
+  border-left: 1px solid var(--alder-hairline);
 }
 
 .course-index__link {
@@ -222,18 +222,18 @@ body {
   gap: 0.625rem;
   height: 100%;
   padding: 0.75rem 1rem;
-  color: var(--lamina-ink);
+  color: var(--alder-ink);
   font-weight: 600;
   text-decoration: none;
-  transition: background-color 150ms var(--lamina-ease-out);
+  transition: background-color 150ms var(--alder-ease-out);
 }
 
 .course-index__link:hover {
-  background: var(--lamina-code-bg);
+  background: var(--alder-code-bg);
 }
 
 .course-index__numeral {
-  color: var(--lamina-ink-muted);
+  color: var(--alder-ink-muted);
   font-variant-numeric: tabular-nums;
   font-weight: 400;
 }
@@ -262,13 +262,13 @@ body {
   align-items: center;
   gap: 0.875rem;
   padding: 0.75rem 1.375rem 0.75rem 0.75rem;
-  background: var(--lamina-seal);
-  color: var(--lamina-seal-ink);
+  background: var(--alder-seal);
+  color: var(--alder-seal-ink);
   border-radius: 10px;
   font-weight: 700;
   font-size: 1.0625rem;
   text-decoration: none;
-  box-shadow: 0 6px 14px -4px var(--lamina-seal-shadow);
+  box-shadow: 0 6px 14px -4px var(--alder-seal-shadow);
   /* White on the seal's red: without its background it vanishes on paper. */
   print-color-adjust: exact;
 }
@@ -280,7 +280,7 @@ body {
   height: 2.75rem;
   border: 2px solid rgb(255 255 255 / 0.85);
   border-radius: 7px;
-  font-family: var(--lamina-font-mono);
+  font-family: var(--alder-font-mono);
   font-weight: 800;
   font-size: 0.9375rem;
   letter-spacing: -0.04em;
@@ -289,18 +289,18 @@ body {
 @media (prefers-reduced-motion: no-preference) {
   .seal {
     transition:
-      transform 180ms var(--lamina-ease-out),
-      box-shadow 180ms var(--lamina-ease-out);
+      transform 180ms var(--alder-ease-out),
+      box-shadow 180ms var(--alder-ease-out);
   }
 
   .seal:hover {
     transform: translateY(1px);
-    box-shadow: 0 3px 8px -3px var(--lamina-seal-shadow);
+    box-shadow: 0 3px 8px -3px var(--alder-seal-shadow);
   }
 
   .seal:active {
     transform: translateY(2px) scale(0.985);
-    box-shadow: 0 1px 2px -1px var(--lamina-seal-shadow);
+    box-shadow: 0 1px 2px -1px var(--alder-seal-shadow);
   }
 }
 
@@ -314,7 +314,7 @@ body {
 }
 
 .course + .course {
-  border-top: 3px double var(--lamina-hairline);
+  border-top: 3px double var(--alder-hairline);
 }
 
 @media (min-width: 56rem) {
@@ -329,7 +329,7 @@ body {
   font-weight: 300;
   line-height: 1;
   letter-spacing: -0.03em;
-  color: var(--lamina-ink-muted);
+  color: var(--alder-ink-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -365,15 +365,15 @@ body {
 .course__text {
   max-width: 68ch;
   margin: 0 0 1.75rem;
-  color: var(--lamina-ink-muted);
+  color: var(--alder-ink-muted);
   text-wrap: pretty;
 }
 
 .course__text code,
 .pairing code {
-  font-family: var(--lamina-font-mono);
+  font-family: var(--alder-font-mono);
   font-size: 0.9em;
-  color: var(--lamina-ink);
+  color: var(--alder-ink);
 }
 
 .course__more {
@@ -382,7 +382,7 @@ body {
 }
 
 .course__link {
-  color: var(--lamina-link);
+  color: var(--alder-link);
   text-underline-offset: 0.2em;
 }
 
@@ -426,7 +426,7 @@ body {
   margin-bottom: 0.75rem;
   text-align: left;
   font-size: 0.9375rem;
-  color: var(--lamina-ink-muted);
+  color: var(--alder-ink-muted);
 }
 
 .pairing__head {
@@ -434,8 +434,8 @@ body {
   text-align: left;
   font-size: 0.875rem;
   font-weight: 650;
-  color: var(--lamina-ink-muted);
-  border-bottom: 1px solid var(--lamina-ink);
+  color: var(--alder-ink-muted);
+  border-bottom: 1px solid var(--alder-ink);
 }
 
 .pairing__where,
@@ -443,7 +443,7 @@ body {
   padding: 0.75rem 1rem 0.75rem 0;
   text-align: left;
   vertical-align: top;
-  border-bottom: 1px solid var(--lamina-hairline);
+  border-bottom: 1px solid var(--alder-hairline);
 }
 
 .pairing__where {

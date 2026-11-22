@@ -1,4 +1,4 @@
-//! Every rule, by the `Department/Name` that is its diagnostic code (lint rules) and its name in `.lamina.toml`.
+//! Every rule, by the `Department/Name` that is its diagnostic code (lint rules) and its name in `.alder.toml`.
 
 pub mod file;
 pub mod resolve;

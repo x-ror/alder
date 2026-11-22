@@ -1,4 +1,4 @@
-//! `.lamina.toml`, read against the rule registry. A part that can't be read is dropped with a `Problem`; the rest is kept.
+//! `.alder.toml`, read against the rule registry. A part that can't be read is dropped with a `Problem`; the rest is kept.
 
 use super::{by_name, departments, ChoiceOption, CountOption, ListOption, Rule};
 use crate::glob::Glob;
@@ -9,7 +9,7 @@ use toml::de::{DeString, DeTable, DeValue};
 use toml::Spanned;
 use tower_lsp_server::ls_types::Range;
 
-pub const FILE_NAME: &str = ".lamina.toml";
+pub const FILE_NAME: &str = ".alder.toml";
 
 /// The language tables, and the keys each takes.
 const LANGUAGE_TABLES: [(&str, &[&str]); 4] = [
@@ -321,7 +321,7 @@ mod tests {
     use std::path::Path;
 
     fn read(text: &str) -> ConfigFile {
-        parse(Path::new("/p/.lamina.toml").to_path_buf(), text)
+        parse(Path::new("/p/.alder.toml").to_path_buf(), text)
     }
 
     fn messages(file: &ConfigFile) -> Vec<String> {

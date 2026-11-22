@@ -11,4 +11,4 @@ routes = Rails.application.routes.routes.reject(&:internal).map do |route|
     source: (route.source_location if route.respond_to?(:source_location))
   }
 end
-puts "", "__LAMINA_ROUTES__", JSON.generate(routes)
+puts "", "__ALDER_ROUTES__", JSON.generate(routes)

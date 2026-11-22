@@ -8,7 +8,7 @@ use regex::Regex;
 use std::sync::{Arc, LazyLock};
 use tower_lsp_server::ls_types::{Diagnostic, Range};
 
-/// Stable diagnostic codes, shared with ERB's `lamina.erb.disabledDiagnostics`.
+/// Stable diagnostic codes, shared with ERB's `alder.erb.disabledDiagnostics`.
 pub mod code {
     pub const UNEXPECTED_CLOSE_TAG: &str = "Html/UnexpectedCloseTag";
     pub const MISMATCHED_CLOSE_TAG: &str = "Html/MismatchedCloseTag";

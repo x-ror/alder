@@ -1,4 +1,4 @@
-//! What applies to one template: the `.lamina.toml` files above it (the nearest wins, key by key), then the
+//! What applies to one template: the `.alder.toml` files above it (the nearest wins, key by key), then the
 //! editor's settings where the files are silent.
 
 use super::file::{parse, ConfigFile, LanguageTable, RuleTable, FILE_NAME};
@@ -349,7 +349,7 @@ mod tests {
 
     impl Project {
         fn new(name: &str, files: &[(&str, &str)]) -> Self {
-            let root = std::env::temp_dir().join(format!("lamina-rules-{name}-{}", std::process::id()));
+            let root = std::env::temp_dir().join(format!("alder-rules-{name}-{}", std::process::id()));
             // The top file stops the search, so a file above the temp folder can't change a result.
             let top = |text: &str| format!("root = true\n{text}");
             let others = files.iter().filter(|(file, _)| *file != FILE_NAME);
@@ -390,7 +390,7 @@ mod tests {
     #[test]
     fn rule_department_and_default_order() {
         let toml = "[Html]\nenabled = false\n[Html.DuplicateId]\nenabled = true\n[Rails.StrictLocals]\nenabled = false\n";
-        let project = Project::new("order", &[(".lamina.toml", toml), ("a.html.erb", "")]);
+        let project = Project::new("order", &[(".alder.toml", toml), ("a.html.erb", "")]);
         let rules = project.erb("a.html.erb");
         assert!(!rules.reports(IMG) && rules.reports("Html/DuplicateId"), "the rule beats its department");
         assert!(!rules.reports("Rails/StrictLocals") && rules.reports("Rails/MissingPartial"));
@@ -400,7 +400,7 @@ mod tests {
     fn nested_files_override_key_by_key() {
         let outer = "[erb]\nformat.enabled = false\n[Html.DuplicateId]\nenabled = false\n[Html.ImgAlt]\nenabled = false\n";
         let inner = "[Html.UnclosedElement]\nenabled = false\n[Html.ImgAlt]\nenabled = true\n";
-        let files = [(".lamina.toml", outer), ("app/views/.lamina.toml", inner), ("app/views/a.html.erb", ""), ("b.html.erb", "")];
+        let files = [(".alder.toml", outer), ("app/views/.alder.toml", inner), ("app/views/a.html.erb", ""), ("b.html.erb", "")];
         let project = Project::new("nested", &files);
         let inner_rules = project.erb("app/views/a.html.erb");
         assert!(inner_rules.reports(IMG), "the nearest file wins the rule");
@@ -418,8 +418,8 @@ mod tests {
         let outer = "[Html.ImgAlt]\nexclude = [\"app/views/legacy/**\"]\n";
         let inner = "[Html.DuplicateId]\ninclude = [\"/new/**\"]\n";
         let files = [
-            (".lamina.toml", outer),
-            ("app/views/.lamina.toml", inner),
+            (".alder.toml", outer),
+            ("app/views/.alder.toml", inner),
             ("app/views/legacy/a.html.erb", ""),
             ("app/views/new/a.html.erb", ""),
             ("app/views/old/a.html.erb", ""),
@@ -435,8 +435,8 @@ mod tests {
     #[test]
     fn the_nearest_file_that_sets_the_rule_or_its_department_decides() {
         let files = [
-            (".lamina.toml", "[Html.ImgAlt]\nenabled = true\n"),
-            ("legacy/.lamina.toml", "[Html]\nenabled = false\n"),
+            (".alder.toml", "[Html.ImgAlt]\nenabled = true\n"),
+            ("legacy/.alder.toml", "[Html]\nenabled = false\n"),
             ("legacy/a.html.erb", ""),
             ("b.html.erb", ""),
         ];
@@ -454,14 +454,14 @@ mod tests {
             let rules = project.erb(&format!("{dir}/a.html.erb"));
             let problems = &rules.files()[0].problems;
             assert_eq!(problems.len(), 1, "{dir}");
-            assert!(problems[0].message.starts_with("can't read .lamina.toml"), "{}", problems[0].message);
+            assert!(problems[0].message.starts_with("can't read .alder.toml"), "{}", problems[0].message);
         }
         assert!(project.erb("a/a.html.erb").files()[0].problems[0].message.ends_with("isn't UTF-8"));
     }
 
     #[test]
     fn root_stops_the_search() {
-        let files = [(".lamina.toml", "[Html.ImgAlt]\nenabled = false\n"), ("app/.lamina.toml", "root = true\n"), ("app/a.html.erb", "")];
+        let files = [(".alder.toml", "[Html.ImgAlt]\nenabled = false\n"), ("app/.alder.toml", "root = true\n"), ("app/a.html.erb", "")];
         let project = Project::new("root", &files);
         let rules = project.erb("app/a.html.erb");
         assert!(rules.reports(IMG) && rules.files().len() == 1);
@@ -469,7 +469,7 @@ mod tests {
 
     #[test]
     fn global_exclude_silences_the_file() {
-        let files = [(".lamina.toml", "exclude = [\"vendor/**\"]\n"), ("vendor/a.html.erb", ""), ("app/a.html.erb", "")];
+        let files = [(".alder.toml", "exclude = [\"vendor/**\"]\n"), ("vendor/a.html.erb", ""), ("app/a.html.erb", "")];
         let project = Project::new("exclude", &files);
         let vendor = project.erb("vendor/a.html.erb");
         assert!(!vendor.diagnostics_enabled() && vendor.excluded_by().is_some_and(|p| p.ends_with(FILE_NAME)));
@@ -480,7 +480,7 @@ mod tests {
     fn the_file_beats_the_editor_which_applies_where_the_file_is_silent() {
         let toml =
             "[erb]\nformat.enabled = true\nformat.align_comments = false\n[Html.ImgAlt]\nenabled = true\n[slim]\nextra_engines = [\"mjml\"]\n";
-        let project = Project::new("editor", &[(".lamina.toml", toml), ("a.html.erb", ""), ("b.html.slim", ""), ("c.html.haml", "")]);
+        let project = Project::new("editor", &[(".alder.toml", toml), ("a.html.erb", ""), ("b.html.slim", ""), ("c.html.haml", "")]);
         let settings = editor(serde_json::json!({
             "erb": { "format": { "enabled": false, "alignComments": true }, "disabledDiagnostics": ["Html/ImgAlt"] },
             "slim": { "extraEngines": ["other"], "diagnostics": { "enabled": false } },
@@ -500,8 +500,8 @@ mod tests {
     #[test]
     fn a_department_switch_only_restores_the_defaults() {
         let files = [
-            (".lamina.toml", "[Html]\nenabled = false\n[Layout]\nenabled = false\n[Layout.ElementContentOnOwnLine]\nenabled = true\n"),
-            ("on/.lamina.toml", "[Html]\nenabled = true\n[Layout]\nenabled = true\n"),
+            (".alder.toml", "[Html]\nenabled = false\n[Layout]\nenabled = false\n[Layout.ElementContentOnOwnLine]\nenabled = true\n"),
+            ("on/.alder.toml", "[Html]\nenabled = true\n[Layout]\nenabled = true\n"),
             ("on/a.html.erb", ""),
             ("a.html.erb", ""),
         ];
@@ -511,7 +511,7 @@ mod tests {
         assert!(on.format_settings(Settings::default(), false).trailing_whitespace);
         let own_line = |file: &str| project.erb(file).format_settings(Settings::default(), false).content_on_own_line.is_some();
         assert!(own_line("on/a.html.erb"), "an outer rule's own switch isn't cancelled by the department's true");
-        let off = Project::new("dept-true-off", &[(".lamina.toml", "[Layout]\nenabled = true\n"), ("a.html.erb", "")]);
+        let off = Project::new("dept-true-off", &[(".alder.toml", "[Layout]\nenabled = true\n"), ("a.html.erb", "")]);
         let settings = off.erb("a.html.erb").format_settings(Settings::default(), false);
         assert_eq!((settings.content_on_own_line, settings.attributes_per_line, off.erb("a.html.erb").line_length()), (None, None, None));
         assert!(!project.erb("a.html.erb").reports(IMG));
@@ -520,7 +520,7 @@ mod tests {
     #[test]
     fn the_file_enabling_a_rule_beats_the_editors_list_of_disabled_ones() {
         let toml = "[Html.ImgAlt]\nenabled = true\n[Html]\nenabled = true\n";
-        let project = Project::new("editor-list", &[(".lamina.toml", toml), ("a.html.erb", "")]);
+        let project = Project::new("editor-list", &[(".alder.toml", toml), ("a.html.erb", "")]);
         let settings =
             editor(serde_json::json!({ "erb": { "disabledDiagnostics": ["Html/ImgAlt", "Html/DuplicateId", "Html/AnchorHref"] } }));
         let rules = project.resolve("a.html.erb", TemplateLang::Erb, &settings);
@@ -542,7 +542,7 @@ mod tests {
         assert!(project.erb("a.html.erb").format_settings(Settings::default(), true).trailing_empty_lines, "off by default for ERB");
         assert!(!project.erb("a.html.erb").format_settings(Settings::default(), false).trailing_empty_lines);
         let off =
-            Project::new("final-newline-off", &[(".lamina.toml", "[Layout.TrailingEmptyLines]\nenabled = false\n"), ("a.html.erb", "")]);
+            Project::new("final-newline-off", &[(".alder.toml", "[Layout.TrailingEmptyLines]\nenabled = false\n"), ("a.html.erb", "")]);
         assert!(!off.erb("a.html.erb").format_settings(Settings::default(), true).trailing_empty_lines, "the rule's own switch wins");
     }
 
@@ -558,13 +558,13 @@ mod tests {
         assert!(slim.trailing_empty_lines, "the editor's diagnostic list doesn't switch a formatting rule");
 
         let toml = "[Layout.EmptyLines]\nenabled = true\n[Layout.TrailingEmptyLines]\nenabled = false\n";
-        let on = Project::new("format-rules-on", &[(".lamina.toml", toml), ("a.html.erb", "")]);
+        let on = Project::new("format-rules-on", &[(".alder.toml", toml), ("a.html.erb", "")]);
         let settings = on.erb("a.html.erb").format_settings(Settings::default(), false);
         assert_eq!((settings.max_empty_lines, settings.trailing_empty_lines), (Some(1), false), "max defaults to 1");
 
         let files = [
-            (".lamina.toml", "[Layout]\nenabled = true\n[Layout.EmptyLines]\nenabled = true\nmax = 3\n"),
-            ("inner/.lamina.toml", "[Layout.EmptyLines]\nmax = 0\nexclude = [\"**/*.slim\"]\n"),
+            (".alder.toml", "[Layout]\nenabled = true\n[Layout.EmptyLines]\nenabled = true\nmax = 3\n"),
+            ("inner/.alder.toml", "[Layout.EmptyLines]\nmax = 0\nexclude = [\"**/*.slim\"]\n"),
             ("a.html.erb", ""),
             ("inner/a.html.erb", ""),
             ("inner/b.html.slim", ""),
@@ -576,14 +576,14 @@ mod tests {
         assert_eq!(max("inner/a.html.erb", TemplateLang::Erb), Some(0), "the nearest file sets max");
         assert_eq!(max("inner/b.html.slim", TemplateLang::Slim), None, "its exclude");
         let toml = "[Layout.EmptyLinesAroundBlockBody]\nenabled = true\n[Layout.EmptyLinesAroundBranches]\nenabled = true\nstyle = \"empty_lines\"\n[Layout.EmptyLinesAroundElementBody]\nenabled = false\n";
-        let around = Project::new("format-rules-around", &[(".lamina.toml", toml), ("a.html.haml", "")]);
+        let around = Project::new("format-rules-around", &[(".alder.toml", toml), ("a.html.haml", "")]);
         let settings = around.resolve("a.html.haml", TemplateLang::Haml, &Options::default()).format_settings(Settings::default(), false);
         let styles = (settings.around_block_body, settings.around_element_body, settings.around_branches);
         assert_eq!(styles, (Some(Style::NoEmptyLines), None, Some(Style::EmptyLines)), "no_empty_lines by default, off by enabled = false");
         let plain = Project::new("format-rules-around-off", &[("a.html.haml", "")]);
         let settings = plain.resolve("a.html.haml", TemplateLang::Haml, &Options::default()).format_settings(Settings::default(), false);
         assert_eq!((settings.around_block_body, settings.around_element_body, settings.around_branches), (None, None, None));
-        let off = Project::new("format-rules-dept", &[(".lamina.toml", "[Layout]\nenabled = false\n"), ("a.html.slim", "")]);
+        let off = Project::new("format-rules-dept", &[(".alder.toml", "[Layout]\nenabled = false\n"), ("a.html.slim", "")]);
         let settings = off.resolve("a.html.slim", TemplateLang::Slim, &Options::default()).format_settings(Settings::default(), false);
         assert!(!settings.trailing_empty_lines, "the department switch turns an on-by-default rule off");
     }
@@ -594,20 +594,20 @@ mod tests {
         let off = Project::new("options-off", &[("a.html.erb", "")]);
         assert_eq!((off.erb("a.html.erb").line_length(), settings(&off)), (None, None));
         let toml = "[Layout.LineLength]\nenabled = true\n[Layout.ElementContentOnOwnLine]\nenabled = true\n";
-        let on = Project::new("options-on", &[(".lamina.toml", toml), ("a.html.erb", "")]);
+        let on = Project::new("options-on", &[(".alder.toml", toml), ("a.html.erb", "")]);
         let default_tags = ["div", "section", "article", "header", "footer", "ul", "ol"].map(String::from).to_vec();
         assert_eq!((on.erb("a.html.erb").line_length(), settings(&on)), (Some(100), Some(default_tags)));
         let toml =
             "[Layout.LineLength]\nenabled = true\nmax = 80\n[Layout.ElementContentOnOwnLine]\nenabled = true\ntags = [\"P\", \"li\"]\n";
-        let set = Project::new("options-set", &[(".lamina.toml", toml), ("a.html.erb", "")]);
+        let set = Project::new("options-set", &[(".alder.toml", toml), ("a.html.erb", "")]);
         assert_eq!((set.erb("a.html.erb").line_length(), settings(&set)), (Some(80), Some(vec!["p".to_string(), "li".to_string()])));
         let per_line = |project: &Project| project.erb("a.html.erb").format_settings(Settings::default(), false).attributes_per_line;
         assert_eq!(per_line(&off), None);
         let default_limit =
-            Project::new("per-line-on", &[(".lamina.toml", "[Layout.AttributesPerLine]\nenabled = true\n"), ("a.html.erb", "")]);
+            Project::new("per-line-on", &[(".alder.toml", "[Layout.AttributesPerLine]\nenabled = true\n"), ("a.html.erb", "")]);
         assert_eq!(per_line(&default_limit), Some(100));
         let limit = "[Layout.AttributesPerLine]\nenabled = true\nmax_line_length = 60\n";
-        let own_limit = Project::new("per-line-set", &[(".lamina.toml", limit), ("a.html.erb", "")]);
+        let own_limit = Project::new("per-line-set", &[(".alder.toml", limit), ("a.html.erb", "")]);
         assert_eq!(per_line(&own_limit), Some(60));
         let disabled = editor(serde_json::json!({ "erb": { "disabledDiagnostics": ["Layout/LineLength"] } }));
         assert_eq!(set.resolve("a.html.erb", TemplateLang::Erb, &disabled).line_length(), Some(80), "the file enables it");
@@ -625,7 +625,7 @@ mod tests {
             IndentStyle::Tabs,
             "the base: editor or .editorconfig"
         );
-        let toml = |text: &str| Project::new("indent-toml", &[(".lamina.toml", text), ("a.html.erb", ""), ("b.html.haml", "")]);
+        let toml = |text: &str| Project::new("indent-toml", &[(".alder.toml", text), ("a.html.erb", ""), ("b.html.haml", "")]);
         let spaces = toml("[Layout.IndentationStyle]\nstyle = \"spaces\"\n");
         assert_eq!(style(&spaces, "a.html.erb", TemplateLang::Erb, IndentStyle::Tabs), IndentStyle::Spaces, "the file beats the base");
         let tabs = toml("[Layout.IndentationStyle]\nstyle = \"tabs\"\n");
@@ -657,7 +657,7 @@ mod tests {
         let switched_off = editor(serde_json::json!({ "pug": { "format": { "enabled": false }, "diagnostics": { "enabled": false } } }));
         assert!(!pug(&silent, &switched_off).format_enabled() && !pug(&silent, &switched_off).diagnostics_enabled());
         let toml = "[pug]\nformat.enabled = true\ndiagnostics.enabled = true\n[Layout.IndentationStyle]\nstyle = \"spaces\"\n";
-        let file = Project::new("pug-file", &[(".lamina.toml", toml), ("a.jst.pug", "")]);
+        let file = Project::new("pug-file", &[(".alder.toml", toml), ("a.jst.pug", "")]);
         let rules = pug(&file, &switched_off);
         assert!(rules.format_enabled() && rules.diagnostics_enabled(), "the file beats the editor");
         assert!(rules.files().iter().all(|f| f.problems.is_empty()));

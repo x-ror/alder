@@ -371,7 +371,7 @@ mod tests {
     }
 
     fn temp(name: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("lamina-liquid-{name}-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-liquid-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         root
     }

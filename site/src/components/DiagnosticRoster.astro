@@ -14,7 +14,7 @@ const sections = [...Map.groupBy(diagnostics, (entry) => entry.languages.join("-
 }));
 const toml = (entry: Diagnostic) => `[${entry.code.replace("/", ".")}]\nenabled = false`;
 const setting = (entry: Diagnostic) =>
-  entry.languages.map((lang) => `"lamina.${lang}.disabledDiagnostics": ["${entry.code}"]`).join(",\n");
+  entry.languages.map((lang) => `"alder.${lang}.disabledDiagnostics": ["${entry.code}"]`).join(",\n");
 ---
 
 <div class="roster not-content">
@@ -84,7 +84,7 @@ const setting = (entry: Diagnostic) =>
               <div class="roster__field">
                 <strong class="roster__term">Turn it off</strong>{" "}
                 <div class="roster__detail">
-                  <pre class="roster__setting" tabindex="0" role="region" aria-label="Table in .lamina.toml that turns this check off"><code>{toml(entry)}</code></pre>
+                  <pre class="roster__setting" tabindex="0" role="region" aria-label="Table in .alder.toml that turns this check off"><code>{toml(entry)}</code></pre>
                 </div>
               </div>
               <div class="roster__field">

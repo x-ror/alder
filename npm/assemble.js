@@ -1,9 +1,9 @@
-// Builds the npm packages: one per platform holding its `lamina` binary, and the main package
-// (`npm/lamina`, whose `name` is the one place the package name is set) depending on them.
+// Builds the npm packages: one per platform holding its `alder` binary, and the main package
+// (`npm/alder`, whose `name` is the one place the package name is set) depending on them.
 //
 //   bun npm/assemble.js <binaries> <out> [version]
 //
-// <binaries> holds `cli-<platform>/lamina[.exe]`, as CI downloads its artifacts; platforms without a folder
+// <binaries> holds `cli-<platform>/alder[.exe]`, as CI downloads its artifacts; platforms without a folder
 // are left out. The version defaults to the extension's.
 import fs from "fs";
 import path from "path";
@@ -22,7 +22,7 @@ const writeJson = (file, data) =>
 
 /** Writes the packages under `out` and returns their folders, platform packages first. */
 export function assemble(binaries, out, version) {
-  const main = path.join(import.meta.dirname, "lamina");
+  const main = path.join(import.meta.dirname, "alder");
   const manifest = readJson(path.join(main, "package.json"));
   version ??= readJson(
     path.join(import.meta.dirname, "..", "package.json"),
@@ -32,7 +32,7 @@ export function assemble(binaries, out, version) {
   const folders = [];
   const optional = {};
   for (const [platform, { os, cpu }] of Object.entries(PLATFORMS)) {
-    const exe = os === "win32" ? "lamina.exe" : "lamina";
+    const exe = os === "win32" ? "alder.exe" : "alder";
     const built = path.join(binaries, `cli-${platform}`, exe);
     if (!fs.existsSync(built)) continue;
     const name = `${manifest.name}-${platform}`;
@@ -45,7 +45,7 @@ export function assemble(binaries, out, version) {
     writeJson(path.join(dir, "package.json"), {
       name,
       version,
-      description: `The lamina binary for ${platform}`,
+      description: `The alder binary for ${platform}`,
       license: manifest.license,
       repository: manifest.repository,
       os: [os],

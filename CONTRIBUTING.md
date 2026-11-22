@@ -1,6 +1,6 @@
 # Contributing
 
-Issues and pull requests are welcome. Coding standards, checks and commit rules are in [CLAUDE.md](CLAUDE.md); open tasks and questions are [GitHub issues](https://github.com/x-ror/lamina/issues).
+Issues and pull requests are welcome. Coding standards, checks and commit rules are in [CLAUDE.md](CLAUDE.md); open tasks and questions are [GitHub issues](https://github.com/x-ror/alder/issues).
 
 ## Development
 
@@ -12,7 +12,7 @@ bun run test:server   # cargo test + diagnostics check on the samples
 bun run test:unit     # pure JS helpers (ERB tags, language configs, Haml toggle)
 bun run test:snippets # snippets: unique prefixes, valid bodies, no unescaped `$`
 bun test/e2e.js       # LSP end-to-end test against a fake Rails tree (exits 1 on a mismatch)
-bun test/cli.js       # the lamina command line on a temp folder
+bun test/cli.js       # the alder command line on a temp folder
 bun test/rules.js     # the site's rule examples: each available autofix rule turns `before` into `after`
 bun test/npm.js       # the npm packages: assembled from the release build, packed, installed offline, run
 bun run test:slim     # Slim editing helpers and onEnterRules
@@ -22,4 +22,4 @@ bun run build         # bundle the client into dist/extension.js (what VS Code l
 bun run package       # bundle, then build the .vsix
 ```
 
-Grammars live in `syntaxes/`, language configs in `language-configuration/`, snippets in `snippets/`, the VS Code client in `src/`, and the language server in `server/src/` (a library shared by `lamina-ls` and the `lamina` CLI). Its folders follow its layers: `ruby/` (Prism, the Ruby compiled from a template, strict locals), one folder per template language (`erb/`, `haml/` and `slim/`: parser, Ruby, structure checks, completion; `haml/parser.rs` and `slim/parser.rs` port the upstream parsers), `rails/` (the app's paths, controllers, renders and partials, routes, schema, locales), then the features (`checks.rs`, `completion.rs`, `outline.rs` and `outline/`, `format.rs` with `format/` and `config.rs` for the formatter, `partial_rename.rs`, `semantic_tokens.rs`) and the front ends (`lsp.rs` with `lsp/`, `cli.rs`). CI (`.github/workflows/build.yml`) builds the server for Linux, macOS and Windows, packages one `.vsix` per platform, and assembles the npm packages (`npm/`, `npm/assemble.js`); tags publish them.
+Grammars live in `syntaxes/`, language configs in `language-configuration/`, snippets in `snippets/`, the VS Code client in `src/`, and the language server in `server/src/` (a library shared by `alder-ls` and the `alder` CLI). Its folders follow its layers: `ruby/` (Prism, the Ruby compiled from a template, strict locals), one folder per template language (`erb/`, `haml/` and `slim/`: parser, Ruby, structure checks, completion; `haml/parser.rs` and `slim/parser.rs` port the upstream parsers), `rails/` (the app's paths, controllers, renders and partials, routes, schema, locales), then the features (`checks.rs`, `completion.rs`, `outline.rs` and `outline/`, `format.rs` with `format/` and `config.rs` for the formatter, `partial_rename.rs`, `semantic_tokens.rs`) and the front ends (`lsp.rs` with `lsp/`, `cli.rs`). CI (`.github/workflows/build.yml`) builds the server for Linux, macOS and Windows, packages one `.vsix` per platform, and assembles the npm packages (`npm/`, `npm/assemble.js`); tags publish them.

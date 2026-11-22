@@ -1,22 +1,22 @@
 /* The menu card's materials, shared by the landing page and the docs. */
 :root,
 :root[data-theme="light"] {
-  --lamina-card: #fcfcfa;
-  --lamina-ink: #1a1a1f;
-  --lamina-ink-muted: #55545c;
-  --lamina-hairline: #dcdbe1;
-  --lamina-seal: #c21f39;
-  --lamina-seal-ink: #ffffff;
-  --lamina-seal-shadow: rgb(70 6 18 / 0.45);
-  --lamina-fault: #b3172f;
-  --lamina-link: #34405f;
-  --lamina-focus: #34405f;
-  --lamina-code-bg: #f4f4f1;
-  --lamina-selection: #d6dcf3;
+  --alder-card: #fcfcfa;
+  --alder-ink: #1a1a1f;
+  --alder-ink-muted: #55545c;
+  --alder-hairline: #dcdbe1;
+  --alder-seal: #c21f39;
+  --alder-seal-ink: #ffffff;
+  --alder-seal-shadow: rgb(70 6 18 / 0.45);
+  --alder-fault: #b3172f;
+  --alder-link: #34405f;
+  --alder-focus: #34405f;
+  --alder-code-bg: #f4f4f1;
+  --alder-selection: #d6dcf3;
 
-  --lamina-font: "Schibsted Grotesk Variable", system-ui, sans-serif;
-  --lamina-font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
-  --lamina-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --alder-font: "Schibsted Grotesk Variable", system-ui, sans-serif;
+  --alder-font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+  --alder-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
   color-scheme: light;
 }
@@ -24,18 +24,18 @@
 /* Dark on screen only: paper always gets the light theme. */
 @media screen {
   :root[data-theme="dark"] {
-    --lamina-card: #1c1b20;
-    --lamina-ink: #ecebef;
-    --lamina-ink-muted: #a9a8b1;
-    --lamina-hairline: #34333b;
-    --lamina-seal: #c21f39;
-    --lamina-seal-ink: #ffffff;
-    --lamina-seal-shadow: rgb(0 0 0 / 0.6);
-    --lamina-fault: #ff8696;
-    --lamina-link: #b9c1dc;
-    --lamina-focus: #b9c1dc;
-    --lamina-code-bg: #22272e;
-    --lamina-selection: #34407a;
+    --alder-card: #1c1b20;
+    --alder-ink: #ecebef;
+    --alder-ink-muted: #a9a8b1;
+    --alder-hairline: #34333b;
+    --alder-seal: #c21f39;
+    --alder-seal-ink: #ffffff;
+    --alder-seal-shadow: rgb(0 0 0 / 0.6);
+    --alder-fault: #ff8696;
+    --alder-link: #b9c1dc;
+    --alder-focus: #b9c1dc;
+    --alder-code-bg: #22272e;
+    --alder-selection: #34407a;
 
     color-scheme: dark;
   }
@@ -44,23 +44,23 @@
 /* Before the theme script runs, or without it. */
 @media screen and (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
-    --lamina-card: #1c1b20;
-    --lamina-ink: #ecebef;
-    --lamina-ink-muted: #a9a8b1;
-    --lamina-hairline: #34333b;
-    --lamina-fault: #ff8696;
-    --lamina-link: #b9c1dc;
-    --lamina-focus: #b9c1dc;
-    --lamina-code-bg: #22272e;
-    --lamina-selection: #34407a;
-    --lamina-seal-shadow: rgb(0 0 0 / 0.6);
+    --alder-card: #1c1b20;
+    --alder-ink: #ecebef;
+    --alder-ink-muted: #a9a8b1;
+    --alder-hairline: #34333b;
+    --alder-fault: #ff8696;
+    --alder-link: #b9c1dc;
+    --alder-focus: #b9c1dc;
+    --alder-code-bg: #22272e;
+    --alder-selection: #34407a;
+    --alder-seal-shadow: rgb(0 0 0 / 0.6);
     color-scheme: dark;
   }
 }
 
 ::selection {
-  background: var(--lamina-selection);
-  color: var(--lamina-ink);
+  background: var(--alder-selection);
+  color: var(--alder-ink);
 }
 
 /* Paper can't follow links: they read as plain text. Fault marks keep their own colour. */

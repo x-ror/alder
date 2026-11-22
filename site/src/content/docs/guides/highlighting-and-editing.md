@@ -17,7 +17,7 @@ javascript:
   document.querySelector(".card").classList.add("is-loaded")
 ```
 
-Which file gets which grammar is listed in [File types](/lamina/guides/file-types/); what each grammar recognises is in [Supported syntax](/lamina/guides/syntax/).
+Which file gets which grammar is listed in [File types](/alder/guides/file-types/); what each grammar recognises is in [Supported syntax](/alder/guides/syntax/).
 
 ## Semantic colours
 
@@ -38,10 +38,10 @@ Here `order` is coloured as a parameter and `item` as a variable; the declaratio
 ## Editing
 
 - Comment toggling, bracket matching, auto-closing `<% %>`, smart indentation and folding.
-- Typing `>` in ERB closes the HTML tag. Turn this off with [`lamina.erb.autoCloseTags`](/lamina/guides/settings/#editing).
+- Typing `>` in ERB closes the HTML tag. Turn this off with [`alder.erb.autoCloseTags`](/alder/guides/settings/#editing).
 - Renaming `<div>` renames its `</div>` (linked editing).
 
-The comment syntax depends on the file type: <kbd>Ctrl</kbd>+<kbd>/</kbd> uses `//` in `.js.erb`, `#` in `.yml.erb` and so on, and inside a multi-line `<% %>` tag it toggles a Ruby `# `. [File types](/lamina/guides/file-types/#comment-toggling) has the full list.
+The comment syntax depends on the file type: <kbd>Ctrl</kbd>+<kbd>/</kbd> uses `//` in `.js.erb`, `#` in `.yml.erb` and so on, and inside a multi-line `<% %>` tag it toggles a Ruby `# `. [File types](/alder/guides/file-types/#comment-toggling) has the full list.
 
 ## Snippets
 
@@ -53,4 +53,4 @@ Emmet works in ERB out of the box (`"emmet.includeLanguages": { "erb": "html" }`
 
 ## Commands for editing
 
-_Toggle ERB Tag_, _Wrap Selection in ERB Output_ and the Haml and Slim equivalents switch between code, output and comment tags; see [Commands](/lamina/guides/commands/).
+_Toggle ERB Tag_, _Wrap Selection in ERB Output_ and the Haml and Slim equivalents switch between code, output and comment tags; see [Commands](/alder/guides/commands/).

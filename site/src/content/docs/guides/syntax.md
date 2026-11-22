@@ -5,7 +5,7 @@ sidebar:
   order: 10
 ---
 
-What the grammars highlight and what the language server parses. The server follows Erubi as Rails configures it, Haml 7.5 and Slim 5.2. Pug (highlighted by VS Code itself, parsed as Pug 3.0.4 parses it) and Liquid are described under [File types](/lamina/guides/file-types/).
+What the grammars highlight and what the language server parses. The server follows Erubi as Rails configures it, Haml 7.5 and Slim 5.2. Pug (highlighted by VS Code itself, parsed as Pug 3.0.4 parses it) and Liquid are described under [File types](/alder/guides/file-types/).
 
 ## ERB
 
@@ -35,7 +35,7 @@ What the grammars highlight and what the language server parses. The server foll
 
 ### Trim modes
 
-Erubi's `trim: true`, the Rails default, is what the server models, so `-` before `%>` changes nothing in the checks. `trim_mode: "%"` is the opt-in [`erb-percent` language id](/lamina/guides/file-types/#erb-percent); other stdlib modes (`<>`, `>`) are not modelled.
+Erubi's `trim: true`, the Rails default, is what the server models, so `-` before `%>` changes nothing in the checks. `trim_mode: "%"` is the opt-in [`erb-percent` language id](/alder/guides/file-types/#erb-percent); other stdlib modes (`<>`, `>`) are not modelled.
 
 ## Haml
 
@@ -64,13 +64,13 @@ Haml 6 and 7 are targeted (Haml 7.5.1 is the reference); Haml 5 is not. Whether 
 
 ## Slim and Skim
 
-| Syntax                                                                                                    | Highlighting                            | Server                                                       |
-| --------------------------------------------------------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------ |
-| Tags, `.class`/`#id` shortcuts, `=`, `==`, `-`, `/`, `\|`, `'`, `doctype`, `#{}`                          | yes                                     | Parsed as Slim 5.2 does, with its error messages             |
-| Attribute wrappers `(…)`, `[…]`, `{…}`, or none                                                           | yes                                     | Parsed; Ruby inside is checked                               |
-| Engines `ruby:` `javascript:` `css:` `sass:` `scss:` `coffee:` `markdown:` `textile:` `rdoc:` `asciidoc:` | Embedded language where VS Code has one | Accepted                                                     |
-| Other engines: `erb:`, `less:`, `stylus:`, …                                                              | Highlighted                             | `unknown-engine` unless listed in `lamina.slim.extraEngines` |
-| Engines your app registers (`mjml:`)                                                                      | Text                                    | Accepted once added to `lamina.slim.extraEngines`            |
+| Syntax                                                                                                    | Highlighting                            | Server                                                      |
+| --------------------------------------------------------------------------------------------------------- | --------------------------------------- | ----------------------------------------------------------- |
+| Tags, `.class`/`#id` shortcuts, `=`, `==`, `-`, `/`, `\|`, `'`, `doctype`, `#{}`                          | yes                                     | Parsed as Slim 5.2 does, with its error messages            |
+| Attribute wrappers `(…)`, `[…]`, `{…}`, or none                                                           | yes                                     | Parsed; Ruby inside is checked                              |
+| Engines `ruby:` `javascript:` `css:` `sass:` `scss:` `coffee:` `markdown:` `textile:` `rdoc:` `asciidoc:` | Embedded language where VS Code has one | Accepted                                                    |
+| Other engines: `erb:`, `less:`, `stylus:`, …                                                              | Highlighted                             | `unknown-engine` unless listed in `alder.slim.extraEngines` |
+| Engines your app registers (`mjml:`)                                                                      | Text                                    | Accepted once added to `alder.slim.extraEngines`            |
 
 ```slim title="app/views/posts/show.html.slim"
 article id=dom_id(@post)

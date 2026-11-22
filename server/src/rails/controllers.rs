@@ -61,7 +61,7 @@ mod tests {
 
     #[test]
     fn controller_views() {
-        let root = std::env::temp_dir().join(format!("lamina-controllers-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-controllers-{}", std::process::id()));
         for f in [
             "app/views/layouts/admin.html.erb",
             "app/views/admin/users/show.html.erb",

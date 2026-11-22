@@ -482,7 +482,7 @@ mod tests {
 
     #[test]
     fn erb_formatting_cuts_the_locals_comment_only_where_rails_does() {
-        let root = std::env::temp_dir().join(format!("lamina-format-locals-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-format-locals-{}", std::process::id()));
         let file = root.join("app/views/users/_card.html.erb");
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
         let uri = crate::util::file_uri(&file).unwrap();
@@ -1010,12 +1010,12 @@ mod tests {
         }
     }
 
-    /// `LAMINA_CORPUS=<dir> cargo test --release corpus -- --ignored --nocapture`: the sample invariants on
+    /// `ALDER_CORPUS=<dir> cargo test --release corpus -- --ignored --nocapture`: the sample invariants on
     /// every template under `<dir>` (real apps' `app/views`, kept outside the repository).
     #[test]
     #[ignore]
     fn corpus() {
-        let dir = std::env::var("LAMINA_CORPUS").expect("LAMINA_CORPUS");
+        let dir = std::env::var("ALDER_CORPUS").expect("ALDER_CORPUS");
         let (mut files, mut formatted, mut refused) = (0, 0, std::collections::BTreeMap::<String, usize>::new());
         let mut violations = Vec::new();
         let ruby = RubyContext::outside_project();

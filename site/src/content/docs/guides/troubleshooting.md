@@ -22,13 +22,13 @@ Choose this extension's formatter per language:
 
 ```json
 {
-  "[erb]": { "editor.defaultFormatter": "x-ror.lamina" },
-  "[haml]": { "editor.defaultFormatter": "x-ror.lamina" },
-  "[slim]": { "editor.defaultFormatter": "x-ror.lamina" }
+  "[erb]": { "editor.defaultFormatter": "x-ror.alder" },
+  "[haml]": { "editor.defaultFormatter": "x-ror.alder" },
+  "[slim]": { "editor.defaultFormatter": "x-ror.alder" }
 }
 ```
 
-To keep the other one, set it as `editor.defaultFormatter` for the language. `lamina.<erb|haml|slim|pug>.format.enabled` set to `false` (or `format.enabled = false` in a `.lamina.toml`) makes this extension return no edits, but it stays in the list VS Code asks from.
+To keep the other one, set it as `editor.defaultFormatter` for the language. `alder.<erb|haml|slim|pug>.format.enabled` set to `false` (or `format.enabled = false` in a `.alder.toml`) makes this extension return no edits, but it stays in the list VS Code asks from.
 
 ### Grammar
 
@@ -42,7 +42,7 @@ VS Code uses one grammar per language id, so only one extension's grammar applie
 
 ### Diagnostics and completion
 
-Turn off the duplicates in the other extension's settings. This extension's are `lamina.<erb|haml|slim>.diagnostics.enabled` and `lamina.<erb|haml|slim|jbuilder>.disabledDiagnostics`; see [Errors as you type](/lamina/guides/checks/#turning-checks-off).
+Turn off the duplicates in the other extension's settings. This extension's are `alder.<erb|haml|slim>.diagnostics.enabled` and `alder.<erb|haml|slim|jbuilder>.disabledDiagnostics`; see [Errors as you type](/alder/guides/checks/#turning-checks-off).
 
 ## Check what is active
 
@@ -56,10 +56,10 @@ Run _Developer: Inspect Editor Tokens and Scopes_ on a token. Scopes ending in `
 
 ### Language server
 
-- The _Lamina_ channel in the Output panel logs the language server, including why a format was skipped.
-- _Lamina: Restart Language Server_ restarts it.
+- The _Alder_ channel in the Output panel logs the language server, including why a format was skipped.
+- _Alder: Restart Language Server_ restarts it.
 - _Developer: Show Running Extensions_ lists every extension active for the window.
 
 ## Report a problem
 
-Found a bug or missing a Rails feature? [Open an issue on GitHub](https://github.com/x-ror/lamina/issues).
+Found a bug or missing a Rails feature? [Open an issue on GitHub](https://github.com/x-ror/alder/issues).

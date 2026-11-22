@@ -531,7 +531,7 @@ mod tests {
 
     #[test]
     fn nearest_lockfile_wins() {
-        let root = std::env::temp_dir().join(format!("lamina-project-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-project-{}", std::process::id()));
         let inner = root.join("engine/app/views/users");
         std::fs::create_dir_all(&inner).unwrap();
         let template = inner.join("show.html.erb");
@@ -563,7 +563,7 @@ mod tests {
     fn partial_prefix_setting_is_read_from_application_environments_and_initializers() {
         let off = "config.action_view.prefix_partial_path_with_controller_namespace = false\n";
         let prefixes_in = |file: &str, text: &str| {
-            let root = std::env::temp_dir().join(format!("lamina-project-prefix-{}-{}", std::process::id(), file.replace('/', "_")));
+            let root = std::env::temp_dir().join(format!("alder-project-prefix-{}-{}", std::process::id(), file.replace('/', "_")));
             std::fs::create_dir_all(root.join(file).parent().unwrap()).unwrap();
             std::fs::write(root.join(file), text).unwrap();
             let found = read_app_config(&root.join("config")).prefixes_partial_paths;
@@ -587,7 +587,7 @@ mod tests {
 
     #[test]
     fn path_gems_with_views_add_view_paths() {
-        let root = std::env::temp_dir().join(format!("lamina-project-pathgem-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-project-pathgem-{}", std::process::id()));
         std::fs::create_dir_all(root.join("engines/admin/app/views")).unwrap();
         std::fs::create_dir_all(root.join("app/views")).unwrap();
         let lock = |remote: &str| format!("PATH\n  remote: {remote}\n  specs:\n    admin (0.1.0)\n\nGEM\n  remote: engines/admin\n");
@@ -600,7 +600,7 @@ mod tests {
 
     #[test]
     fn app_registered_formats() {
-        let root = std::env::temp_dir().join(format!("lamina-project-formats-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-project-formats-{}", std::process::id()));
         let initializers = root.join("config/initializers");
         let template = root.join("app/views/users/show.html.erb");
         std::fs::create_dir_all(&initializers).unwrap();
@@ -618,7 +618,7 @@ mod tests {
 
     #[test]
     fn engine_sees_host_app_formats() {
-        let root = std::env::temp_dir().join(format!("lamina-project-engine-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-project-engine-{}", std::process::id()));
         let template = root.join("engines/admin/app/views/x/show.mobile.erb");
         std::fs::create_dir_all(template.parent().unwrap()).unwrap();
         std::fs::create_dir_all(root.join("config/initializers")).unwrap();
@@ -677,7 +677,7 @@ mod tests {
 
     #[test]
     fn nearest_ruby_version_file_beats_the_lockfile() {
-        let root = std::env::temp_dir().join(format!("lamina-project-ruby-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-project-ruby-{}", std::process::id()));
         let template = root.join("engine/app/views/users/show.html.erb");
         std::fs::create_dir_all(template.parent().unwrap()).unwrap();
         let ruby = || Project::for_template(&template).ruby;
@@ -729,7 +729,7 @@ mod tests {
     }
 
     fn rails_app(name: &str, files: &[(&str, &str)]) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("lamina-project-{name}-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-project-{name}-{}", std::process::id()));
         std::fs::remove_dir_all(&root).ok();
         crate::util::write_files(&root, &[("Gemfile.lock", "GEM\n  specs:\n    actionview (7.1.0)\n")]);
         crate::util::write_files(&root, files);

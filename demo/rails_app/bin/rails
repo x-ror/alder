@@ -27,4 +27,4 @@ routes = [
   route("", "DELETE", "/users/:id", "users#destroy", 4),
   route("admin_reports", "GET", "/admin/reports", "admin/reports#index", 10)
 ]
-puts "", "__LAMINA_ROUTES__", JSON.generate(routes)
+puts "", "__ALDER_ROUTES__", JSON.generate(routes)

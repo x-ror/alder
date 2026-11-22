@@ -1,4 +1,4 @@
-//! Shared by the language server (`lamina-ls`) and the command line (`lamina`).
+//! Shared by the language server (`alder-ls`) and the command line (`alder`).
 
 mod attribute_insert;
 mod attributes;

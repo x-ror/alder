@@ -2,7 +2,7 @@
 import fs from "fs";
 import path from "path";
 
-const name = process.platform === "win32" ? "lamina-ls.exe" : "lamina-ls";
+const name = process.platform === "win32" ? "alder-ls.exe" : "alder-ls";
 const built = path.join(import.meta.dirname, "target", "release", name);
 const dir = path.join(
   import.meta.dirname,

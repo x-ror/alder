@@ -207,7 +207,7 @@ mod tests {
     fn findings(lang: TemplateLang, text: &str, strict_locals: Option<&Signature>, devise: bool) -> Vec<Diagnostic> {
         static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let root = std::env::temp_dir().join(format!("lamina-unknown-route-{}-{n}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-unknown-route-{}-{n}", std::process::id()));
         util::write_files(
             &root,
             &[

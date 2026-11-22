@@ -1,5 +1,5 @@
 ---
-name: Lamina
+name: Alder
 description: The documentation site for one VS Code extension for Rails views, set as a printed omakase menu card.
 colors:
   card: "#fcfcfa"
@@ -121,7 +121,7 @@ components:
     textColor: "{colors.link}"
 ---
 
-# Design System: Lamina
+# Design System: Alder
 
 ## Overview
 
@@ -210,7 +210,7 @@ Flat. Depth is conveyed by rules and the code ground, not by shadow. The single 
 
 ### Shadow Vocabulary
 
-- **Seal at rest** (`box-shadow: 0 6px 14px -4px var(--lamina-seal-shadow)`): the install seal only.
+- **Seal at rest** (`box-shadow: 0 6px 14px -4px var(--alder-seal-shadow)`): the install seal only.
 - **Seal pressed** (`0 3px 8px -3px` on hover, `0 1px 2px -1px` on active): the stamp settling.
 
 ### Named Rules
@@ -262,7 +262,7 @@ The card's list of courses: an ordered list in a hairline-ruled row of cells, ea
 
 ### Navigation
 
-- **Landing header:** wordmark (icon plus "Lamina" at 750) and a plain list of links in muted ink at 550; hover turns ink and draws a 2px underline border. Card ground, hairline below.
+- **Landing header:** wordmark (icon plus "Alder" at 750) and a plain list of links in muted ink at 550; hover turns ink and draws a 2px underline border. Card ground, hairline below.
 - **Docs (Starlight):** same card ground for header and sidebar, hairline below the header; the current page is marked by 650 weight on the code ground, not a coloured pill; previous/next are plain hairline links without shadow.
 
 ### Pairing Table
