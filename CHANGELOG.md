@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.1.1
+
+The project is now called Lamina; the first release under that name.
 
 - **Breaking:** renamed the project to **Lamina**: VS Code extension `x-ror.lamina` (displayed as _Lamina: Ruby Templates (ERB, Haml, Slim)_), settings and commands `lamina.*`, routes notification `lamina/routes`, diagnostic source `lamina`, npm package `@x-ror/lamina`, CLI binary `lamina` (`LAMINA_BINARY`), language server `lamina-ls`, config file `.lamina.toml`, repository `x-ror/lamina`, and docs at `https://x-ror.github.io/lamina/`. Removed the legacy `rubyTemplates.extractSlimPartial` command alias.
 
