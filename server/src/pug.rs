@@ -143,13 +143,13 @@ fn too_deep(line: usize, column: usize) -> Error {
 
 /// Pug's first error, with Pug's message, filed under the code of the construct it is about; without one, the content in a
 /// void element that Pug refuses to compile and, for a file on disk, the problems with what it includes and extends. Only
-/// the codes `reports` takes are looked for. `parsed` is what `parser::parse` gives for `text`, and `index` its lines,
-/// `LineIndex::with_lone_cr` as Pug counts them.
+/// the codes `reports` takes are looked for. `parsed` is what `parser::parse` gives for `text`, `index` its lines,
+/// `LineIndex::with_lone_cr` as Pug counts them, and `file` the file's path with what knows which templates include it.
 pub fn diagnostics(
     text: &str,
     index: &LineIndex,
     parsed: &Result<Block, Error>,
-    path: Option<&Path>,
+    file: Option<(&Path, &refs::Includers)>,
     reports: impl Fn(&str) -> bool,
 ) -> Vec<Diagnostic> {
     match parsed {
@@ -158,7 +158,7 @@ pub fn diagnostics(
             if reports(code::VOID_CHILDREN) {
                 found.extend(elements::void_children(index, tree));
             }
-            found.extend(path.map(|path| refs::diagnostics(text, index, tree, path, &reports)).unwrap_or_default());
+            found.extend(file.map(|file| refs::diagnostics(text, index, tree, file, &reports)).unwrap_or_default());
             found
         }
         Err(found) => {
@@ -530,7 +530,8 @@ mod tests {
             let page = root.join("page.pug");
             let extending = format!("extends layout\n{text}");
             std::fs::write(&page, &extending).unwrap();
-            diagnostics(&extending, &LineIndex::new(&extending), &parser::parse(&extending), Some(&page), |_| true);
+            let includers = refs::Includers::default();
+            diagnostics(&extending, &LineIndex::with_lone_cr(&extending), &parser::parse(&extending), Some((&page, &includers)), |_| true);
             let _ = std::fs::remove_dir_all(&root);
             if let Ok(tree) = parser::parse(&text) {
                 let markup = elements::tags(&text, &tree);

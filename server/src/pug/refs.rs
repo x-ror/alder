@@ -12,7 +12,7 @@ use dashmap::DashMap;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 use tower_lsp_server::ls_types::{Diagnostic, Range};
 use walkdir::WalkDir;
 
@@ -189,7 +189,13 @@ pub fn candidates(current: &Path, keyword: Keyword, typed: &str) -> Vec<Candidat
 
 /// The problems with what a template that parses includes and extends, which Pug reports when it compiles it (a mixin
 /// call, when it renders it); only those whose code `reports` takes are looked for.
-pub fn diagnostics(text: &str, index: &LineIndex, tree: &Block, current: &Path, reports: impl Fn(&str) -> bool) -> Vec<Diagnostic> {
+pub fn diagnostics(
+    text: &str,
+    index: &LineIndex,
+    tree: &Block,
+    (current, includers): (&Path, &Includers),
+    reports: impl Fn(&str) -> bool,
+) -> Vec<Diagnostic> {
     let source = Source { text, index };
     let current = lexically_normal(current);
     let mut linker = Linker::new(&current);
@@ -204,7 +210,7 @@ pub fn diagnostics(text: &str, index: &LineIndex, tree: &Block, current: &Path, 
         out.extend(unexpected_blocks(&source, tree, &current, &mut linker));
     }
     if reports(code::UNKNOWN_MIXIN) {
-        out.extend(unknown_mixins(&source, tree, &current, &mut linker));
+        out.extend(unknown_mixins(&source, tree, &current, &mut linker, includers));
     }
     out
 }
@@ -252,7 +258,7 @@ fn unexpected_blocks(source: &Source, tree: &Block, current: &Path, linker: &mut
 /// `+name` calls with no `mixin name` in the template, the files it includes or its layouts, which fail when the template
 /// renders. Not reported in a template another one in its app includes or extends, whose mixins it may call, nor outside
 /// an app, where what includes it can't be told.
-fn unknown_mixins(source: &Source, tree: &Block, current: &Path, linker: &mut Linker) -> Vec<Diagnostic> {
+fn unknown_mixins(source: &Source, tree: &Block, current: &Path, linker: &mut Linker, includers: &Includers) -> Vec<Diagnostic> {
     let calls: Vec<(&Node, &str)> = nodes(tree)
         .into_iter()
         .filter_map(|node| match &node.kind {
@@ -264,7 +270,7 @@ fn unknown_mixins(source: &Source, tree: &Block, current: &Path, linker: &mut Li
     let Some(app) = paths::app_root(current).filter(|_| !calls.is_empty()) else { return Vec::new() };
     let Some(defined) = linker.mixin_names(tree, current) else { return Vec::new() };
     let unknown: Vec<(&Node, &str)> = calls.into_iter().filter(|(_, name)| !defined.contains(*name)).collect();
-    if unknown.is_empty() || pulled_in_elsewhere(&app, current) {
+    if unknown.is_empty() || includers.pull_in(&app, current) {
         return Vec::new();
     }
     unknown
@@ -279,22 +285,68 @@ fn unknown_mixins(source: &Source, tree: &Block, current: &Path, linker: &mut Li
         .collect()
 }
 
-/// Per app folder, the templates another template in it includes or extends; `None` when it has too many files to tell.
-static PULLED_IN: LazyLock<DashMap<PathBuf, Option<Arc<HashSet<PathBuf>>>>> = LazyLock::new(DashMap::new);
+/// Per app folder, which templates include or extend which, read from disk on first use: the language server keeps one and
+/// updates it file by file as watched files change, `ruby-templates check` builds one for its run.
+#[derive(Default)]
+pub struct Includers(DashMap<PathBuf, Option<AppIncludes>>);
 
-/// Drops what `pulled_in_elsewhere` remembers, when a watched template may have changed it.
-pub fn clear_cache() {
-    PULLED_IN.clear();
+/// The templates of an app that name others, with the files they name, and how many of them name each file.
+#[derive(Default)]
+struct AppIncludes {
+    names: HashMap<PathBuf, Vec<PathBuf>>,
+    named: HashMap<PathBuf, usize>,
 }
 
-/// Whether a template in the app folder `app` includes or extends `current`, as the files on disk say.
-fn pulled_in_elsewhere(app: &Path, current: &Path) -> bool {
-    let pulled_in = PULLED_IN.entry(app.to_path_buf()).or_insert_with(|| pulled_in(app).map(Arc::new)).clone();
-    pulled_in.is_none_or(|files| files.contains(current))
+impl AppIncludes {
+    fn add(&mut self, file: PathBuf, targets: Vec<PathBuf>) {
+        if targets.is_empty() {
+            return;
+        }
+        for target in &targets {
+            *self.named.entry(target.clone()).or_default() += 1;
+        }
+        self.names.insert(file, targets);
+    }
+
+    fn remove(&mut self, file: &Path) {
+        for target in self.names.remove(file).into_iter().flatten() {
+            if let Some(count) = self.named.get_mut(&target) {
+                *count -= 1;
+                if *count == 0 {
+                    self.named.remove(&target);
+                }
+            }
+        }
+    }
 }
 
-/// The templates under `root` that another one includes or extends.
-fn pulled_in(root: &Path) -> Option<HashSet<PathBuf>> {
+impl Includers {
+    /// Whether a template in the app folder `app` includes or extends `current`, or whether it can't be told: the app has
+    /// too many files to look through.
+    fn pull_in(&self, app: &Path, current: &Path) -> bool {
+        let entry = self.0.entry(app.to_path_buf()).or_insert_with(|| app_includes(app));
+        entry.as_ref().is_none_or(|app| app.named.contains_key(current))
+    }
+
+    /// Reads the Pug template `file` again, which was changed, created or deleted.
+    pub fn template_changed(&self, file: &Path) {
+        for mut app in self.0.iter_mut().filter(|app| file.starts_with(app.key())) {
+            if let Some(app) = app.value_mut() {
+                app.remove(file);
+                app.add(file.to_path_buf(), named_files(file));
+            }
+        }
+    }
+
+    /// Forgets the apps a folder or other file created or deleted at `path` may change: one holding templates, or one
+    /// where an absolute path starts.
+    pub fn forget_around(&self, path: &Path) {
+        self.0.retain(|app, _| !(path.starts_with(app) || app.starts_with(path)));
+    }
+}
+
+/// The templates under `root` that name another, or `None` when it has too many files to look through.
+fn app_includes(root: &Path) -> Option<AppIncludes> {
     let wanted = |entry: &walkdir::DirEntry| {
         let name = entry.file_name().to_string_lossy();
         entry.depth() == 0 || !(name.starts_with('.') || SKIPPED_FOLDERS.contains(&name.as_ref()))
@@ -302,22 +354,25 @@ fn pulled_in(root: &Path) -> Option<HashSet<PathBuf>> {
     let is_template = |entry: &walkdir::DirEntry| {
         entry.file_type().is_file() && TemplateLang::from_file_name(&entry.file_name().to_string_lossy()) == Some(TemplateLang::Pug)
     };
-    let mut found = HashSet::new();
+    let mut found = AppIncludes::default();
     for (visited, entry) in WalkDir::new(root).into_iter().filter_entry(wanted).enumerate() {
         if visited == MAX_VISITED {
             return None;
         }
         let Some(entry) = entry.ok().filter(is_template) else { continue };
-        let file = entry.path();
-        let Ok(text) = std::fs::read_to_string(file) else { continue };
-        if !(text.contains("include") || text.contains("extend")) {
-            continue;
-        }
-        // A template that doesn't parse doesn't compile, so it pulls in nothing.
-        let Ok(tree) = parser::parse(&text) else { continue };
-        found.extend(file_references(&tree).filter_map(|(_, r)| resolve(file, &r.path)).filter(|target| target != file));
+        found.add(entry.path().to_path_buf(), named_files(entry.path()));
     }
     Some(found)
+}
+
+/// The files the template `file` includes or extends; none when it can't be read or doesn't compile.
+fn named_files(file: &Path) -> Vec<PathBuf> {
+    let Ok(text) = std::fs::read_to_string(file) else { return Vec::new() };
+    if !(text.contains("include") || text.contains("extend")) {
+        return Vec::new();
+    }
+    let Ok(tree) = parser::parse(&text) else { return Vec::new() };
+    file_references(&tree).filter_map(|(_, r)| resolve(file, &r.path)).filter(|target| target != file).collect()
 }
 
 type Names = HashSet<String>;
@@ -623,10 +678,14 @@ mod tests {
 
     /// (line, code, message) of the reference diagnostics of `file` under `root`.
     fn found(root: &Path, file: &str) -> Vec<(u32, String, String)> {
+        found_with(root, file, &Includers::default())
+    }
+
+    fn found_with(root: &Path, file: &str, includers: &Includers) -> Vec<(u32, String, String)> {
         let path = root.join(file);
         let text = std::fs::read_to_string(&path).unwrap();
         let tree = parser::parse(&text).unwrap();
-        diagnostics(&text, &LineIndex::with_lone_cr(&text), &tree, &path, |_| true)
+        diagnostics(&text, &LineIndex::with_lone_cr(&text), &tree, (&path, includers), |_| true)
             .into_iter()
             .map(|d| (d.range.start.line, crate::util::code(&d).unwrap_or_default().to_string(), d.message))
             .collect()
@@ -889,15 +948,28 @@ mod tests {
     }
 
     #[test]
-    fn what_includes_a_template_is_read_again_once_the_cache_is_cleared() {
+    fn what_includes_a_template_follows_the_files_that_change() {
         let root = temp("includers");
+        let includers = Includers::default();
+        let found = |file| found_with(&root, file, &includers);
+        let (row, list) = ("app/assets/templates/_row.pug", "app/assets/templates/list.pug");
         let unknown = [at(0, code::UNKNOWN_MIXIN, "Mixin `m` is not defined here, in an included file or in a layout")];
-        write_files(&root, &[("app/assets/templates/_row.pug", "+m\n")]);
-        assert_eq!(found(&root, "app/assets/templates/_row.pug"), unknown);
-        write_files(&root, &[("app/assets/templates/list.pug", "mixin m\n  p\ninclude _row\n")]);
-        assert_eq!(found(&root, "app/assets/templates/_row.pug"), unknown, "remembered");
-        clear_cache();
-        assert!(found(&root, "app/assets/templates/_row.pug").is_empty());
+        write_files(&root, &[(row, "+m\n"), ("app/assets/templates/other.pug", "include _row\n")]);
+        assert!(found(row).is_empty(), "included by another");
+        write_files(&root, &[("app/assets/templates/other.pug", "p\n")]);
+        assert!(found(row).is_empty(), "remembered");
+        includers.template_changed(&root.join("app/assets/templates/other.pug"));
+        assert_eq!(found(row), unknown);
+        write_files(&root, &[(list, "mixin m\n  p\ninclude _row\n")]);
+        includers.template_changed(&root.join(list));
+        assert!(found(row).is_empty(), "a new template");
+        std::fs::remove_file(root.join(list)).unwrap();
+        includers.template_changed(&root.join(list));
+        assert_eq!(found(row), unknown, "a deleted one");
+        write_files(&root, &[("app/assets/templates/more/x.pug", "include ../_row\n")]);
+        assert_eq!(found(row), unknown, "remembered");
+        includers.forget_around(&root.join("app/assets/templates/more"));
+        assert!(found(row).is_empty(), "a new folder");
         let _ = std::fs::remove_dir_all(&root);
     }
 
