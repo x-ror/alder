@@ -34,16 +34,92 @@ pub mod code {
 /// level in a release build, on threads with `util::THREAD_STACK`. Pug's own walks run out of stack past a few hundred
 /// levels of `if` and a thousand or so of tags.
 pub(crate) const MAX_DEPTH: usize = 256;
-/// The code of the error for nesting past `MAX_DEPTH`, which Pug doesn't have.
-const TOO_DEEP: &str = "NESTING_LIMIT";
+/// The codes of the errors Pug raises, and of the JavaScript errors it throws on some templates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorCode {
+    BlockInBufferedCode,
+    BlockOutsideMixin,
+    BracketMismatch,
+    DefaultWithExpression,
+    DuplicateAttribute,
+    DuplicateId,
+    ElseCondition,
+    InconsistentIndentation,
+    InvalidClassName,
+    InvalidId,
+    InvalidIndentation,
+    InvalidKeyCharacter,
+    InvalidToken,
+    MalformedEach,
+    MalformedEachOfLval,
+    MalformedExtends,
+    MalformedInclude,
+    MixinWithoutBody,
+    NoCaseExpression,
+    NoEndBracket,
+    NoExtendsPath,
+    NoIncludePath,
+    NoWhenExpression,
+    NoWhileExpression,
+    RawIncludeBlock,
+    UnexpectedText,
+    /// character-parser's, which Pug lets through.
+    MismatchedBracket,
+    /// Node's `assert`.
+    Assertion,
+    TypeError,
+    /// Nesting past `MAX_DEPTH`, which Pug doesn't have.
+    NestingLimit,
+}
+
+impl ErrorCode {
+    /// As Pug spells it: `PUG:INVALID_ID`, `CHARACTER_PARSER:MISMATCHED_BRACKET`, `ERR_ASSERTION`, `TypeError`.
+    pub fn as_str(self) -> &'static str {
+        use ErrorCode::*;
+        match self {
+            BlockInBufferedCode => "PUG:BLOCK_IN_BUFFERED_CODE",
+            BlockOutsideMixin => "PUG:BLOCK_OUTISDE_MIXIN",
+            BracketMismatch => "PUG:BRACKET_MISMATCH",
+            DefaultWithExpression => "PUG:DEFAULT_WITH_EXPRESSION",
+            DuplicateAttribute => "PUG:DUPLICATE_ATTRIBUTE",
+            DuplicateId => "PUG:DUPLICATE_ID",
+            ElseCondition => "PUG:ELSE_CONDITION",
+            InconsistentIndentation => "PUG:INCONSISTENT_INDENTATION",
+            InvalidClassName => "PUG:INVALID_CLASS_NAME",
+            InvalidId => "PUG:INVALID_ID",
+            InvalidIndentation => "PUG:INVALID_INDENTATION",
+            InvalidKeyCharacter => "PUG:INVALID_KEY_CHARACTER",
+            InvalidToken => "PUG:INVALID_TOKEN",
+            MalformedEach => "PUG:MALFORMED_EACH",
+            MalformedEachOfLval => "PUG:MALFORMED_EACH_OF_LVAL",
+            MalformedExtends => "PUG:MALFORMED_EXTENDS",
+            MalformedInclude => "PUG:MALFORMED_INCLUDE",
+            MixinWithoutBody => "PUG:MIXIN_WITHOUT_BODY",
+            NoCaseExpression => "PUG:NO_CASE_EXPRESSION",
+            NoEndBracket => "PUG:NO_END_BRACKET",
+            NoExtendsPath => "PUG:NO_EXTENDS_PATH",
+            NoIncludePath => "PUG:NO_INCLUDE_PATH",
+            NoWhenExpression => "PUG:NO_WHEN_EXPRESSION",
+            NoWhileExpression => "PUG:NO_WHILE_EXPRESSION",
+            RawIncludeBlock => "PUG:RAW_INCLUDE_BLOCK",
+            UnexpectedText => "PUG:UNEXPECTED_TEXT",
+            MismatchedBracket => "CHARACTER_PARSER:MISMATCHED_BRACKET",
+            Assertion => "ERR_ASSERTION",
+            TypeError => "TypeError",
+            NestingLimit => "NESTING_LIMIT",
+        }
+    }
+
+    /// Whether Pug raises it itself, rather than a library or the JavaScript engine throwing it.
+    pub fn is_pugs(self) -> bool {
+        !matches!(self, ErrorCode::MismatchedBracket | ErrorCode::Assertion | ErrorCode::TypeError | ErrorCode::NestingLimit)
+    }
+}
 
 /// The first error Pug raises.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Error {
-    /// Pug's code (`PUG:INCONSISTENT_INDENTATION`, ...), for a template that makes Pug itself fail the code or class of
-    /// the JavaScript error it throws (`CHARACTER_PARSER:MISMATCHED_BRACKET`, `ERR_ASSERTION`, `TypeError`), or
-    /// `NESTING_LIMIT` for nesting past `MAX_DEPTH`.
-    pub code: &'static str,
+    pub code: ErrorCode,
     pub message: String,
     /// 1-based, as Pug counts after turning `\r\n` and `\r` into `\n`.
     pub line: usize,
@@ -51,10 +127,18 @@ pub struct Error {
     pub column: usize,
 }
 
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}:{} {} ({})", self.line, self.column, self.message, self.code.as_str())
+    }
+}
+
+impl std::error::Error for Error {}
+
 /// The error for a node, at 1-based `line` and UTF-16 `column`, nested past `MAX_DEPTH`.
 fn too_deep(line: usize, column: usize) -> Error {
     let message = format!("Nested more than {MAX_DEPTH} levels deep, which isn't checked");
-    Error { code: TOO_DEEP, message, line, column }
+    Error { code: ErrorCode::NestingLimit, message, line, column }
 }
 
 /// Pug's first error, with Pug's message, filed under the code of the construct it is about; without one, the content in a
@@ -269,25 +353,27 @@ pub(crate) fn parsable(text: &str) -> Option<(Vec<lexer::Token>, Block)> {
     read(&text[..before]).ok()
 }
 
-fn code_of(pug_code: &str) -> &'static str {
+fn code_of(pug_code: ErrorCode) -> &'static str {
+    use ErrorCode::*;
     match pug_code {
-        "PUG:INCONSISTENT_INDENTATION" | "PUG:INVALID_INDENTATION" => code::INCONSISTENT_INDENT,
-        "PUG:NO_END_BRACKET" | "PUG:BRACKET_MISMATCH" | "CHARACTER_PARSER:MISMATCHED_BRACKET" => code::UNCLOSED_BRACKET,
-        "PUG:INVALID_ID" | "PUG:INVALID_CLASS_NAME" => code::INVALID_NAME,
-        "PUG:DUPLICATE_ID" | "PUG:DUPLICATE_ATTRIBUTE" => code::DUPLICATE_ATTRIBUTE,
-        "PUG:NO_EXTENDS_PATH"
-        | "PUG:MALFORMED_EXTENDS"
-        | "PUG:NO_INCLUDE_PATH"
-        | "PUG:MALFORMED_INCLUDE"
-        | "PUG:NO_CASE_EXPRESSION"
-        | "PUG:NO_WHEN_EXPRESSION"
-        | "PUG:DEFAULT_WITH_EXPRESSION"
-        | "PUG:ELSE_CONDITION"
-        | "PUG:NO_WHILE_EXPRESSION"
-        | "PUG:MALFORMED_EACH"
-        | "PUG:MALFORMED_EACH_OF_LVAL" => code::MALFORMED_KEYWORD,
-        "PUG:BLOCK_IN_BUFFERED_CODE" | "PUG:RAW_INCLUDE_BLOCK" => code::ILLEGAL_NESTING,
-        _ => code::SYNTAX_ERROR,
+        InconsistentIndentation | InvalidIndentation => code::INCONSISTENT_INDENT,
+        NoEndBracket | BracketMismatch | MismatchedBracket => code::UNCLOSED_BRACKET,
+        InvalidId | InvalidClassName => code::INVALID_NAME,
+        DuplicateId | DuplicateAttribute => code::DUPLICATE_ATTRIBUTE,
+        NoExtendsPath
+        | MalformedExtends
+        | NoIncludePath
+        | MalformedInclude
+        | NoCaseExpression
+        | NoWhenExpression
+        | DefaultWithExpression
+        | ElseCondition
+        | NoWhileExpression
+        | MalformedEach
+        | MalformedEachOfLval => code::MALFORMED_KEYWORD,
+        BlockInBufferedCode | RawIncludeBlock => code::ILLEGAL_NESTING,
+        BlockOutsideMixin | InvalidKeyCharacter | InvalidToken | MixinWithoutBody | UnexpectedText | Assertion | TypeError
+        | NestingLimit => code::SYNTAX_ERROR,
     }
 }
 
@@ -322,6 +408,12 @@ mod tests {
 
     fn at(line: u32, start: u32, end: u32, code: &str, message: &str) -> (u32, u32, u32, String, String) {
         (line, start, end, code.to_string(), message.to_string())
+    }
+
+    #[test]
+    fn errors_print_with_pugs_code() {
+        let error = parser::parse("p#!x").unwrap_err();
+        assert_eq!(error.to_string(), "1:2 \"!x\" is not a valid ID. (PUG:INVALID_ID)");
     }
 
     #[test]
@@ -464,7 +556,7 @@ mod tests {
         // The lexer, which reads the whole template first, stops at the `#[` past the limit.
         let past_lexer = format!("p {}x{}\n", "#[b ".repeat(MAX_DEPTH + 1), "]".repeat(MAX_DEPTH + 1));
         let error = lexer::lex(&past_lexer).unwrap_err();
-        assert_eq!((error.code, error.line, error.column), (TOO_DEEP, 1, 4 * MAX_DEPTH + 3));
+        assert_eq!((error.code, error.line, error.column), (ErrorCode::NestingLimit, 1, 4 * MAX_DEPTH + 3));
         for (construct, text, (line, column)) in nested(MAX_DEPTH + 1) {
             let found = every_walk(text);
             let (line, column) = ((line - 1) as u32, (column - 1) as u32);

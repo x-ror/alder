@@ -10,7 +10,7 @@
 //!   can't hold half of one.
 
 use super::lexer::{js_trim, lex, BlockMode, Kind, Pos, Token};
-use super::{too_deep, Error, MAX_DEPTH};
+use super::{too_deep, Error, ErrorCode, MAX_DEPTH};
 use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::ops::Range;
@@ -305,7 +305,7 @@ fn empty_block(line: usize) -> Block {
     Block { line, nodes: Vec::new() }
 }
 
-fn error_at(token: &Token, code: &'static str, message: impl Into<String>) -> Error {
+fn error_at(token: &Token, code: ErrorCode, message: impl Into<String>) -> Error {
     Error { code, message: message.into(), line: token.start.line, column: token.start.column }
 }
 
@@ -336,7 +336,7 @@ impl Parser {
             return Ok(self.advance());
         }
         let got = self.peek().kind.name();
-        Err(error_at(self.peek(), "PUG:INVALID_TOKEN", format!("expected \"{name}\", but got \"{got}\"")))
+        Err(error_at(self.peek(), ErrorCode::InvalidToken, format!("expected \"{name}\", but got \"{got}\"")))
     }
 
     fn accept(&mut self, name: &str) -> Option<Token> {
@@ -387,7 +387,7 @@ impl Parser {
         let Pos { line, column } = self.peek().start;
         self.parse_expr()?.ok_or_else(|| {
             let message = "Cannot read properties of undefined (reading 'type')".to_string();
-            Error { code: "TypeError", message, line, column }
+            Error { code: ErrorCode::TypeError, message, line, column }
         })
     }
 
@@ -441,7 +441,7 @@ impl Parser {
             }
             other => {
                 let message = format!("unexpected token \"{}\"", other.name());
-                Err(error_at(self.peek(), "PUG:INVALID_TOKEN", message))
+                Err(error_at(self.peek(), ErrorCode::InvalidToken, message))
             }
         }
     }
@@ -556,7 +556,7 @@ impl Parser {
                 _ => {
                     let message =
                         format!("Unexpected token \"{}\", expected \"when\", \"default\" or \"newline\"", self.peek().kind.name());
-                    return Err(error_at(self.peek(), "PUG:INVALID_TOKEN", message));
+                    return Err(error_at(self.peek(), ErrorCode::InvalidToken, message));
                 }
             }
         }
@@ -577,7 +577,7 @@ impl Parser {
         let mut code = Code { val: val.clone(), buffer: *buffer, must_escape: *must_escape, inline, block: None };
         if !inline && self.peek_is("indent") {
             if code.buffer {
-                return Err(error_at(self.peek(), "PUG:BLOCK_IN_BUFFERED_CODE", "Buffered code cannot have a block attached to it"));
+                return Err(error_at(self.peek(), ErrorCode::BlockInBufferedCode, "Buffered code cannot have a block attached to it"));
             }
             code.block = Some(self.block()?);
         }
@@ -650,7 +650,7 @@ impl Parser {
                     Kind::Newline => val.push('\n'),
                     other => {
                         let message = format!("Unexpected token type: {}", other.name());
-                        return Err(error_at(&line, "PUG:INVALID_TOKEN", message));
+                        return Err(error_at(&line, ErrorCode::InvalidToken, message));
                     }
                 }
             }
@@ -734,7 +734,11 @@ impl Parser {
         let token = self.expect("mixin-block")?;
         if self.in_mixin == 0 {
             // Pug's code has this spelling.
-            return Err(error_at(&token, "PUG:BLOCK_OUTISDE_MIXIN", "Anonymous blocks are not allowed unless they are part of a mixin."));
+            return Err(error_at(
+                &token,
+                ErrorCode::BlockOutsideMixin,
+                "Anonymous blocks are not allowed unless they are part of a mixin.",
+            ));
         }
         Ok(node(&token, NodeKind::MixinBlock))
     }
@@ -752,7 +756,7 @@ impl Parser {
             return Ok(node(&token, NodeKind::Include { file, block }));
         }
         if self.peek_is("indent") {
-            return Err(error_at(self.peek(), "PUG:RAW_INCLUDE_BLOCK", "Raw inclusion cannot contain a block"));
+            return Err(error_at(self.peek(), ErrorCode::RawIncludeBlock, "Raw inclusion cannot contain a block"));
         }
         Ok(node(&token, NodeKind::RawInclude { file, filters }))
     }
@@ -773,7 +777,7 @@ impl Parser {
         let token = self.expect("mixin")?;
         let Kind::Mixin { name, args } = &token.kind else { unreachable!() };
         if !self.peek_is("indent") {
-            return Err(error_at(&token, "PUG:MIXIN_WITHOUT_BODY", format!("Mixin {name} declared without body")));
+            return Err(error_at(&token, ErrorCode::MixinWithoutBody, format!("Mixin {name} declared without body")));
         }
         self.in_mixin += 1;
         let block = self.block()?;
@@ -801,7 +805,7 @@ impl Parser {
                 Kind::InterpolatedCode { .. } => block.nodes.push(interpolated_code(&token)),
                 other => {
                     let message = format!("Unexpected token type: {}", other.name());
-                    return Err(error_at(&token, "PUG:INVALID_TOKEN", message));
+                    return Err(error_at(&token, ErrorCode::InvalidToken, message));
                 }
             }
         }
@@ -861,7 +865,7 @@ impl Parser {
                     };
                     if name == "id" {
                         if names.iter().any(|n| n == "id") {
-                            return Err(error_at(&token, "PUG:DUPLICATE_ID", "Duplicate attribute \"id\" is not allowed."));
+                            return Err(error_at(&token, ErrorCode::DuplicateId, "Duplicate attribute \"id\" is not allowed."));
                         }
                         names.push("id".to_string());
                     }
@@ -915,7 +919,7 @@ impl Parser {
                     "Unexpected token `{}` expected `text`, `interpolated-code`, `code`, `:`{slash}, `newline` or `eos`",
                     other.name()
                 );
-                return Err(error_at(self.peek(), "PUG:INVALID_TOKEN", message));
+                return Err(error_at(self.peek(), ErrorCode::InvalidToken, message));
             }
         }
         while self.accept("newline").is_some() {}
@@ -941,7 +945,11 @@ impl Parser {
             if name != "class" {
                 if let Some(names) = names.as_deref_mut() {
                     if names.contains(name) {
-                        return Err(error_at(&token, "PUG:DUPLICATE_ATTRIBUTE", format!("Duplicate attribute \"{name}\" is not allowed.")));
+                        return Err(error_at(
+                            &token,
+                            ErrorCode::DuplicateAttribute,
+                            format!("Duplicate attribute \"{name}\" is not allowed."),
+                        ));
                     }
                     names.push(name.clone());
                 }
@@ -1114,7 +1122,7 @@ mod tests {
                 (got != want).then(|| format!("outline\n    pug:  {want:?}\n    ours: {got:?}"))
             }
             (Err(error), Value::Object(_)) => {
-                let same = expected["code"] == error.code
+                let same = expected["code"] == error.code.as_str()
                     && expected["message"] == error.message.as_str()
                     && (expected["line"].is_null() || (expected["line"] == error.line && expected["column"] == error.column));
                 (!same).then(|| format!("error\n    pug:  {expected}\n    ours: {error:?}"))
@@ -1125,7 +1133,7 @@ mod tests {
         differs.map(|d| format!("{} {}: {d}", case["label"].as_str().unwrap_or_default(), json(source)))
     }
 
-    fn error_of(text: &str) -> (&'static str, String, usize, usize) {
+    fn error_of(text: &str) -> (ErrorCode, String, usize, usize) {
         let error = parse(text).unwrap_err();
         (error.code, error.message, error.line, error.column)
     }
@@ -1144,59 +1152,59 @@ mod tests {
         let (malformed_each, malformed_for) = (malformed("each"), malformed("for"));
         let each_of_value = "The value variable for each must either be a valid identifier (e.g. `item`) or a pair of identifiers in square brackets (e.g. `[key, value]`).";
         let after_tag = "Unexpected token `slash` expected `text`, `interpolated-code`, `code`, `:`, `newline` or `eos`";
-        let cases: &[(&str, &str, &str, usize, usize)] = &[
-            ("div\n    p\n  a", "PUG:INCONSISTENT_INDENTATION", "Inconsistent indentation. Expecting either 0 or 4 spaces/tabs.", 3, 1),
-            ("div\n\tp\n  a", "PUG:INVALID_INDENTATION", "Invalid indentation, you can use tabs or spaces but not both", 3, 1),
-            ("p\n  ]", "PUG:UNEXPECTED_TEXT", "unexpected text \"]\"", 2, 3),
-            ("include:markdown(x)foo", "PUG:UNEXPECTED_TEXT", "unexpected text \"foo\"", 1, 20),
-            ("p.1", "PUG:INVALID_CLASS_NAME", "Class names must contain at least one letter or underscore.", 1, 2),
-            ("p. x", "PUG:INVALID_CLASS_NAME", class_message, 1, 2),
-            ("p#!x", "PUG:INVALID_ID", "\"!x\" is not a valid ID.", 1, 2),
-            ("a(href=\n  \"x\"", "PUG:NO_END_BRACKET", "The end of the string reached with no closing bracket ) found.", 2, 6),
-            ("p #[b", "PUG:NO_END_BRACKET", "End of line was reached with no closing bracket for interpolation.", 1, 6),
-            ("p(a=\"{\"=})", "PUG:BRACKET_MISMATCH", "Mismatched Bracket: }", 1, 9),
-            ("p #[strong #{x]", "PUG:BRACKET_MISMATCH", "Mismatched Bracket: ]", 1, 15),
-            ("extends", "PUG:NO_EXTENDS_PATH", "missing path for extends", 1, 8),
-            ("extends:x", "PUG:MALFORMED_EXTENDS", "malformed extends", 1, 8),
-            ("include:markdown", "PUG:NO_INCLUDE_PATH", "missing path for include", 1, 17),
-            ("include-x", "PUG:MALFORMED_INCLUDE", "malformed include", 1, 8),
-            ("case", "PUG:NO_CASE_EXPRESSION", "missing expression for case", 1, 5),
-            ("when", "PUG:NO_WHEN_EXPRESSION", "missing expression for when", 1, 5),
-            ("default x", "PUG:DEFAULT_WITH_EXPRESSION", "default should not have an expression", 1, 8),
-            ("else x", "PUG:ELSE_CONDITION", "`else` cannot have a condition, perhaps you meant `else if`", 1, 6),
-            ("while", "PUG:NO_WHILE_EXPRESSION", "missing expression for while", 1, 6),
-            ("each x\n  p", "PUG:MALFORMED_EACH", &malformed_each, 1, 5),
-            ("for\n  p", "PUG:MALFORMED_EACH", &malformed_for, 1, 4),
-            ("- for x, i in y", "PUG:MALFORMED_EACH", dashed_each, 1, 1),
-            ("- each x of y", "PUG:MALFORMED_EACH", dashed_each_of, 1, 1),
+        let cases: &[(&str, ErrorCode, &str, usize, usize)] = &[
+            ("div\n    p\n  a", ErrorCode::InconsistentIndentation, "Inconsistent indentation. Expecting either 0 or 4 spaces/tabs.", 3, 1),
+            ("div\n\tp\n  a", ErrorCode::InvalidIndentation, "Invalid indentation, you can use tabs or spaces but not both", 3, 1),
+            ("p\n  ]", ErrorCode::UnexpectedText, "unexpected text \"]\"", 2, 3),
+            ("include:markdown(x)foo", ErrorCode::UnexpectedText, "unexpected text \"foo\"", 1, 20),
+            ("p.1", ErrorCode::InvalidClassName, "Class names must contain at least one letter or underscore.", 1, 2),
+            ("p. x", ErrorCode::InvalidClassName, class_message, 1, 2),
+            ("p#!x", ErrorCode::InvalidId, "\"!x\" is not a valid ID.", 1, 2),
+            ("a(href=\n  \"x\"", ErrorCode::NoEndBracket, "The end of the string reached with no closing bracket ) found.", 2, 6),
+            ("p #[b", ErrorCode::NoEndBracket, "End of line was reached with no closing bracket for interpolation.", 1, 6),
+            ("p(a=\"{\"=})", ErrorCode::BracketMismatch, "Mismatched Bracket: }", 1, 9),
+            ("p #[strong #{x]", ErrorCode::BracketMismatch, "Mismatched Bracket: ]", 1, 15),
+            ("extends", ErrorCode::NoExtendsPath, "missing path for extends", 1, 8),
+            ("extends:x", ErrorCode::MalformedExtends, "malformed extends", 1, 8),
+            ("include:markdown", ErrorCode::NoIncludePath, "missing path for include", 1, 17),
+            ("include-x", ErrorCode::MalformedInclude, "malformed include", 1, 8),
+            ("case", ErrorCode::NoCaseExpression, "missing expression for case", 1, 5),
+            ("when", ErrorCode::NoWhenExpression, "missing expression for when", 1, 5),
+            ("default x", ErrorCode::DefaultWithExpression, "default should not have an expression", 1, 8),
+            ("else x", ErrorCode::ElseCondition, "`else` cannot have a condition, perhaps you meant `else if`", 1, 6),
+            ("while", ErrorCode::NoWhileExpression, "missing expression for while", 1, 6),
+            ("each x\n  p", ErrorCode::MalformedEach, &malformed_each, 1, 5),
+            ("for\n  p", ErrorCode::MalformedEach, &malformed_for, 1, 4),
+            ("- for x, i in y", ErrorCode::MalformedEach, dashed_each, 1, 1),
+            ("- each x of y", ErrorCode::MalformedEach, dashed_each_of, 1, 1),
             // `each … of` is tried first, and finds ` of` in `offers`.
-            ("each offer in offers\n  li= offer", "PUG:MALFORMED_EACH_OF_LVAL", each_of_value, 1, 21),
-            ("each k, v of m\n  p", "PUG:MALFORMED_EACH_OF_LVAL", each_of_value, 1, 15),
-            ("each 😀 of y\n  p", "PUG:MALFORMED_EACH_OF_LVAL", each_of_value, 1, 13),
-            ("each x of y", "PUG:INVALID_TOKEN", "expected \"indent\", but got \"eos\"", 1, 12),
-            ("each x of y\n  p\nelse\n  p", "PUG:INVALID_TOKEN", "unexpected token \"else\"", 3, 1),
-            ("p(a!x)", "PUG:INVALID_KEY_CHARACTER", "Unexpected character x expected `=`", 1, 4),
-            ("p(a!)", "PUG:INVALID_KEY_CHARACTER", "Unexpected character undefined expected `=`", 1, 4),
-            ("case x\n  p", "PUG:INVALID_TOKEN", "Unexpected token \"tag\", expected \"when\", \"default\" or \"newline\"", 2, 3),
-            ("case x", "PUG:INVALID_TOKEN", "expected \"indent\", but got \"eos\"", 1, 7),
-            ("if a\n  p\n// comment\nelse\n  p", "PUG:INVALID_TOKEN", "unexpected token \"else\"", 4, 1),
-            ("+foo/", "PUG:INVALID_TOKEN", after_tag, 1, 5),
-            ("= x\n  p", "PUG:BLOCK_IN_BUFFERED_CODE", "Buffered code cannot have a block attached to it", 2, 1),
-            ("include a.txt\n  p", "PUG:RAW_INCLUDE_BLOCK", "Raw inclusion cannot contain a block", 2, 1),
-            ("mixin foo", "PUG:MIXIN_WITHOUT_BODY", "Mixin foo declared without body", 1, 1),
-            ("block", "PUG:BLOCK_OUTISDE_MIXIN", "Anonymous blocks are not allowed unless they are part of a mixin.", 1, 1),
-            ("p(id=\"b\")#a", "PUG:DUPLICATE_ID", "Duplicate attribute \"id\" is not allowed.", 1, 10),
-            ("p#a(id=\"b\")", "PUG:DUPLICATE_ATTRIBUTE", "Duplicate attribute \"id\" is not allowed.", 1, 5),
+            ("each offer in offers\n  li= offer", ErrorCode::MalformedEachOfLval, each_of_value, 1, 21),
+            ("each k, v of m\n  p", ErrorCode::MalformedEachOfLval, each_of_value, 1, 15),
+            ("each 😀 of y\n  p", ErrorCode::MalformedEachOfLval, each_of_value, 1, 13),
+            ("each x of y", ErrorCode::InvalidToken, "expected \"indent\", but got \"eos\"", 1, 12),
+            ("each x of y\n  p\nelse\n  p", ErrorCode::InvalidToken, "unexpected token \"else\"", 3, 1),
+            ("p(a!x)", ErrorCode::InvalidKeyCharacter, "Unexpected character x expected `=`", 1, 4),
+            ("p(a!)", ErrorCode::InvalidKeyCharacter, "Unexpected character undefined expected `=`", 1, 4),
+            ("case x\n  p", ErrorCode::InvalidToken, "Unexpected token \"tag\", expected \"when\", \"default\" or \"newline\"", 2, 3),
+            ("case x", ErrorCode::InvalidToken, "expected \"indent\", but got \"eos\"", 1, 7),
+            ("if a\n  p\n// comment\nelse\n  p", ErrorCode::InvalidToken, "unexpected token \"else\"", 4, 1),
+            ("+foo/", ErrorCode::InvalidToken, after_tag, 1, 5),
+            ("= x\n  p", ErrorCode::BlockInBufferedCode, "Buffered code cannot have a block attached to it", 2, 1),
+            ("include a.txt\n  p", ErrorCode::RawIncludeBlock, "Raw inclusion cannot contain a block", 2, 1),
+            ("mixin foo", ErrorCode::MixinWithoutBody, "Mixin foo declared without body", 1, 1),
+            ("block", ErrorCode::BlockOutsideMixin, "Anonymous blocks are not allowed unless they are part of a mixin.", 1, 1),
+            ("p(id=\"b\")#a", ErrorCode::DuplicateId, "Duplicate attribute \"id\" is not allowed.", 1, 10),
+            ("p#a(id=\"b\")", ErrorCode::DuplicateAttribute, "Duplicate attribute \"id\" is not allowed.", 1, 5),
             // Pug counts the line break before `#{` as a column.
-            ("+\n#{a", "PUG:NO_END_BRACKET", "The end of the string reached with no closing bracket } found.", 1, 6),
-            ("+\n#{a]", "PUG:BRACKET_MISMATCH", "Mismatched Bracket: ]", 1, 6),
-            ("+\n#{a\nb", "PUG:NO_END_BRACKET", "The end of the string reached with no closing bracket } found.", 2, 2),
+            ("+\n#{a", ErrorCode::NoEndBracket, "The end of the string reached with no closing bracket } found.", 1, 6),
+            ("+\n#{a]", ErrorCode::BracketMismatch, "Mismatched Bracket: ]", 1, 6),
+            ("+\n#{a\nb", ErrorCode::NoEndBracket, "The end of the string reached with no closing bracket } found.", 2, 2),
             // JavaScript's `trim` takes U+FEFF and leaves U+0085.
-            ("else \u{feff}", "PUG:INVALID_TOKEN", "unexpected token \"else\"", 1, 1),
-            ("else \u{85}", "PUG:ELSE_CONDITION", "`else` cannot have a condition, perhaps you meant `else if`", 1, 6),
-            ("p.\n  a\n\u{85}\n  b", "PUG:UNEXPECTED_TEXT", "unexpected text \"\u{85}\n  b\"", 3, 1),
+            ("else \u{feff}", ErrorCode::InvalidToken, "unexpected token \"else\"", 1, 1),
+            ("else \u{85}", ErrorCode::ElseCondition, "`else` cannot have a condition, perhaps you meant `else if`", 1, 6),
+            ("p.\n  a\n\u{85}\n  b", ErrorCode::UnexpectedText, "unexpected text \"\u{85}\n  b\"", 3, 1),
             // JavaScript's `.` doesn't take U+2028, so the parentheses are attributes.
-            ("mixin foo(a\u{2028}b)\n  p", "PUG:MIXIN_WITHOUT_BODY", "Mixin foo declared without body", 1, 1),
+            ("mixin foo(a\u{2028}b)\n  p", ErrorCode::MixinWithoutBody, "Mixin foo declared without body", 1, 1),
         ];
         for &(text, code, message, line, column) in cases {
             assert_eq!(error_of(text), (code, message.to_string(), line, column), "{text:?}");
@@ -1207,10 +1215,10 @@ mod tests {
     #[test]
     fn templates_that_make_pug_throw() {
         let cases = [
-            ("p#", "TypeError", "Cannot read properties of null (reading '0')"),
-            ("div\n  .", "TypeError", "Cannot read properties of undefined (reading 'type')"),
-            ("case x\n  when a)", "CHARACTER_PARSER:MISMATCHED_BRACKET", "Mismatched Bracket: )"),
-            ("p&attributes x", "ERR_ASSERTION", "The start character should be \"(\", \"{\" or \"[\""),
+            ("p#", ErrorCode::TypeError, "Cannot read properties of null (reading '0')"),
+            ("div\n  .", ErrorCode::TypeError, "Cannot read properties of undefined (reading 'type')"),
+            ("case x\n  when a)", ErrorCode::MismatchedBracket, "Mismatched Bracket: )"),
+            ("p&attributes x", ErrorCode::Assertion, "The start character should be \"(\", \"{\" or \"[\""),
         ];
         for (text, code, message) in cases {
             let (got_code, got_message, ..) = error_of(text);
@@ -1266,7 +1274,7 @@ mod tests {
     #[test]
     fn broken_fixture() {
         let message = "Inconsistent indentation. Expecting either 4 or 6 spaces/tabs.".to_string();
-        assert_eq!(error_of(include_str!("../../../test/broken/bad.pug")), ("PUG:INCONSISTENT_INDENTATION", message, 7, 1));
+        assert_eq!(error_of(include_str!("../../../test/broken/bad.pug")), (ErrorCode::InconsistentIndentation, message, 7, 1));
     }
 
     #[test]
