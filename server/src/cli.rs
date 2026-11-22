@@ -6,6 +6,7 @@ use crate::format;
 use crate::format::SkipKind;
 use crate::lang::TemplateLang;
 use crate::options::Options;
+use crate::pug;
 use crate::rails::paths;
 use crate::rails::project::{missing_lockfile_note, Project, Projects};
 use crate::rails::view_roots;
@@ -255,19 +256,20 @@ fn check(paths: &[PathBuf], format: Format) -> i32 {
     let workers = std::thread::available_parallelism().map_or(1, |n| n.get()).min(files.len()).max(1);
     let next = AtomicUsize::new(0);
     let view_roots = Arc::new(view_roots::Cache::default());
+    let includers = pug::refs::Includers::default();
     let cwd = crate::util::canonicalize(Path::new(".")).ok();
     let output = Output { format, cwd: cwd.as_deref() };
     let (sender, results) = mpsc::channel();
     std::thread::scope(|scope| {
         for _ in 0..workers {
-            let (sender, next, files, view_roots) = (sender.clone(), &next, &files, &view_roots);
+            let (sender, next, files, view_roots, includers) = (sender.clone(), &next, &files, &view_roots, &includers);
             let work = move || {
                 let (mut projects, mut configs) = (Projects::new(), Configs::new());
                 loop {
                     let index = next.fetch_add(1, Ordering::Relaxed);
                     let Some(file) = files.get(index) else { break };
                     // The printer hung up (stdout closed): nothing left to do.
-                    let checked = check_file(&file.path, output, (&mut projects, &mut configs), view_roots);
+                    let checked = check_file(&file.path, output, (&mut projects, &mut configs), (view_roots, includers));
                     if sender.send((index, checked)).is_err() {
                         break;
                     }
@@ -339,7 +341,7 @@ fn check_file(
     path: &Path,
     output: Output,
     (projects, configs): (&mut Projects, &mut Configs),
-    view_roots: &Arc<view_roots::Cache>,
+    (view_roots, includers): (&Arc<view_roots::Cache>, &pug::refs::Includers),
 ) -> Checked {
     let shown = path.display();
     let failed = |stderr| Checked { stderr, ..Checked::new(USAGE) };
@@ -365,7 +367,7 @@ fn check_file(
     }
     let doc = Doc { lang, text, plain_erb: false, percent_lines: false, version: 0 };
     let source = Source { shown: path, path, text: &doc.text };
-    for d in diagnostics_in(&uri, &doc, &rules, projects, &[]) {
+    for d in diagnostics_in(&uri, &doc, &rules, projects, &[], includers) {
         let severity = d.severity.unwrap_or(DiagnosticSeverity::ERROR);
         checked.rendered.add(output, &source, (Severity::of(severity), util::code(&d), &d.message), d.range);
         // Lower numbers are more severe.

@@ -34,16 +34,93 @@ pub mod code {
 /// level in a release build, on threads with `util::THREAD_STACK`. Pug's own walks run out of stack past a few hundred
 /// levels of `if` and a thousand or so of tags.
 pub(crate) const MAX_DEPTH: usize = 256;
-/// The code of the error for nesting past `MAX_DEPTH`, which Pug doesn't have.
-const TOO_DEEP: &str = "NESTING_LIMIT";
+/// The codes of the errors Pug raises, and of the JavaScript errors it throws on some templates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorCode {
+    BlockInBufferedCode,
+    BlockOutsideMixin,
+    BracketMismatch,
+    DefaultWithExpression,
+    DuplicateAttribute,
+    DuplicateId,
+    ElseCondition,
+    InconsistentIndentation,
+    InvalidClassName,
+    InvalidId,
+    InvalidIndentation,
+    InvalidKeyCharacter,
+    InvalidToken,
+    MalformedEach,
+    MalformedEachOfLval,
+    MalformedExtends,
+    MalformedInclude,
+    MixinWithoutBody,
+    NoCaseExpression,
+    NoEndBracket,
+    NoExtendsPath,
+    NoIncludePath,
+    NoWhenExpression,
+    NoWhileExpression,
+    RawIncludeBlock,
+    UnexpectedText,
+    /// character-parser's, which Pug lets through.
+    MismatchedBracket,
+    /// Node's `assert`.
+    Assertion,
+    TypeError,
+    /// Nesting past `MAX_DEPTH`, which Pug doesn't have.
+    NestingLimit,
+}
+
+impl ErrorCode {
+    /// As Pug spells it: `PUG:INVALID_ID`, `CHARACTER_PARSER:MISMATCHED_BRACKET`, `ERR_ASSERTION`, `TypeError`.
+    pub fn as_str(self) -> &'static str {
+        use ErrorCode::*;
+        match self {
+            BlockInBufferedCode => "PUG:BLOCK_IN_BUFFERED_CODE",
+            // Pug's code has this spelling.
+            BlockOutsideMixin => "PUG:BLOCK_OUTISDE_MIXIN",
+            BracketMismatch => "PUG:BRACKET_MISMATCH",
+            DefaultWithExpression => "PUG:DEFAULT_WITH_EXPRESSION",
+            DuplicateAttribute => "PUG:DUPLICATE_ATTRIBUTE",
+            DuplicateId => "PUG:DUPLICATE_ID",
+            ElseCondition => "PUG:ELSE_CONDITION",
+            InconsistentIndentation => "PUG:INCONSISTENT_INDENTATION",
+            InvalidClassName => "PUG:INVALID_CLASS_NAME",
+            InvalidId => "PUG:INVALID_ID",
+            InvalidIndentation => "PUG:INVALID_INDENTATION",
+            InvalidKeyCharacter => "PUG:INVALID_KEY_CHARACTER",
+            InvalidToken => "PUG:INVALID_TOKEN",
+            MalformedEach => "PUG:MALFORMED_EACH",
+            MalformedEachOfLval => "PUG:MALFORMED_EACH_OF_LVAL",
+            MalformedExtends => "PUG:MALFORMED_EXTENDS",
+            MalformedInclude => "PUG:MALFORMED_INCLUDE",
+            MixinWithoutBody => "PUG:MIXIN_WITHOUT_BODY",
+            NoCaseExpression => "PUG:NO_CASE_EXPRESSION",
+            NoEndBracket => "PUG:NO_END_BRACKET",
+            NoExtendsPath => "PUG:NO_EXTENDS_PATH",
+            NoIncludePath => "PUG:NO_INCLUDE_PATH",
+            NoWhenExpression => "PUG:NO_WHEN_EXPRESSION",
+            NoWhileExpression => "PUG:NO_WHILE_EXPRESSION",
+            RawIncludeBlock => "PUG:RAW_INCLUDE_BLOCK",
+            UnexpectedText => "PUG:UNEXPECTED_TEXT",
+            MismatchedBracket => "CHARACTER_PARSER:MISMATCHED_BRACKET",
+            Assertion => "ERR_ASSERTION",
+            TypeError => "TypeError",
+            NestingLimit => "NESTING_LIMIT",
+        }
+    }
+
+    /// Whether Pug raises it itself, rather than a library or the JavaScript engine throwing it.
+    pub fn is_pugs(self) -> bool {
+        !matches!(self, ErrorCode::MismatchedBracket | ErrorCode::Assertion | ErrorCode::TypeError | ErrorCode::NestingLimit)
+    }
+}
 
 /// The first error Pug raises.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Error {
-    /// Pug's code (`PUG:INCONSISTENT_INDENTATION`, ...), for a template that makes Pug itself fail the code or class of
-    /// the JavaScript error it throws (`CHARACTER_PARSER:MISMATCHED_BRACKET`, `ERR_ASSERTION`, `TypeError`), or
-    /// `NESTING_LIMIT` for nesting past `MAX_DEPTH`.
-    pub code: &'static str,
+    pub code: ErrorCode,
     pub message: String,
     /// 1-based, as Pug counts after turning `\r\n` and `\r` into `\n`.
     pub line: usize,
@@ -51,31 +128,38 @@ pub struct Error {
     pub column: usize,
 }
 
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}:{} {} ({})", self.line, self.column, self.message, self.code.as_str())
+    }
+}
+
+impl std::error::Error for Error {}
+
 /// The error for a node, at 1-based `line` and UTF-16 `column`, nested past `MAX_DEPTH`.
 fn too_deep(line: usize, column: usize) -> Error {
     let message = format!("Nested more than {MAX_DEPTH} levels deep, which isn't checked");
-    Error { code: TOO_DEEP, message, line, column }
+    Error { code: ErrorCode::NestingLimit, message, line, column }
 }
 
 /// Pug's first error, with Pug's message, filed under the code of the construct it is about; without one, the content in a
 /// void element that Pug refuses to compile and, for a file on disk, the problems with what it includes and extends. Only
-/// the codes `reports` takes are looked for, and only the first error in text with a lone `\r`. `parsed` is what
-/// `parser::parse` gives for `text`, and `index` its lines.
+/// the codes `reports` takes are looked for. `parsed` is what `parser::parse` gives for `text`, `index` its lines,
+/// `LineIndex::with_lone_cr` as Pug counts them, and `file` the file's path with what knows which templates include it.
 pub fn diagnostics(
     text: &str,
     index: &LineIndex,
     parsed: &Result<Block, Error>,
-    path: Option<&Path>,
+    file: Option<(&Path, &refs::Includers)>,
     reports: impl Fn(&str) -> bool,
 ) -> Vec<Diagnostic> {
     match parsed {
-        Ok(_) if has_lone_cr(text) => vec![],
         Ok(tree) => {
             let mut found: Vec<Diagnostic> = Vec::new();
             if reports(code::VOID_CHILDREN) {
                 found.extend(elements::void_children(index, tree));
             }
-            found.extend(path.map(|path| refs::diagnostics(text, index, tree, path, &reports)).unwrap_or_default());
+            found.extend(file.map(|file| refs::diagnostics(text, index, tree, file, &reports)).unwrap_or_default());
             found
         }
         Err(found) => {
@@ -88,8 +172,8 @@ pub fn diagnostics(
     }
 }
 
-/// Whether `text` has a `\r` not followed by `\n`, a line break for Pug and the editor that `LineIndex` doesn't count, so
-/// the positions of what follows it would be off.
+/// Whether `text` has a `\r` not followed by `\n`, a line break for Pug and the editor that `LineIndex::new` doesn't count,
+/// so the positions it gives for what follows would be off.
 pub fn has_lone_cr(text: &str) -> bool {
     text.match_indices('\r').any(|(at, _)| !text[at + 1..].starts_with('\n'))
 }
@@ -117,15 +201,15 @@ fn normalize_block(block: &mut Block) {
 }
 
 fn normalize_node(node: &mut Node) {
-    (node.line, node.column) = (0, 0);
+    (node.line, node.column, node.span) = (0, 0, 0..0);
     let trim = |js: &mut String| js.truncate(js.trim_end_matches(lexer::is_js_whitespace).len());
     match &mut node.kind {
         NodeKind::Tag(tag) | NodeKind::MixinCall { tag, .. } => {
             for attr in &mut tag.attrs {
-                (attr.line, attr.column) = (0, 0);
+                (attr.line, attr.column, attr.span) = (0, 0, 0..0);
             }
             for block in &mut tag.attribute_blocks {
-                (block.line, block.column) = (0, 0);
+                (block.line, block.column, block.span) = (0, 0, 0..0);
             }
             normalize_block(&mut tag.block);
         }
@@ -165,23 +249,23 @@ fn normalize_node(node: &mut Node) {
         NodeKind::MixinDefinition { block, .. } | NodeKind::NamedBlock { block, .. } | NodeKind::BlockComment { block, .. } => {
             normalize_block(block)
         }
-        NodeKind::Extends { file } => (file.line, file.column) = (0, 0),
+        NodeKind::Extends { file } => (file.line, file.column, file.span) = (0, 0, 0..0),
         NodeKind::Include { file, block } => {
-            (file.line, file.column) = (0, 0);
+            (file.line, file.column, file.span) = (0, 0, 0..0);
             normalize_block(block);
         }
         NodeKind::RawInclude { file, filters } => {
-            (file.line, file.column) = (0, 0);
+            (file.line, file.column, file.span) = (0, 0, 0..0);
             for filter in filters {
-                (filter.line, filter.column) = (0, 0);
+                (filter.line, filter.column, filter.span) = (0, 0, 0..0);
                 for attr in &mut filter.attrs {
-                    (attr.line, attr.column) = (0, 0);
+                    (attr.line, attr.column, attr.span) = (0, 0, 0..0);
                 }
             }
         }
         NodeKind::Filter { attrs, block, .. } => {
             for attr in attrs {
-                (attr.line, attr.column) = (0, 0);
+                (attr.line, attr.column, attr.span) = (0, 0, 0..0);
             }
             normalize_block(block);
         }
@@ -270,33 +354,27 @@ pub(crate) fn parsable(text: &str) -> Option<(Vec<lexer::Token>, Block)> {
     read(&text[..before]).ok()
 }
 
-/// The byte offset of Pug's 1-based line and UTF-16 column, which don't count the byte order mark.
-pub fn offset(index: &LineIndex, line: usize, column: usize) -> usize {
-    let line = line.saturating_sub(1).min(index.line_of(usize::MAX));
-    let raw = index.line(line);
-    let bom = if line == 0 && raw.starts_with(BOM) { BOM.len_utf8() } else { 0 };
-    index.line_start(line) + bom + lexer::unit_offset(&raw[bom..], column.saturating_sub(1))
-}
-
-fn code_of(pug_code: &str) -> &'static str {
+fn code_of(pug_code: ErrorCode) -> &'static str {
+    use ErrorCode::*;
     match pug_code {
-        "PUG:INCONSISTENT_INDENTATION" | "PUG:INVALID_INDENTATION" => code::INCONSISTENT_INDENT,
-        "PUG:NO_END_BRACKET" | "PUG:BRACKET_MISMATCH" | "CHARACTER_PARSER:MISMATCHED_BRACKET" => code::UNCLOSED_BRACKET,
-        "PUG:INVALID_ID" | "PUG:INVALID_CLASS_NAME" => code::INVALID_NAME,
-        "PUG:DUPLICATE_ID" | "PUG:DUPLICATE_ATTRIBUTE" => code::DUPLICATE_ATTRIBUTE,
-        "PUG:NO_EXTENDS_PATH"
-        | "PUG:MALFORMED_EXTENDS"
-        | "PUG:NO_INCLUDE_PATH"
-        | "PUG:MALFORMED_INCLUDE"
-        | "PUG:NO_CASE_EXPRESSION"
-        | "PUG:NO_WHEN_EXPRESSION"
-        | "PUG:DEFAULT_WITH_EXPRESSION"
-        | "PUG:ELSE_CONDITION"
-        | "PUG:NO_WHILE_EXPRESSION"
-        | "PUG:MALFORMED_EACH"
-        | "PUG:MALFORMED_EACH_OF_LVAL" => code::MALFORMED_KEYWORD,
-        "PUG:BLOCK_IN_BUFFERED_CODE" | "PUG:RAW_INCLUDE_BLOCK" => code::ILLEGAL_NESTING,
-        _ => code::SYNTAX_ERROR,
+        InconsistentIndentation | InvalidIndentation => code::INCONSISTENT_INDENT,
+        NoEndBracket | BracketMismatch | MismatchedBracket => code::UNCLOSED_BRACKET,
+        InvalidId | InvalidClassName => code::INVALID_NAME,
+        DuplicateId | DuplicateAttribute => code::DUPLICATE_ATTRIBUTE,
+        NoExtendsPath
+        | MalformedExtends
+        | NoIncludePath
+        | MalformedInclude
+        | NoCaseExpression
+        | NoWhenExpression
+        | DefaultWithExpression
+        | ElseCondition
+        | NoWhileExpression
+        | MalformedEach
+        | MalformedEachOfLval => code::MALFORMED_KEYWORD,
+        BlockInBufferedCode | RawIncludeBlock => code::ILLEGAL_NESTING,
+        BlockOutsideMixin | InvalidKeyCharacter | InvalidToken | MixinWithoutBody | UnexpectedText | Assertion | TypeError
+        | NestingLimit => code::SYNTAX_ERROR,
     }
 }
 
@@ -320,7 +398,7 @@ mod tests {
 
     /// (line, start, end, code, message) of the diagnostic for `text`, 0-based as the editor gets them.
     fn found(text: &str) -> Vec<(u32, u32, u32, String, String)> {
-        diagnostics(text, &LineIndex::new(text), &parser::parse(text), None, |_| true)
+        diagnostics(text, &LineIndex::with_lone_cr(text), &parser::parse(text), None, |_| true)
             .into_iter()
             .map(|d| {
                 let code = crate::util::code(&d).unwrap_or_default().to_string();
@@ -331,6 +409,12 @@ mod tests {
 
     fn at(line: u32, start: u32, end: u32, code: &str, message: &str) -> (u32, u32, u32, String, String) {
         (line, start, end, code.to_string(), message.to_string())
+    }
+
+    #[test]
+    fn errors_print_with_pugs_code() {
+        let error = parser::parse("p#!x").unwrap_err();
+        assert_eq!(error.to_string(), "1:2 \"!x\" is not a valid ID. (PUG:INVALID_ID)");
     }
 
     #[test]
@@ -378,15 +462,15 @@ mod tests {
     }
 
     #[test]
-    fn a_lone_cr_ends_a_line_for_errors_and_leaves_out_the_rest() {
+    fn a_lone_cr_ends_a_line() {
         let message = "Inconsistent indentation. Expecting either 0 or 4 spaces/tabs.";
         assert_eq!(found("div\r    p\r  a\r"), [at(2, 0, 2, code::INCONSISTENT_INDENT, message)]);
         assert_eq!(
             found("p #[b\rq"),
             [at(0, 5, 5, code::UNCLOSED_BRACKET, "End of line was reached with no closing bracket for interpolation.")]
         );
-        assert!(found("img\r  p\r").is_empty());
-        assert!(found("img\n  p\n").len() == 1);
+        let void = "img is a self closing element: <img/> but contains nested content.";
+        assert_eq!(found("p\r\nimg\r  p\r"), [at(1, 0, 3, code::VOID_CHILDREN, void)]);
         assert!(has_lone_cr("a\rb") && has_lone_cr("a\r") && !has_lone_cr("a\r\nb\n"));
     }
 
@@ -447,12 +531,12 @@ mod tests {
             let page = root.join("page.pug");
             let extending = format!("extends layout\n{text}");
             std::fs::write(&page, &extending).unwrap();
-            diagnostics(&extending, &LineIndex::new(&extending), &parser::parse(&extending), Some(&page), |_| true);
+            let includers = refs::Includers::default();
+            diagnostics(&extending, &LineIndex::with_lone_cr(&extending), &parser::parse(&extending), Some((&page, &includers)), |_| true);
             let _ = std::fs::remove_dir_all(&root);
-            let index = LineIndex::new(&text);
             if let Ok(tree) = parser::parse(&text) {
-                let markup = elements::tags(&text, &index, &tree);
-                let ancestry = elements::ancestry(&index, &tree);
+                let markup = elements::tags(&text, &tree);
+                let ancestry = elements::ancestry(&tree);
                 crate::element_lints::diagnostics(crate::lang::TemplateLang::Pug, &text, &markup, &[], Some(&ancestry));
                 crate::nested_interactive::diagnostics(crate::lang::TemplateLang::Pug, &text, &markup, &[], Some(&ancestry));
                 crate::outline::pug::document_symbols(&text);
@@ -474,7 +558,7 @@ mod tests {
         // The lexer, which reads the whole template first, stops at the `#[` past the limit.
         let past_lexer = format!("p {}x{}\n", "#[b ".repeat(MAX_DEPTH + 1), "]".repeat(MAX_DEPTH + 1));
         let error = lexer::lex(&past_lexer).unwrap_err();
-        assert_eq!((error.code, error.line, error.column), (TOO_DEEP, 1, 4 * MAX_DEPTH + 3));
+        assert_eq!((error.code, error.line, error.column), (ErrorCode::NestingLimit, 1, 4 * MAX_DEPTH + 3));
         for (construct, text, (line, column)) in nested(MAX_DEPTH + 1) {
             let found = every_walk(text);
             let (line, column) = ((line - 1) as u32, (column - 1) as u32);

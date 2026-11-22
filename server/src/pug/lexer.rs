@@ -3,8 +3,8 @@
 //! UTF-16 code units. `is-expression` isn't ported: the JavaScript isn't validated (`PUG:SYNTAX_ERROR`), and where
 //! Pug asks it whether an attribute value has ended, `Completeness` answers.
 
-use super::{too_deep, Error, MAX_DEPTH};
-use crate::util::{closing_bracket, BOM};
+use super::{too_deep, Error, ErrorCode, MAX_DEPTH};
+use crate::util::{closing_bracket, LineIndex, BOM};
 use regex::Regex;
 use std::borrow::Cow;
 use std::ops::Range;
@@ -166,53 +166,159 @@ pub enum Kind {
 }
 
 impl Kind {
+    pub fn ty(&self) -> TokenType {
+        match self {
+            Kind::Tag(_) => TokenType::Tag,
+            Kind::Id(_) => TokenType::Id,
+            Kind::Class(_) => TokenType::Class,
+            Kind::Text(_) => TokenType::Text,
+            Kind::TextHtml(_) => TokenType::TextHtml,
+            Kind::Comment { .. } => TokenType::Comment,
+            Kind::InterpolatedCode { .. } => TokenType::InterpolatedCode,
+            Kind::Code { .. } => TokenType::Code,
+            Kind::BlockCode => TokenType::BlockCode,
+            Kind::Interpolation(_) => TokenType::Interpolation,
+            Kind::Filter(_) => TokenType::Filter,
+            Kind::Doctype(_) => TokenType::Doctype,
+            Kind::Dot => TokenType::Dot,
+            Kind::Extends => TokenType::Extends,
+            Kind::Path(_) => TokenType::Path,
+            Kind::Block { .. } => TokenType::Block,
+            Kind::MixinBlock => TokenType::MixinBlock,
+            Kind::Yield => TokenType::Yield,
+            Kind::Include => TokenType::Include,
+            Kind::Mixin { .. } => TokenType::Mixin,
+            Kind::Call { .. } => TokenType::Call,
+            Kind::If(_) => TokenType::If,
+            Kind::ElseIf(_) => TokenType::ElseIf,
+            Kind::Else => TokenType::Else,
+            Kind::Each { .. } => TokenType::Each,
+            Kind::EachOf { .. } => TokenType::EachOf,
+            Kind::While(_) => TokenType::While,
+            Kind::Case(_) => TokenType::Case,
+            Kind::When(_) => TokenType::When,
+            Kind::Default => TokenType::Default,
+            Kind::StartAttributes => TokenType::StartAttributes,
+            Kind::Attribute { .. } => TokenType::Attribute,
+            Kind::EndAttributes => TokenType::EndAttributes,
+            Kind::AndAttributes(_) => TokenType::AndAttributes,
+            Kind::Indent(_) => TokenType::Indent,
+            Kind::Outdent => TokenType::Outdent,
+            Kind::Newline => TokenType::Newline,
+            Kind::Eos => TokenType::Eos,
+            Kind::StartPipelessText => TokenType::StartPipelessText,
+            Kind::EndPipelessText => TokenType::EndPipelessText,
+            Kind::StartPugInterpolation => TokenType::StartPugInterpolation,
+            Kind::EndPugInterpolation => TokenType::EndPugInterpolation,
+            Kind::Slash => TokenType::Slash,
+            Kind::Colon => TokenType::Colon,
+        }
+    }
+
     /// The token's `type` in pug-lexer, which Pug's messages name.
     pub fn name(&self) -> &'static str {
+        self.ty().name()
+    }
+}
+
+/// A token's kind without its values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TokenType {
+    Tag,
+    Id,
+    Class,
+    Text,
+    TextHtml,
+    Comment,
+    InterpolatedCode,
+    Code,
+    BlockCode,
+    Interpolation,
+    Filter,
+    Doctype,
+    Dot,
+    Extends,
+    Path,
+    Block,
+    MixinBlock,
+    Yield,
+    Include,
+    Mixin,
+    Call,
+    If,
+    ElseIf,
+    Else,
+    Each,
+    EachOf,
+    While,
+    Case,
+    When,
+    Default,
+    StartAttributes,
+    Attribute,
+    EndAttributes,
+    AndAttributes,
+    Indent,
+    Outdent,
+    Newline,
+    Eos,
+    StartPipelessText,
+    EndPipelessText,
+    StartPugInterpolation,
+    EndPugInterpolation,
+    Slash,
+    Colon,
+}
+
+impl TokenType {
+    /// As pug-lexer spells it.
+    pub fn name(self) -> &'static str {
+        use TokenType::*;
         match self {
-            Kind::Tag(_) => "tag",
-            Kind::Id(_) => "id",
-            Kind::Class(_) => "class",
-            Kind::Text(_) => "text",
-            Kind::TextHtml(_) => "text-html",
-            Kind::Comment { .. } => "comment",
-            Kind::InterpolatedCode { .. } => "interpolated-code",
-            Kind::Code { .. } => "code",
-            Kind::BlockCode => "blockcode",
-            Kind::Interpolation(_) => "interpolation",
-            Kind::Filter(_) => "filter",
-            Kind::Doctype(_) => "doctype",
-            Kind::Dot => "dot",
-            Kind::Extends => "extends",
-            Kind::Path(_) => "path",
-            Kind::Block { .. } => "block",
-            Kind::MixinBlock => "mixin-block",
-            Kind::Yield => "yield",
-            Kind::Include => "include",
-            Kind::Mixin { .. } => "mixin",
-            Kind::Call { .. } => "call",
-            Kind::If(_) => "if",
-            Kind::ElseIf(_) => "else-if",
-            Kind::Else => "else",
-            Kind::Each { .. } => "each",
-            Kind::EachOf { .. } => "eachOf",
-            Kind::While(_) => "while",
-            Kind::Case(_) => "case",
-            Kind::When(_) => "when",
-            Kind::Default => "default",
-            Kind::StartAttributes => "start-attributes",
-            Kind::Attribute { .. } => "attribute",
-            Kind::EndAttributes => "end-attributes",
-            Kind::AndAttributes(_) => "&attributes",
-            Kind::Indent(_) => "indent",
-            Kind::Outdent => "outdent",
-            Kind::Newline => "newline",
-            Kind::Eos => "eos",
-            Kind::StartPipelessText => "start-pipeless-text",
-            Kind::EndPipelessText => "end-pipeless-text",
-            Kind::StartPugInterpolation => "start-pug-interpolation",
-            Kind::EndPugInterpolation => "end-pug-interpolation",
-            Kind::Slash => "slash",
-            Kind::Colon => ":",
+            Tag => "tag",
+            Id => "id",
+            Class => "class",
+            Text => "text",
+            TextHtml => "text-html",
+            Comment => "comment",
+            InterpolatedCode => "interpolated-code",
+            Code => "code",
+            BlockCode => "blockcode",
+            Interpolation => "interpolation",
+            Filter => "filter",
+            Doctype => "doctype",
+            Dot => "dot",
+            Extends => "extends",
+            Path => "path",
+            Block => "block",
+            MixinBlock => "mixin-block",
+            Yield => "yield",
+            Include => "include",
+            Mixin => "mixin",
+            Call => "call",
+            If => "if",
+            ElseIf => "else-if",
+            Else => "else",
+            Each => "each",
+            EachOf => "eachOf",
+            While => "while",
+            Case => "case",
+            When => "when",
+            Default => "default",
+            StartAttributes => "start-attributes",
+            Attribute => "attribute",
+            EndAttributes => "end-attributes",
+            AndAttributes => "&attributes",
+            Indent => "indent",
+            Outdent => "outdent",
+            Newline => "newline",
+            Eos => "eos",
+            StartPipelessText => "start-pipeless-text",
+            EndPipelessText => "end-pipeless-text",
+            StartPugInterpolation => "start-pug-interpolation",
+            EndPugInterpolation => "end-pug-interpolation",
+            Slash => "slash",
+            Colon => ":",
         }
     }
 }
@@ -222,15 +328,61 @@ pub struct Token {
     pub kind: Kind,
     pub start: Pos,
     pub end: Pos,
+    /// The bytes from `start` to `end` in the text given to `lex`; for a path, the path without the whitespace Pug trims.
+    pub span: Range<usize>,
 }
 
 /// Pug's tokens for `text`, or its first error.
 pub fn lex(text: &str) -> Result<Vec<Token>, Error> {
-    let text = text.strip_prefix(BOM).unwrap_or(text);
-    let input = if text.contains('\r') { Cow::Owned(text.replace("\r\n", "\n").replace('\r', "\n")) } else { Cow::Borrowed(text) };
+    let body = text.strip_prefix(BOM).unwrap_or(text);
+    let input = if body.contains('\r') { Cow::Owned(body.replace("\r\n", "\n").replace('\r', "\n")) } else { Cow::Borrowed(body) };
     let mut lexer = Lexer::new(input, Pos { line: 1, column: 1 });
     lexer.run()?;
-    Ok(lexer.tokens)
+    let mut offsets = Offsets::new(text);
+    let mut tokens = lexer.tokens;
+    for token in &mut tokens {
+        let start = offsets.of(token.start);
+        token.span = match &token.kind {
+            // Pug's column is past the spaces after the keyword, not past the rest of the whitespace it trims.
+            Kind::Path(path) => {
+                let start = start + text[start..].len() - text[start..].trim_start_matches(is_js_whitespace).len();
+                start..start + path.len()
+            }
+            _ => start..offsets.of(token.end).max(start),
+        };
+    }
+    Ok(tokens)
+}
+
+/// The byte offsets of Pug's positions in the text it lexed, found from the last one asked when that is earlier on the
+/// same line: tokens ask in about document order, and a line can hold thousands.
+struct Offsets<'a> {
+    index: LineIndex<'a>,
+    /// The 0-based line, UTF-16 column and offset of the last position asked.
+    last: (usize, usize, usize),
+}
+
+impl<'a> Offsets<'a> {
+    fn new(text: &'a str) -> Self {
+        Offsets { index: LineIndex::with_lone_cr(text), last: (0, 1, if text.starts_with(BOM) { BOM.len_utf8() } else { 0 }) }
+    }
+
+    /// The offset of Pug's 1-based line and UTF-16 column, which don't count the byte order mark.
+    fn of(&mut self, at: Pos) -> usize {
+        let line = at.line.saturating_sub(1).min(self.index.line_of(usize::MAX));
+        let line_start = self.index.line_start(line);
+        let (column, from) = match self.last {
+            (last_line, column, from) if last_line == line && column <= at.column => (column, from),
+            _ => {
+                let bom = if line == 0 && self.index.line(0).starts_with(BOM) { BOM.len_utf8() } else { 0 };
+                (1, line_start + bom)
+            }
+        };
+        let rest = &self.index.line(line)[from - line_start..];
+        let offset = from + unit_offset(rest, at.column.saturating_sub(column));
+        self.last = (line, at.column, offset);
+        offset
+    }
 }
 
 fn units(s: &str) -> usize {
@@ -392,14 +544,14 @@ impl<'a> Lexer<'a> {
     /// Pug's error for code in `#{...}`, or in `#[...]` after `=`, whose end it can't find.
     fn interpolation_error(&self, failure: Failure) -> Error {
         match failure {
-            Failure::EndOfString => self.error("PUG:NO_END_BRACKET", INTERPOLATION_END),
-            Failure::Mismatch(c) => self.error("PUG:BRACKET_MISMATCH", mismatched_bracket(c)),
+            Failure::EndOfString => self.error(ErrorCode::NoEndBracket, INTERPOLATION_END),
+            Failure::Mismatch(c) => self.error(ErrorCode::BracketMismatch, mismatched_bracket(c)),
         }
     }
 
     fn unexpected_text(&self) -> Error {
         let rest = self.rest();
-        self.error("PUG:UNEXPECTED_TEXT", format!("unexpected text \"{}\"", &rest[..unit_offset(rest, 5)]))
+        self.error(ErrorCode::UnexpectedText, format!("unexpected text \"{}\"", &rest[..unit_offset(rest, 5)]))
     }
 
     fn rest(&self) -> &str {
@@ -414,12 +566,12 @@ impl<'a> Lexer<'a> {
         Pos { line: self.line, column: self.column }
     }
 
-    fn error(&self, code: &'static str, message: impl Into<String>) -> Error {
+    fn error(&self, code: ErrorCode, message: impl Into<String>) -> Error {
         Error { code, message: message.into(), line: self.line, column: self.column }
     }
 
     fn push(&mut self, kind: Kind, start: Pos) {
-        self.tokens.push(Token { kind, start, end: self.pos() });
+        self.tokens.push(Token { kind, start, end: self.pos(), span: 0..0 });
     }
 
     fn increment_line(&mut self, lines: usize) {
@@ -479,7 +631,7 @@ impl<'a> Lexer<'a> {
     /// The byte range, in the unconsumed input, inside the bracket at byte `skip`.
     fn bracket_expression(&mut self, skip: usize) -> Result<Range<usize>, Error> {
         let Some(close) = self.rest()[skip..].chars().next().and_then(closing_bracket) else {
-            return Err(self.error("ERR_ASSERTION", "The start character should be \"(\", \"{\" or \"[\""));
+            return Err(self.error(ErrorCode::Assertion, "The start character should be \"(\", \"{\" or \"[\""));
         };
         match parse_until(self.rest(), close, skip + 1) {
             Ok(range) => Ok(range),
@@ -493,9 +645,9 @@ impl<'a> Lexer<'a> {
                 self.column += columns;
                 Err(match failure {
                     Failure::EndOfString => {
-                        self.error("PUG:NO_END_BRACKET", format!("The end of the string reached with no closing bracket {close} found."))
+                        self.error(ErrorCode::NoEndBracket, format!("The end of the string reached with no closing bracket {close} found."))
                     }
-                    Failure::Mismatch(c) => self.error("PUG:BRACKET_MISMATCH", mismatched_bracket(c)),
+                    Failure::Mismatch(c) => self.error(ErrorCode::BracketMismatch, mismatched_bracket(c)),
                 })
             }
         }
@@ -536,7 +688,7 @@ impl<'a> Lexer<'a> {
             return Ok(false);
         }
         if self.depth > 0 {
-            return Err(self.error("PUG:NO_END_BRACKET", INTERPOLATION_END));
+            return Err(self.error(ErrorCode::NoEndBracket, INTERPOLATION_END));
         }
         let open = self.indent_stack.iter().rev().take_while(|&&width| width != 0).count();
         for _ in 0..open {
@@ -642,11 +794,11 @@ impl<'a> Lexer<'a> {
     }
 
     /// The text of an invalid id or class name error, after the `#` or `.`.
-    fn invalid_name(&self, code: &'static str, message: impl Fn(&str) -> String) -> Error {
+    fn invalid_name(&self, code: ErrorCode, message: impl Fn(&str) -> String) -> Error {
         match INVALID_NAME.find(&self.rest()[1..]) {
             Some(name) => self.error(code, message(name.as_str())),
             // Pug's own lexer throws on the regular expression's missing match here.
-            None => self.error("TypeError", "Cannot read properties of null (reading '0')"),
+            None => self.error(ErrorCode::TypeError, "Cannot read properties of null (reading '0')"),
         }
     }
 
@@ -660,7 +812,7 @@ impl<'a> Lexer<'a> {
         if !self.rest().starts_with('#') {
             return Ok(false);
         }
-        Err(self.invalid_name("PUG:INVALID_ID", |name| format!("\"{name}\" is not a valid ID.")))
+        Err(self.invalid_name(ErrorCode::InvalidId, |name| format!("\"{name}\" is not a valid ID.")))
     }
 
     fn class_name(&mut self) -> Result<bool, Error> {
@@ -671,12 +823,12 @@ impl<'a> Lexer<'a> {
             return Ok(true);
         }
         if CLASS_WITHOUT_LETTER.is_match(self.rest()) {
-            return Err(self.error("PUG:INVALID_CLASS_NAME", "Class names must contain at least one letter or underscore."));
+            return Err(self.error(ErrorCode::InvalidClassName, "Class names must contain at least one letter or underscore."));
         }
         if !self.rest().starts_with('.') {
             return Ok(false);
         }
-        Err(self.invalid_name("PUG:INVALID_CLASS_NAME", |name| {
+        Err(self.invalid_name(ErrorCode::InvalidClassName, |name| {
             format!(
                 "\"{name}\" is not a valid class name.  Class names can only contain \"_\", \"-\", a-z and 0-9, and must contain at least one of \"_\", or a-z"
             )
@@ -804,7 +956,7 @@ impl<'a> Lexer<'a> {
         let Lexer { tokens, column, at: after, .. } = child;
         self.tokens = tokens;
         if let Err(error) = lexed {
-            if !error.code.starts_with("PUG:") {
+            if !error.code.is_pugs() {
                 return Err(error);
             }
             self.column = error.column;
@@ -895,12 +1047,12 @@ impl<'a> Lexer<'a> {
             };
             self.push(Kind::Extends, start);
             if !self.path() {
-                return Err(self.error("PUG:NO_EXTENDS_PATH", "missing path for extends"));
+                return Err(self.error(ErrorCode::NoExtendsPath, "missing path for extends"));
             }
             return Ok(true);
         }
         if self.scan(&EXTENDS_WORD).is_some() {
-            return Err(self.error("PUG:MALFORMED_EXTENDS", "malformed extends"));
+            return Err(self.error(ErrorCode::MalformedExtends, "malformed extends"));
         }
         Ok(false)
     }
@@ -944,12 +1096,12 @@ impl<'a> Lexer<'a> {
                 if self.rest().starts_with(|c| c != ' ' && c != '\n') {
                     return Err(self.unexpected_text());
                 }
-                return Err(self.error("PUG:NO_INCLUDE_PATH", "missing path for include"));
+                return Err(self.error(ErrorCode::NoIncludePath, "missing path for include"));
             }
             return Ok(true);
         }
         if self.scan(&INCLUDE_WORD).is_some() {
-            return Err(self.error("PUG:MALFORMED_INCLUDE", "malformed include"));
+            return Err(self.error(ErrorCode::MalformedInclude, "malformed include"));
         }
         Ok(false)
     }
@@ -972,7 +1124,7 @@ impl<'a> Lexer<'a> {
             return Ok(true);
         }
         if self.scan(&CASE_WORD).is_some() {
-            return Err(self.error("PUG:NO_CASE_EXPRESSION", "missing expression for case"));
+            return Err(self.error(ErrorCode::NoCaseExpression, "missing expression for case"));
         }
         Ok(false)
     }
@@ -981,7 +1133,7 @@ impl<'a> Lexer<'a> {
     fn when(&mut self) -> Result<bool, Error> {
         let Some(Scanned { start, val }) = self.scan_end_of_line(&WHEN) else {
             if self.scan(&WHEN_WORD).is_some() {
-                return Err(self.error("PUG:NO_WHEN_EXPRESSION", "missing expression for when"));
+                return Err(self.error(ErrorCode::NoWhenExpression, "missing expression for when"));
             }
             return Ok(false);
         };
@@ -1014,7 +1166,7 @@ impl<'a> Lexer<'a> {
             return Ok(true);
         }
         if self.scan(&DEFAULT_WORD).is_some() {
-            return Err(self.error("PUG:DEFAULT_WITH_EXPRESSION", "default should not have an expression"));
+            return Err(self.error(ErrorCode::DefaultWithExpression, "default should not have an expression"));
         }
         Ok(false)
     }
@@ -1089,7 +1241,7 @@ impl<'a> Lexer<'a> {
             "unless" => Kind::If(format!("!({js})")),
             "else if" => Kind::ElseIf(js.clone()),
             _ if !js.is_empty() => {
-                return Err(self.error("PUG:ELSE_CONDITION", "`else` cannot have a condition, perhaps you meant `else if`"));
+                return Err(self.error(ErrorCode::ElseCondition, "`else` cannot have a condition, perhaps you meant `else if`"));
             }
             _ => Kind::Else,
         };
@@ -1107,7 +1259,7 @@ impl<'a> Lexer<'a> {
             return Ok(true);
         }
         if self.scan(&WHILE_WORD).is_some() {
-            return Err(self.error("PUG:NO_WHILE_EXPRESSION", "missing expression for while"));
+            return Err(self.error(ErrorCode::NoWhileExpression, "missing expression for while"));
         }
         Ok(false)
     }
@@ -1128,11 +1280,11 @@ impl<'a> Lexer<'a> {
             let message = format!(
                 "This `{keyword}` has a syntax error. `{keyword}` statements should be of the form: `{keyword} VARIABLE_NAME of JS_EXPRESSION`"
             );
-            return Err(self.error("PUG:MALFORMED_EACH", message));
+            return Err(self.error(ErrorCode::MalformedEach, message));
         }
         if EACH_DASHED.is_match(self.rest()) {
             return Err(self.error(
-                "PUG:MALFORMED_EACH",
+                ErrorCode::MalformedEach,
                 "Pug each and for should no longer be prefixed with a dash (\"-\"). They are pug keywords and not part of JavaScript.",
             ));
         }
@@ -1149,7 +1301,7 @@ impl<'a> Lexer<'a> {
             self.column += width;
             if !EACH_OF_VALUE.is_match(js_trim(&val)) {
                 return Err(self.error(
-                    "PUG:MALFORMED_EACH_OF_LVAL",
+                    ErrorCode::MalformedEachOfLval,
                     "The value variable for each must either be a valid identifier (e.g. `item`) or a pair of identifiers in square brackets (e.g. `[key, value]`).",
                 ));
             }
@@ -1158,7 +1310,7 @@ impl<'a> Lexer<'a> {
         }
         if EACH_OF_DASHED.is_match(self.rest()) {
             return Err(self.error(
-                "PUG:MALFORMED_EACH",
+                ErrorCode::MalformedEach,
                 "Pug each and for should not be prefixed with a dash (\"-\"). They are pug keywords and not part of JavaScript.",
             ));
         }
@@ -1272,12 +1424,12 @@ impl<'a> Lexer<'a> {
             at.column += 1;
             i += 1;
             if chars.get(i) != Some(&'=') {
-                return Err(self.error("PUG:INVALID_KEY_CHARACTER", unexpected(chars.get(i))));
+                return Err(self.error(ErrorCode::InvalidKeyCharacter, unexpected(chars.get(i))));
             }
         }
         if chars[i] != '=' {
             if i == 0 && !is_space(chars[0]) && chars[0] != ',' {
-                return Err(self.error("PUG:INVALID_KEY_CHARACTER", unexpected(chars.first())));
+                return Err(self.error(ErrorCode::InvalidKeyCharacter, unexpected(chars.first())));
             }
             return Ok((None, 0));
         }
@@ -1327,7 +1479,7 @@ impl<'a> Lexer<'a> {
 
     /// character-parser throws a SyntaxError without a Pug code; Pug passes it on.
     fn crash_on_mismatch(&self, close: char) -> Error {
-        self.error("CHARACTER_PARSER:MISMATCHED_BRACKET", mismatched_bracket(close))
+        self.error(ErrorCode::MismatchedBracket, mismatched_bracket(close))
     }
 
     fn attrs(&mut self) -> Result<bool, Error> {
@@ -1374,7 +1526,7 @@ impl<'a> Lexer<'a> {
         self.increment_line(1);
         self.consume(indents + 1);
         if self.rest().starts_with([' ', '\t']) {
-            return Err(self.error("PUG:INVALID_INDENTATION", "Invalid indentation, you can use tabs or spaces but not both"));
+            return Err(self.error(ErrorCode::InvalidIndentation, "Invalid indentation, you can use tabs or spaces but not both"));
         }
         if self.rest().starts_with('\n') {
             self.interpolation_allowed = true;
@@ -1389,7 +1541,7 @@ impl<'a> Lexer<'a> {
                 }
                 if below < indents {
                     let message = format!("Inconsistent indentation. Expecting either {below} or {top} spaces/tabs.");
-                    return Err(self.error("PUG:INCONSISTENT_INDENTATION", message));
+                    return Err(self.error(ErrorCode::InconsistentIndentation, message));
                 }
                 outdents += 1;
                 self.indent_stack.pop();
@@ -2250,7 +2402,7 @@ mod tests {
         // character-parser skips it before `typeof`, so the `/` starts a regular expression.
         assert_eq!(attribute_values("a(x=typeof\u{feff}/[)]/)"), ["typeof\u{feff}/[)]/"]);
         assert_eq!(tokens("+\u{feff}foo")[0], ("call", String::new(), (1, 1), (1, 6)));
-        assert_eq!(lex("+\u{85}foo").unwrap_err().code, "PUG:UNEXPECTED_TEXT");
+        assert_eq!(lex("+\u{85}foo").unwrap_err().code, ErrorCode::UnexpectedText);
         assert!(matches!(&lex("+foo(\u{feff}a=1)").unwrap()[0].kind, Kind::Call { args: None, .. }));
         // A line of U+FEFF is blank in a text block.
         let texts: Vec<_> =
@@ -2269,5 +2421,31 @@ mod tests {
     fn columns_count_utf16_units() {
         let error = lex("p 😀 #{a").unwrap_err();
         assert_eq!((error.line, error.column), (1, 9));
+    }
+
+    #[test]
+    fn spans_are_bytes_of_the_text_as_given() {
+        let text = "\u{feff}p 😀 #[b x]\r\n  a(href=\"/\")\rinclude \u{a0}row \n";
+        let spans: Vec<(&str, &str)> = lex(text).unwrap().iter().map(|t| (t.kind.name(), &text[t.span.clone()])).collect();
+        let expected = [
+            ("tag", "p"),
+            ("text", "😀 "),
+            ("start-pug-interpolation", "#["),
+            ("tag", "b"),
+            ("text", "x"),
+            ("end-pug-interpolation", "]"),
+            ("text", ""),
+            ("indent", "  "),
+            ("tag", "a"),
+            ("start-attributes", "("),
+            ("attribute", "href=\"/\""),
+            ("end-attributes", ")"),
+            ("outdent", ""),
+            ("include", "include"),
+            ("path", "row"),
+            ("newline", ""),
+            ("eos", ""),
+        ];
+        assert_eq!(spans, expected);
     }
 }

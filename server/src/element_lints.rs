@@ -580,9 +580,8 @@ mod tests {
 
     /// The findings in a Pug template, which has no Ruby, so no helper elements.
     fn pug_diagnostics(text: &str) -> Vec<Diagnostic> {
-        let index = LineIndex::new(text);
         let Ok(tree) = pug::parser::parse(text) else { return Vec::new() };
-        diagnostics(Pug, text, &pug::elements::tags(text, &index, &tree), &[], Some(&pug::elements::ancestry(&index, &tree)))
+        diagnostics(Pug, text, &pug::elements::tags(text, &tree), &[], Some(&pug::elements::ancestry(&tree)))
     }
 
     fn pug(code: &str, text: &str) -> Vec<String> {

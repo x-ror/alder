@@ -252,9 +252,8 @@ mod tests {
     fn pug_nesting_follows_the_tree_not_the_indentation() {
         let flagged = |text: &str| {
             let tree = pug::parser::parse(text).unwrap();
-            let index = LineIndex::new(text);
-            let ancestry = pug::elements::ancestry(&index, &tree);
-            let found = diagnostics(TemplateLang::Pug, text, &pug::elements::tags(text, &index, &tree), &[], Some(&ancestry));
+            let ancestry = pug::elements::ancestry(&tree);
+            let found = diagnostics(TemplateLang::Pug, text, &pug::elements::tags(text, &tree), &[], Some(&ancestry));
             found.into_iter().map(|d| (d.range.start.line, d.message)).collect::<Vec<_>>()
         };
         let button_in_a = "`<button>` inside `<a>`: interactive content can't be nested (HTML 4.5.1)".to_string();

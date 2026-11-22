@@ -65,17 +65,18 @@ impl Doc {
 #[cfg(test)]
 pub(crate) fn diagnostics(uri: &Uri, doc: &Doc, options: &crate::options::Options) -> Vec<Diagnostic> {
     let rules = crate::rules::resolve::resolve(uri, doc.lang, options, &mut Default::default());
-    diagnostics_in(uri, doc, &rules, &mut Projects::new(), &[])
+    diagnostics_in(uri, doc, &rules, &mut Projects::new(), &[], &Default::default())
 }
 
 /// `diagnostics`, taking the template's project from `projects` when a run already loaded it. `routes` are the app's, empty
-/// when it has not sent them.
+/// when it has not sent them; `includers` the Pug templates that include others.
 pub(crate) fn diagnostics_in(
     uri: &Uri,
     doc: &Doc,
     rules: &ResolvedRules,
     projects: &mut Projects,
     routes: &[routes::Route],
+    includers: &pug::refs::Includers,
 ) -> Vec<Diagnostic> {
     // Thor templates (`*.html.erb.tt`, `*.haml.tt`) mix the generator's ERB with the template's own tags or
     // lines, and their partials live outside app/views, so no check applies.
@@ -85,7 +86,7 @@ pub(crate) fn diagnostics_in(
     // Liquid and Pug have none of the Rails lookups: their own syntax is checked, and Pug's includes and HTML.
     let own_syntax = match doc.lang {
         TemplateLang::Liquid => Some(liquid::diagnostics(&doc.text)),
-        TemplateLang::Pug => Some(pug_diagnostics(uri, doc, rules)),
+        TemplateLang::Pug => Some(pug_diagnostics(uri, doc, rules, includers)),
         _ => None,
     };
     if let Some(found) = own_syntax {
@@ -142,16 +143,18 @@ pub(crate) fn diagnostics_in(
 
 /// Pug's own checks, then the element lints on its tags and the line length, all on one parse; a Pug template has no Ruby
 /// to make elements.
-fn pug_diagnostics(uri: &Uri, doc: &Doc, rules: &ResolvedRules) -> Vec<Diagnostic> {
+fn pug_diagnostics(uri: &Uri, doc: &Doc, rules: &ResolvedRules, includers: &pug::refs::Includers) -> Vec<Diagnostic> {
     let text = doc.text.as_str();
-    let (index, parsed) = (util::LineIndex::new(text), pug::parser::parse(text));
-    let mut out = pug::diagnostics(text, &index, &parsed, util::file_path(uri).as_deref(), |code| rules.reports(code));
+    let (index, parsed) = (util::LineIndex::with_lone_cr(text), pug::parser::parse(text));
+    let path = util::file_path(uri);
+    let mut out = pug::diagnostics(text, &index, &parsed, path.as_deref().map(|path| (path, includers)), |code| rules.reports(code));
+    // The element lints and the line length count lines as `str::lines` does, which a lone `\r` doesn't end.
     if pug::has_lone_cr(text) {
         return out;
     }
     if let (Ok(tree), true) = (&parsed, ELEMENT_LINTS.iter().any(|code| rules.reports(code))) {
-        let markup = pug::elements::tags(text, &index, tree);
-        let ancestry = pug::elements::ancestry(&index, tree);
+        let markup = pug::elements::tags(text, tree);
+        let ancestry = pug::elements::ancestry(tree);
         out.extend(element_lints::diagnostics(doc.lang, text, &markup, &[], Some(&ancestry)));
         out.extend(nested_interactive::diagnostics(doc.lang, text, &markup, &[], Some(&ancestry)));
     }
@@ -932,7 +935,7 @@ mod tests {
             let uri = util::file_uri(root.join(file)).unwrap();
             let doc = Doc { lang: TemplateLang::Erb, text: text.into(), plain_erb: false, percent_lines: false, version: 0 };
             let rules = crate::rules::resolve::resolve(&uri, doc.lang, options, &mut Default::default());
-            let found = diagnostics_in(&uri, &doc, &rules, &mut Projects::new(), routes);
+            let found = diagnostics_in(&uri, &doc, &rules, &mut Projects::new(), routes, &Default::default());
             found.iter().filter_map(|d| util::code(d).map(String::from)).collect::<Vec<_>>()
         };
         let view = "app/views/users/index.html.erb";

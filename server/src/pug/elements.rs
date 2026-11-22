@@ -4,7 +4,7 @@
 
 use super::lexer::{is_js_whitespace, js_trim};
 use super::parser::{self, Alternate, Attr, AttrValue, Block, Code, Node, NodeKind, Tag};
-use super::{children, code, nodes, offset, walk};
+use super::{children, code, nodes, walk};
 use crate::attributes::{Attribute, Element, Value};
 use crate::util::{coded, error, LineIndex};
 use std::collections::HashMap;
@@ -19,16 +19,16 @@ const VOID_ELEMENTS: [&str; 14] =
 /// tags in a `//` comment, which render inside `<!-- -->`.
 pub(crate) fn markup(text: &str) -> Vec<Element> {
     let Ok(tree) = parser::parse(text) else { return Vec::new() };
-    tags(text, &LineIndex::new(text), &tree)
+    tags(text, &tree)
 }
 
 /// `markup` of the template `text` whose tree is `tree`.
-pub(crate) fn tags(text: &str, index: &LineIndex, tree: &Block) -> Vec<Element> {
+pub(crate) fn tags(text: &str, tree: &Block) -> Vec<Element> {
     if is_xml(tree) {
         return Vec::new();
     }
     let element = |node: &Node| match &node.kind {
-        NodeKind::Tag(tag) if !tag.interpolated => Some(element(text, index, node, tag)),
+        NodeKind::Tag(tag) if !tag.interpolated => Some(element(text, node, tag)),
         _ => None,
     };
     walk(tree, |node| !matches!(node.kind, NodeKind::BlockComment { .. })).into_iter().filter_map(element).collect()
@@ -72,15 +72,15 @@ impl Ancestry {
 }
 
 /// The ancestry of the tags of the template whose tree is `tree`.
-pub(crate) fn ancestry(index: &LineIndex, tree: &Block) -> Ancestry {
+pub(crate) fn ancestry(tree: &Block) -> Ancestry {
     let mut found = Ancestry::default();
-    visit_all(index, &tree.nodes, None, &Rc::new(Vec::new()), &mut found);
+    visit_all(&tree.nodes, None, &Rc::new(Vec::new()), &mut found);
     found
 }
 
 /// Places the tags in `node`, which is inside the tag starting at `parent` and in `branches`.
-fn visit(index: &LineIndex, node: &Node, parent: Option<usize>, branches: &Rc<Vec<(usize, usize)>>, found: &mut Ancestry) {
-    let start = offset(index, node.line, node.column);
+fn visit(node: &Node, parent: Option<usize>, branches: &Rc<Vec<(usize, usize)>>, found: &mut Ancestry) {
+    let start = node.span.start;
     let in_branch = |branch: usize| {
         let mut inner = branches.as_ref().clone();
         inner.push((start, branch));
@@ -93,22 +93,22 @@ fn visit(index: &LineIndex, node: &Node, parent: Option<usize>, branches: &Rc<Ve
                 found.tags.insert(start, Placed { name: tag.name.to_ascii_lowercase(), parent, branches: branches.clone() });
                 parent = Some(start);
             }
-            visit_all(index, &tag.block.nodes, parent, branches, found);
+            visit_all(&tag.block.nodes, parent, branches, found);
         }
         NodeKind::Conditional(conditional) => {
             found.flow.push(start);
-            visit_all(index, &conditional.consequent.nodes, parent, &in_branch(0), found);
+            visit_all(&conditional.consequent.nodes, parent, &in_branch(0), found);
             match &conditional.alternate {
-                Some(Alternate::ElseIf(node)) => visit(index, node, parent, &in_branch(1), found),
-                Some(Alternate::Else(block)) => visit_all(index, &block.nodes, parent, &in_branch(1), found),
+                Some(Alternate::ElseIf(node)) => visit(node, parent, &in_branch(1), found),
+                Some(Alternate::Else(block)) => visit_all(&block.nodes, parent, &in_branch(1), found),
                 None => {}
             }
         }
         NodeKind::Each { block, alternate, .. } => {
             found.flow.push(start);
-            visit_all(index, &block.nodes, parent, &in_branch(0), found);
+            visit_all(&block.nodes, parent, &in_branch(0), found);
             if let Some(block) = alternate {
-                visit_all(index, &block.nodes, parent, &in_branch(1), found);
+                visit_all(&block.nodes, parent, &in_branch(1), found);
             }
         }
         NodeKind::EachOf { .. }
@@ -123,7 +123,7 @@ fn visit(index: &LineIndex, node: &Node, parent: Option<usize>, branches: &Rc<Ve
             found.flow.push(start);
             let inner = in_branch(0);
             for child in children(node) {
-                visit(index, child, parent, &inner, found);
+                visit(child, parent, &inner, found);
             }
         }
         // Its tags render inside `<!-- -->`.
@@ -138,15 +138,15 @@ fn visit(index: &LineIndex, node: &Node, parent: Option<usize>, branches: &Rc<Ve
         | NodeKind::Comment { .. }
         | NodeKind::Doctype(_) => {
             for child in children(node) {
-                visit(index, child, parent, branches, found);
+                visit(child, parent, branches, found);
             }
         }
     }
 }
 
-fn visit_all(index: &LineIndex, nodes: &[Node], parent: Option<usize>, branches: &Rc<Vec<(usize, usize)>>, found: &mut Ancestry) {
+fn visit_all(nodes: &[Node], parent: Option<usize>, branches: &Rc<Vec<(usize, usize)>>, found: &mut Ancestry) {
     for node in nodes {
-        visit(index, node, parent, branches, found);
+        visit(node, parent, branches, found);
     }
 }
 
@@ -171,11 +171,10 @@ pub(crate) fn void_children(index: &LineIndex, tree: &Block) -> Option<Diagnosti
         }
         _ => None,
     })?;
-    let start = offset(index, node.line, node.column);
     // pug-code-gen names the tag by its `name`, which an interpolated one doesn't have.
-    let (name, written) = if tag.interpolated { ("undefined", "#{}".len() + tag.name.len()) } else { (tag.name.as_str(), tag.name.len()) };
+    let name = if tag.interpolated { "undefined" } else { tag.name.as_str() };
     let message = format!("{name} is a self closing element: <{name}/> but contains nested content.");
-    Some(coded(error(index.range(start, start + written), message), code::VOID_CHILDREN))
+    Some(coded(error(index.range(node.span.start, node.span.end), message), code::VOID_CHILDREN))
 }
 
 /// Whether the template sets pug-code-gen's XML mode anywhere: an XML document, which the HTML rules don't apply to.
@@ -183,14 +182,14 @@ fn is_xml(tree: &Block) -> bool {
     nodes(tree).into_iter().any(|node| matches!(&node.kind, NodeKind::Doctype(name) if name.eq_ignore_ascii_case("xml")))
 }
 
-fn element(text: &str, index: &LineIndex, node: &Node, tag: &Tag) -> Element {
-    let start = offset(index, node.line, node.column);
+fn element(text: &str, node: &Node, tag: &Tag) -> Element {
+    let start = node.span.start;
     // `.card` and `#main` are a `div` whose name isn't written.
-    let at = if text[start..].starts_with(&tag.name) { start..start + tag.name.len() } else { start..start };
+    let at = if text[node.span.clone()] == tag.name { node.span.clone() } else { start..start };
     Element {
         name: tag.name.to_ascii_lowercase(),
-        attributes: tag.attrs.iter().map(|attr| attribute(text, index, attr)).collect(),
-        text: own_text(text, index, tag),
+        attributes: tag.attrs.iter().map(|attr| attribute(text, attr)).collect(),
+        text: own_text(text, tag),
         open: !tag.attribute_blocks.is_empty(),
         head_end: Some(head_end(text, at.end)),
         at,
@@ -198,34 +197,24 @@ fn element(text: &str, index: &LineIndex, node: &Node, tag: &Tag) -> Element {
     }
 }
 
-fn attribute(text: &str, index: &LineIndex, attr: &Attr) -> Attribute {
-    let start = offset(index, attr.line, attr.column);
+fn attribute(text: &str, attr: &Attr) -> Attribute {
+    let Range { start, end } = attr.span;
     let name = attr.name.to_ascii_lowercase();
     if let AttrValue::Shorthand(written) = &attr.val {
-        let at = start + 1..start + 1 + written.len();
+        let at = start + 1..end;
         if text.get(at.clone()) != Some(written.as_str()) {
             return Attribute { name, at: start..start, in_data: false, value: Value::Literal };
         }
         return Attribute { name, at: at.clone(), in_data: false, value: Value::Text(at) };
     }
-    let quoted = text[start..].starts_with(['"', '\'']);
-    let name_start = start + usize::from(quoted);
-    let at = if text[name_start..].starts_with(&attr.name) { name_start..name_start + attr.name.len() } else { start..start };
+    let name_start = start + usize::from(text[start..].starts_with(['"', '\'']));
+    let at = if text[name_start..end].starts_with(&attr.name) { name_start..name_start + attr.name.len() } else { start..start };
     let value = match &attr.val {
-        AttrValue::Expr(val) => {
-            let after_name = name_start + attr.name.len() + usize::from(quoted);
-            expression_value(val, text.get(after_name..).and_then(|rest| value_offset(rest, val)).map(|at| after_name + at))
-        }
+        // The value ends the attribute, unless Pug read it from something else than what is written.
+        AttrValue::Expr(val) => expression_value(val, end.checked_sub(val.len()).filter(|&at| text.get(at..end) == Some(val.as_str()))),
         _ => Value::Empty,
     };
     Attribute { name, at, in_data: false, value }
-}
-
-/// Where `val` starts in `rest`, the text after an attribute's name: past `=` or `!=` and the spaces around it.
-fn value_offset(rest: &str, val: &str) -> Option<usize> {
-    let after = rest.trim_start();
-    let after = after.strip_prefix('!').unwrap_or(after).strip_prefix('=')?.trim_start();
-    after.starts_with(val).then(|| rest.len() - after.len())
 }
 
 /// A string literal is text that can be read (where `at`, the literal's offset, is known); `true` and numbers set the attribute
@@ -255,13 +244,11 @@ pub(crate) fn static_string(val: &str) -> Option<&str> {
 }
 
 /// The text that is all of a tag's content, where the template spells it out: one piece of text, no interpolation.
-fn own_text(text: &str, index: &LineIndex, tag: &Tag) -> Option<Range<usize>> {
+fn own_text(text: &str, tag: &Tag) -> Option<Range<usize>> {
     let [node] = tag.block.nodes.as_slice() else { return None };
     let NodeKind::Text { val, html: false } = &node.kind else { return None };
-    let start = offset(index, node.line, node.column);
-    // The token starts at the space or `|` before the text, on its line.
-    let found = text[start..].find(val.as_str())?;
-    (!text[start..start + found].contains('\n')).then_some(start + found..start + found + val.len())
+    // An escape (`\#{`) makes the text differ from what is written.
+    (text.get(node.span.clone()) == Some(val.as_str())).then(|| node.span.clone())
 }
 
 /// Where a tag's first attribute list starts, or where one would go: past the name and the `#id` and `.class` after it.
@@ -352,7 +339,7 @@ mod tests {
     fn tags_in_a_comment_render_inside_it() {
         assert!(markup("//\n  #[img(src=x)] #[a#x]\n").is_empty());
         let text = "//\n  #[a#x]\np#x\n";
-        let ancestry = ancestry(&LineIndex::new(text), &parser::parse(text).unwrap());
+        let ancestry = ancestry(&parser::parse(text).unwrap());
         assert!(ancestry.separated(text.find("a#x").unwrap(), text.find("p#x").unwrap()), "not placed");
     }
 
@@ -417,7 +404,7 @@ mod tests {
     #[test]
     fn ancestry_follows_the_tree() {
         let text = "svg: a x\np#x\nblock_item\np#x\nif x\n  #a\nelse\n  #b\ntemplate: #t\n";
-        let found = ancestry(&LineIndex::new(text), &parser::parse(text).unwrap());
+        let found = ancestry(&parser::parse(text).unwrap());
         let at = |needle: &str| text.find(needle).unwrap();
         assert!(found.inside(at("a x"), "svg") && !found.inside(at("p#x"), "svg"));
         assert!(found.inside(at("#t"), "template"));

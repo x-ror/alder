@@ -82,6 +82,7 @@ pub async fn serve() {
         app_helpers: Arc::default(),
         warming: Arc::default(),
         view_roots: Arc::default(),
+        includers: Arc::default(),
         routes: Arc::default(),
         options: Arc::default(),
         resolved: Arc::default(),
@@ -115,6 +116,8 @@ struct Backend {
     warming: Arc<DashSet<PathBuf>>,
     /// Each app's view roots, found off the server task and dropped when a watched file may have changed them.
     view_roots: Arc<view_roots::Cache>,
+    /// Which Pug templates include or extend which, per app.
+    includers: Arc<pug_refs::Includers>,
     /// Routes per Rails root, as the client last sent them.
     routes: Arc<DashMap<PathBuf, Arc<Vec<routes::Route>>>>,
     // Set once in `initialize`; the client restarts the server when these settings change.
@@ -317,9 +320,7 @@ impl LanguageServer for Backend {
             self.app_helpers.clear();
             unknown_route::clear_cache();
         }
-        if may_change_pug_includes(&events) {
-            pug_refs::clear_cache();
-        }
+        update_pug_includers(&self.includers, &events);
         self.templates.retain(|root, _| !stale(root, &events, false));
         self.locales.retain(|root, _| !stale(root, &events, true));
         // Unresolved-render and strict-locals warnings read other templates from disk.
@@ -1027,12 +1028,13 @@ impl Backend {
         // Unique across closes and reopens, which may restart a document's versions.
         let run = self.next_publish.fetch_add(1, Ordering::Relaxed);
         self.publishes.insert(uri.clone(), run);
-        let (client, docs, publishes, options, view_roots) = (
+        let (client, docs, publishes, options, view_roots, includers) = (
             self.client.clone(),
             Arc::clone(&self.docs),
             Arc::clone(&self.publishes),
             Arc::clone(&self.options),
             Arc::clone(&self.view_roots),
+            Arc::clone(&self.includers),
         );
         let (resolved, config_reports, app_routes) =
             (Arc::clone(&self.resolved), Arc::clone(&self.config_reports), Arc::clone(&self.routes));
@@ -1050,7 +1052,7 @@ impl Backend {
                 }
                 let rules = resolve(&checked, doc.lang, options.get_or_init(Options::default), &mut Configs::new());
                 let routes = util::file_path(&checked).map(|path| routes_of(&app_routes, &path)).unwrap_or_default();
-                (diagnostics_in(&checked, &doc, &rules, &mut projects, &routes), rules)
+                (diagnostics_in(&checked, &doc, &rules, &mut projects, &routes, &includers), rules)
             })
             .await
             else {
@@ -1327,10 +1329,20 @@ fn may_change_config(events: &[(PathBuf, FileChangeType)]) -> bool {
     events.iter().any(|(path, _)| path.components().any(|part| part.as_os_str() == "config"))
 }
 
-/// A Pug template may include or extend another; a folder created, moved or deleted may hold some.
-fn may_change_pug_includes(events: &[(PathBuf, FileChangeType)]) -> bool {
-    let template = |path: &Path| TemplateLang::from_file_name(&path.to_string_lossy()) == Some(TemplateLang::Pug);
-    events.iter().any(|(path, kind)| template(path) || *kind != FileChangeType::CHANGED)
+/// Reads a changed Pug template's includes again; any other path created, moved or deleted may be a folder of templates or
+/// the one absolute paths start from.
+fn update_pug_includers(includers: &pug_refs::Includers, events: &[(PathBuf, FileChangeType)]) {
+    for (path, kind) in events {
+        if is_pug_template(path) {
+            includers.template_changed(path);
+        } else if *kind != FileChangeType::CHANGED {
+            includers.forget_around(path);
+        }
+    }
+}
+
+fn is_pug_template(path: &Path) -> bool {
+    TemplateLang::from_file_name(&path.to_string_lossy()) == Some(TemplateLang::Pug)
 }
 
 /// A file in the app's helpers or controllers, or its config (the route files), may define a helper a view calls.
@@ -1600,13 +1612,11 @@ mod tests {
     }
 
     #[test]
-    fn pug_includes_are_dropped_when_a_template_changes_whatever_its_extensions_case() {
-        let event = |path: &str, kind| vec![(PathBuf::from(path), kind)];
-        for path in ["/r/app/a.pug", "/r/app/B.PUG", "/r/app/c.Jade"] {
-            assert!(may_change_pug_includes(&event(path, FileChangeType::CHANGED)), "{path}");
+    fn pug_templates_are_told_whatever_their_extensions_case() {
+        for path in ["/r/app/a.pug", "/r/app/B.PUG", "/r/app/c.Jade", "/r/app/d.jst.pug"] {
+            assert!(is_pug_template(Path::new(path)), "{path}");
         }
-        assert!(!may_change_pug_includes(&event("/r/app/a.erb", FileChangeType::CHANGED)));
-        assert!(may_change_pug_includes(&event("/r/app/views", FileChangeType::DELETED)));
+        assert!(!is_pug_template(Path::new("/r/app/a.erb")));
     }
 
     #[test]
