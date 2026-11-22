@@ -30,7 +30,7 @@ use tower_lsp_server::ls_types::{Diagnostic, Uri};
 pub(crate) const UNRESOLVED_RENDER: &str = "Rails/MissingPartial";
 pub(crate) const STRICT_LOCALS: &str = "Rails/StrictLocals";
 /// The `source` of every diagnostic, template or config problem.
-pub const DIAGNOSTIC_SOURCE: &str = "ruby-templates";
+pub const DIAGNOSTIC_SOURCE: &str = "lamina";
 /// Layouts take what the controller sets; their partials are the page's frame.
 const LAYOUTS_FOLDER: &str = "layouts";
 const ELEMENT_LINTS: [&str; 7] = [
@@ -611,7 +611,7 @@ mod tests {
 
     #[test]
     fn stimulus_targets_and_actions_are_checked_against_the_controller_file() {
-        let root = std::env::temp_dir().join(format!("rt-stimulus-members-lint-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-stimulus-members-lint-{}", std::process::id()));
         let controllers = root.join("app/javascript/controllers");
         std::fs::create_dir_all(&controllers).unwrap();
         std::fs::create_dir_all(root.join("app/views/users")).unwrap();
@@ -709,13 +709,13 @@ mod tests {
 
     #[test]
     fn a_rule_turned_off_in_the_config_file_reports_nothing() {
-        let root = std::env::temp_dir().join(format!("rt-rule-off-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-rule-off-{}", std::process::id()));
         write_files(
             &root,
             &[
-                (".ruby-templates.toml", "root = true\n[Html.UnclosedElement]\nenabled = false\n"),
+                (".lamina.toml", "root = true\n[Html.UnclosedElement]\nenabled = false\n"),
                 ("quiet/show.html.erb", ""),
-                ("loud/.ruby-templates.toml", "[Html]\nenabled = true\n"),
+                ("loud/.lamina.toml", "[Html]\nenabled = true\n"),
                 ("loud/show.html.erb", ""),
             ],
         );
@@ -735,7 +735,7 @@ mod tests {
     fn settings_list_every_rule() {
         let manifest: serde_json::Value = serde_json::from_str(include_str!("../../package.json")).unwrap();
         let items = |lang: &str| {
-            manifest["contributes"]["configuration"]["properties"][format!("rubyTemplates.{lang}.disabledDiagnostics")]["items"].clone()
+            manifest["contributes"]["configuration"]["properties"][format!("lamina.{lang}.disabledDiagnostics")]["items"].clone()
         };
         for (section, lang) in [
             ("erb", TemplateLang::Erb),
@@ -776,7 +776,7 @@ mod tests {
 
     #[test]
     fn output_lints_run_in_rails_projects_only() {
-        let root = std::env::temp_dir().join(format!("rt-output-lints-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-output-lints-{}", std::process::id()));
         let (rails, padrino) = (root.join("rails"), root.join("padrino"));
         for dir in [&rails, &padrino] {
             std::fs::create_dir_all(dir.join("app/views")).unwrap();
@@ -803,12 +803,12 @@ mod tests {
 
     #[test]
     fn unsafe_output_is_on_and_erb_trim_mode_off_until_enabled() {
-        let root = std::env::temp_dir().join(format!("rt-unsafe-output-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-unsafe-output-{}", std::process::id()));
         write_files(
             &root,
             &[
                 ("Gemfile.lock", &format!("{GEM_LOCK}    actionview (8.0.2)\n")),
-                ("on/.ruby-templates.toml", "[Style.ErbTrimMode]\nenabled = true\n"),
+                ("on/.lamina.toml", "[Style.ErbTrimMode]\nenabled = true\n"),
                 ("on/app/views/a.html.erb", ""),
                 ("app/views/a.html.erb", ""),
                 ("app/views/a.text.erb", ""),
@@ -829,9 +829,9 @@ mod tests {
 
     #[test]
     fn line_length_is_reported_once_enabled_with_its_limit() {
-        let root = std::env::temp_dir().join(format!("rt-line-length-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-line-length-{}", std::process::id()));
         let on = "[Layout.LineLength]\nenabled = true\nmax = 20\n";
-        write_files(&root, &[("on/.ruby-templates.toml", on), ("on/a.html.erb", ""), ("a.html.erb", "")]);
+        write_files(&root, &[("on/.lamina.toml", on), ("on/a.html.erb", ""), ("a.html.erb", "")]);
         let found = |file: &str| {
             let text = "<p>short</p>\n<p>a line over the limit</p>\n";
             let doc = Doc { lang: TemplateLang::Erb, text: text.into(), plain_erb: false, percent_lines: false, version: 0 };
@@ -862,7 +862,7 @@ mod tests {
 
     #[test]
     fn view_lints_know_partials_and_layouts() {
-        let root = std::env::temp_dir().join(format!("rt-view-lints-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-view-lints-{}", std::process::id()));
         std::fs::create_dir_all(root.join("app/views")).unwrap();
         std::fs::write(root.join("Gemfile.lock"), format!("{GEM_LOCK}    actionview (8.0.2)\n")).unwrap();
         let codes = |name: &str, options: &Options| {
@@ -880,7 +880,7 @@ mod tests {
 
     #[test]
     fn attribute_lints_follow_the_project_and_the_controllers_it_has() {
-        let root = std::env::temp_dir().join(format!("rt-attribute-lints-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-attribute-lints-{}", std::process::id()));
         let controllers = root.join("app/javascript/controllers");
         std::fs::create_dir_all(&controllers).unwrap();
         std::fs::create_dir_all(root.join("app/views/users")).unwrap();
@@ -918,7 +918,7 @@ mod tests {
 
     #[test]
     fn missing_keys_and_unknown_routes_follow_the_project_and_what_it_has_sent() {
-        let root = std::env::temp_dir().join(format!("rt-reference-lints-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-reference-lints-{}", std::process::id()));
         write_files(
             &root,
             &[
@@ -971,7 +971,7 @@ mod tests {
 
     #[test]
     fn diagnostic_source_is_the_tool_for_every_language() {
-        let root = std::env::temp_dir().join(format!("rt-source-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-source-{}", std::process::id()));
         let views = root.join("app/views/users");
         std::fs::create_dir_all(&views).unwrap();
         std::fs::write(root.join("Gemfile.lock"), format!("{GEM_LOCK}    actionview (8.0.2)\n")).unwrap();
@@ -1000,7 +1000,7 @@ mod tests {
         let html = Doc { lang: TemplateLang::Erb, text: "<div>\n".into(), plain_erb: false, percent_lines: false, version: 0 };
         let found = diagnostics(&uri, &html, &Options::default());
         assert_eq!(found.iter().filter_map(util::code).collect::<Vec<_>>(), [tags::code::UNCLOSED_ELEMENT]);
-        assert_eq!(found[0].source.as_deref(), Some("ruby-templates"));
+        assert_eq!(found[0].source.as_deref(), Some("lamina"));
         std::fs::remove_dir_all(&root).unwrap();
     }
 
@@ -1103,7 +1103,7 @@ mod tests {
 
     #[test]
     fn leading_slash_renders_are_checked_under_views() {
-        let root = std::env::temp_dir().join(format!("rt-slash-unresolved-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-slash-unresolved-{}", std::process::id()));
         let users = root.join("app/views/users");
         std::fs::create_dir_all(&users).unwrap();
         std::fs::write(users.join("_card.html.erb"), "").unwrap();
@@ -1115,7 +1115,7 @@ mod tests {
 
     #[test]
     fn unresolved_render_warnings() {
-        let root = std::env::temp_dir().join(format!("rt-unresolved-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-unresolved-{}", std::process::id()));
         let users = root.join("app/views/users");
         std::fs::create_dir_all(&users).unwrap();
         std::fs::write(users.join("_card.html.erb"), "").unwrap();
@@ -1212,7 +1212,7 @@ mod tests {
         let engine = "    zz_engine (1.0.0)\n      railties (>= 6.0)\n    railties (7.1.0)\n";
         let text = "<%= render \"uesrs/card\" %><%= render \"packs_x/box\" %><%= render \"fancy/nav\" %><%= render \"rails/info\" %>";
         let messages = |name: &str, gems: &str, extra: &[(&str, &str)]| {
-            let root = std::env::temp_dir().join(format!("rt-missing-folder-{name}-{}", std::process::id()));
+            let root = std::env::temp_dir().join(format!("lamina-missing-folder-{name}-{}", std::process::id()));
             std::fs::remove_dir_all(&root).ok();
             write_files(&root, &[("app/views/users/show.html.erb", ""), ("Gemfile.lock", &lock(gems))]);
             write_files(&root, extra);
@@ -1235,7 +1235,7 @@ mod tests {
 
     #[test]
     fn bare_names_are_checked_against_the_controllers_prefixes() {
-        let root = std::env::temp_dir().join(format!("rt-unresolved-bare-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-unresolved-bare-{}", std::process::id()));
         write_files(
             &root,
             &[
@@ -1269,7 +1269,7 @@ mod tests {
 
     #[test]
     fn bare_names_follow_the_controller_class_however_it_is_written() {
-        let root = std::env::temp_dir().join(format!("rt-unresolved-bare-forms-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-unresolved-bare-forms-{}", std::process::id()));
         write_files(
             &root,
             &[
@@ -1298,7 +1298,7 @@ mod tests {
 
     #[test]
     fn a_controller_below_action_controller_base_does_not_search_application() {
-        let root = std::env::temp_dir().join(format!("rt-unresolved-api-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-unresolved-api-{}", std::process::id()));
         write_files(
             &root,
             &[
@@ -1347,7 +1347,7 @@ mod tests {
             ("benign-include", &[(users, &includes("Pagy::Backend, Plain")), ("lib/plain.rb", "module Plain\nend\n")], ""),
         ];
         for (name, extra, lock_head) in cases {
-            let root = std::env::temp_dir().join(format!("rt-unresolved-lookup-{name}-{}", std::process::id()));
+            let root = std::env::temp_dir().join(format!("lamina-unresolved-lookup-{name}-{}", std::process::id()));
             let lock = format!("{lock_head}{GEM_LOCK}    actionview (7.1.0)\n");
             write_files(
                 &root,
@@ -1379,7 +1379,7 @@ mod tests {
             ("missing", None, true, 0),
         ];
         for (name, gem_file, engine, expected) in cases {
-            let root = std::env::temp_dir().join(format!("rt-unresolved-gem-views-{name}-{}", std::process::id()));
+            let root = std::env::temp_dir().join(format!("lamina-unresolved-gem-views-{name}-{}", std::process::id()));
             write_files(
                 &root,
                 &[
@@ -1405,7 +1405,7 @@ mod tests {
 
     #[test]
     fn a_partial_is_checked_for_qualified_names_only_since_its_renderer_varies() {
-        let root = std::env::temp_dir().join(format!("rt-unresolved-shared-folder-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-unresolved-shared-folder-{}", std::process::id()));
         write_files(
             &root,
             &[
@@ -1423,7 +1423,7 @@ mod tests {
 
     #[test]
     fn bare_names_are_unchecked_where_the_lookup_folders_are_not_the_chain() {
-        let root = std::env::temp_dir().join(format!("rt-unresolved-bare-unknown-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-unresolved-bare-unknown-{}", std::process::id()));
         let base = "class ApplicationController < ActionController::Base\nend\n";
         write_files(
             &root,
@@ -1473,7 +1473,7 @@ mod tests {
 
     #[test]
     fn block_layout_keeps_the_calls_formats() {
-        let root = std::env::temp_dir().join(format!("rt-unresolved-block-layout-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-unresolved-block-layout-{}", std::process::id()));
         let shared = root.join("app/views/shared");
         std::fs::create_dir_all(&shared).unwrap();
         std::fs::write(shared.join("_wrap.json.erb"), "").unwrap();
@@ -1485,7 +1485,7 @@ mod tests {
 
     #[test]
     fn block_layout_after_formats_is_checked_in_those_formats() {
-        let root = std::env::temp_dir().join(format!("rt-unresolved-formats-layout-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-unresolved-formats-layout-{}", std::process::id()));
         let shared = root.join("app/views/shared");
         std::fs::create_dir_all(&shared).unwrap();
         let file = root.join("app/views/index.html.erb");
@@ -1499,7 +1499,7 @@ mod tests {
 
     #[test]
     fn missing_partial_on_a_continuation_line_is_reported_there() {
-        let root = std::env::temp_dir().join(format!("rt-unresolved-continued-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-unresolved-continued-{}", std::process::id()));
         std::fs::create_dir_all(root.join("app/views/users")).unwrap();
         let file = root.join("app/views/users/index.html.erb");
         let missing = |text: &str| -> Vec<(u32, u32, String)> {
@@ -1516,7 +1516,7 @@ mod tests {
 
     #[test]
     fn lone_layout_is_missing_only_with_a_block() {
-        let root = std::env::temp_dir().join(format!("rt-unresolved-lone-layout-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-unresolved-lone-layout-{}", std::process::id()));
         std::fs::create_dir_all(root.join("app/views/shared")).unwrap();
         let file = root.join("app/views/index.html.erb");
         let messages = |text: &str| unresolved(TemplateLang::Erb, &file, text).into_iter().map(|d| d.message).collect::<Vec<_>>();
@@ -1539,7 +1539,7 @@ mod tests {
 
     #[test]
     fn lookup_options_decide_unresolved_renders() {
-        let root = std::env::temp_dir().join(format!("rt-unresolved-lookup-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-unresolved-lookup-{}", std::process::id()));
         let users = root.join("app/views/users");
         std::fs::create_dir_all(&users).unwrap();
         std::fs::write(users.join("_card.json.jbuilder"), "").unwrap();
@@ -1560,7 +1560,7 @@ mod tests {
 
     #[test]
     fn strict_locals_messages_follow_rails() {
-        let root = std::env::temp_dir().join(format!("rt-locals-msg-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-locals-msg-{}", std::process::id()));
         let users = root.join("app/views/users");
         std::fs::create_dir_all(&users).unwrap();
         std::fs::write(users.join("_card.html.erb"), "<%# locals: (a:, b:) -%>").unwrap();
@@ -1616,7 +1616,7 @@ mod tests {
         assert_eq!(lang("file:///app/views/users/index.json.jbuilder", None), Some(TemplateLang::Ruby));
         assert_eq!(lang("file:///app/models/user.rb", Some("ruby")), None);
 
-        let root = std::env::temp_dir().join(format!("rt-jbuilder-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-jbuilder-{}", std::process::id()));
         let posts = root.join("app/views/posts");
         std::fs::create_dir_all(&posts).unwrap();
         std::fs::write(posts.join("_post.json.jbuilder"), "# locals: (post:)\njson.title post.title\n").unwrap();
@@ -1642,7 +1642,7 @@ mod tests {
 
     #[test]
     fn render_checks_follow_framework_and_version() {
-        let root = std::env::temp_dir().join(format!("rt-gates-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-gates-{}", std::process::id()));
         let users = root.join("app/views/users");
         std::fs::create_dir_all(&users).unwrap();
         std::fs::write(users.join("_card.html.erb"), "<%# locals: (user:) -%>").unwrap();
@@ -1678,7 +1678,7 @@ mod tests {
 
     #[test]
     fn positional_locals_are_reported_from_rails_7_1_with_the_path_from_the_project_root() {
-        let root = std::env::temp_dir().join(format!("rt-locals-keywords-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-locals-keywords-{}", std::process::id()));
         let file = root.join("app/views/users/_card.html.erb");
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
         let doc = Doc {
@@ -1734,7 +1734,7 @@ mod tests {
 
     #[test]
     fn strict_locals_diagnostics() {
-        let root = std::env::temp_dir().join(format!("rt-locals-diag-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-locals-diag-{}", std::process::id()));
         let users = root.join("app/views/users");
         std::fs::create_dir_all(&users).unwrap();
         std::fs::write(users.join("_card.html.erb"), "<%# locals: (user:, size: :md) -%>\n<p><%= user.name %></p>\n").unwrap();
@@ -1769,7 +1769,7 @@ mod tests {
 
     #[test]
     fn strict_locals_of_several_candidates_flag_what_fails_in_all() {
-        let root = std::env::temp_dir().join(format!("rt-locals-variants-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-locals-variants-{}", std::process::id()));
         let users = root.join("app/views/users");
         std::fs::create_dir_all(&users).unwrap();
         let write = |name: &str, locals: &str| std::fs::write(users.join(name), locals).unwrap();
@@ -1805,7 +1805,7 @@ mod tests {
 
     #[test]
     fn strict_locals_candidates_stop_at_the_first_folder_and_mix_no_locals_with_locals() {
-        let root = std::env::temp_dir().join(format!("rt-locals-shadow-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-locals-shadow-{}", std::process::id()));
         let views = root.join("app/views");
         std::fs::create_dir_all(views.join("users")).unwrap();
         std::fs::create_dir_all(views.join("application")).unwrap();
@@ -1839,7 +1839,7 @@ mod tests {
 
     #[test]
     fn strict_locals_read_a_call_continued_by_a_leading_dot_in_a_code_tag() {
-        let root = std::env::temp_dir().join(format!("rt-locals-dot-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-locals-dot-{}", std::process::id()));
         let users = root.join("app/views/users");
         std::fs::create_dir_all(&users).unwrap();
         std::fs::write(users.join("_card.html.erb"), "<%# locals: (user:, size:) -%>\n").unwrap();
@@ -1857,7 +1857,7 @@ mod tests {
 
     #[test]
     fn strict_locals_read_a_call_continued_on_the_line_of_its_partial() {
-        let root = std::env::temp_dir().join(format!("rt-locals-continued-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-locals-continued-{}", std::process::id()));
         let users = root.join("app/views/users");
         std::fs::create_dir_all(&users).unwrap();
         std::fs::write(users.join("_card.html.erb"), "<%# locals: (user:, size:) -%>\n").unwrap();
@@ -1874,7 +1874,7 @@ mod tests {
 
     #[test]
     fn strict_locals_read_a_call_with_the_grammar_of_the_projects_ruby() {
-        let root = std::env::temp_dir().join(format!("rt-locals-ruby-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-locals-ruby-{}", std::process::id()));
         let users = root.join("app/views/users");
         std::fs::create_dir_all(&users).unwrap();
         std::fs::write(users.join("_card.html.erb"), "<%# locals: (user:, size:) -%>\n").unwrap();

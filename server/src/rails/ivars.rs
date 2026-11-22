@@ -157,7 +157,7 @@ end
 
     #[test]
     fn view_assignments() {
-        let root = std::env::temp_dir().join(format!("rt-ivars-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-ivars-{}", std::process::id()));
         let write = |rel: &str, text: &str| {
             let p = root.join(rel);
             std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -201,7 +201,7 @@ end
 
     #[test]
     fn folders_without_a_controller_get_the_application_base_callbacks() {
-        let root = std::env::temp_dir().join(format!("rt-ivars-base-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-ivars-base-{}", std::process::id()));
         let write = |rel: &str, text: &str| {
             let p = root.join(rel);
             std::fs::create_dir_all(p.parent().unwrap()).unwrap();

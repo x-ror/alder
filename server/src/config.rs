@@ -141,7 +141,7 @@ mod tests {
 
     impl Project {
         fn new(name: &str, files: &[(&str, &str)]) -> Self {
-            let root = std::env::temp_dir().join(format!("rt-config-{name}-{}", std::process::id()));
+            let root = std::env::temp_dir().join(format!("lamina-config-{name}-{}", std::process::id()));
             for (file, text) in files {
                 let path = root.join(file);
                 std::fs::create_dir_all(path.parent().unwrap()).unwrap();

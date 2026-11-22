@@ -60,11 +60,11 @@ export interface Rule {
   today?: string;
   /** The diagnostic code on the diagnostics page that covers it today. */
   code?: string;
-  /** The `.ruby-templates.toml` table that turns it off. */
+  /** The `.lamina.toml` table that turns it off. */
   setting?: { label: string; code: string };
-  /** The languages where the rule runs without a `.ruby-templates.toml` entry; shown for formatting rules. */
+  /** The languages where the rule runs without a `.lamina.toml` entry; shown for formatting rules. */
   onByDefault?: Language[];
-  /** The `.ruby-templates.toml` table that turns the rule on, with its options; planned until the rule is available. */
+  /** The `.lamina.toml` table that turns the rule on, with its options; planned until the rule is available. */
   config?: string;
   examples: Example[];
 }
@@ -564,7 +564,7 @@ export const rules: Rule[] = [
       'style = "tabs" # or "spaces"',
     ),
     today:
-      'ERB and Pug; Haml and Slim always use spaces, since Slim rejects mixed indentation and Haml wants it consistent. In Pug a text block (`script.`, a comment, a filter, a `-` code block) moves to one level below its line, and the indentation its lines have past the block\'s stays as written; a Pug template is left as it is when that would change its text, as when a line of a tab-indented block goes on with spaces. Each indent level the formatter writes is one tab with `style = "tabs"`, or the width in spaces (the default of 2) with `"spaces"`. Only the leading whitespace of the lines the formatter indents changes: `<pre>`, `<textarea>`, `<script>`, `<style>`, `<xmp>` and `<listing>` bodies, Ruby inside tags, quoted attribute values and comments keep every byte. The lines of a tag that spans several lines move with its first line and keep their indentation relative to it, as written, so a tag attribute lined up with spaces stays lined up. Without `style`, the style comes from the first of these that has one: the `editor.insertSpaces` setting, then `.editorconfig` (`indent_style = tab` or `space`), then spaces. In an editor `insertSpaces` always decides, because the language server protocol always sends it, as it does the tab size; `.editorconfig` counts only on the command line, or through an EditorConfig extension that sets `insertSpaces`. `style` in `.ruby-templates.toml` beats all of them, and `enabled = false` always writes spaces. The width is the editor\'s tab size, then `.editorconfig` (`indent_size`, or `tab_width` for `indent_size = tab`), then 2; it only matters for spaces. Format selection applies the style to the lines it covers.',
+      'ERB and Pug; Haml and Slim always use spaces, since Slim rejects mixed indentation and Haml wants it consistent. In Pug a text block (`script.`, a comment, a filter, a `-` code block) moves to one level below its line, and the indentation its lines have past the block\'s stays as written; a Pug template is left as it is when that would change its text, as when a line of a tab-indented block goes on with spaces. Each indent level the formatter writes is one tab with `style = "tabs"`, or the width in spaces (the default of 2) with `"spaces"`. Only the leading whitespace of the lines the formatter indents changes: `<pre>`, `<textarea>`, `<script>`, `<style>`, `<xmp>` and `<listing>` bodies, Ruby inside tags, quoted attribute values and comments keep every byte. The lines of a tag that spans several lines move with its first line and keep their indentation relative to it, as written, so a tag attribute lined up with spaces stays lined up. Without `style`, the style comes from the first of these that has one: the `editor.insertSpaces` setting, then `.editorconfig` (`indent_style = tab` or `space`), then spaces. In an editor `insertSpaces` always decides, because the language server protocol always sends it, as it does the tab size; `.editorconfig` counts only on the command line, or through an EditorConfig extension that sets `insertSpaces`. `style` in `.lamina.toml` beats all of them, and `enabled = false` always writes spaces. The width is the editor\'s tab size, then `.editorconfig` (`indent_size`, or `tab_width` for `indent_size = tab`), then 2; it only matters for spaces. Format selection applies the style to the lines it covers.',
     setting: {
       label: "Always indent with spaces",
       code: `[Layout.IndentationStyle]
@@ -611,7 +611,7 @@ enabled = false`,
     onByDefault: ["erb", "haml", "slim", "pug"],
     config: text("[Layout.TrailingWhitespace]", "enabled = true"),
     today:
-      "The formatter does it in ERB, Haml, Slim and Pug, on Format Document, on save and in `ruby-templates format`. In Pug it goes after buffered code (`= x`), `if`, `each` and the other keywords, `.`, `//-` comments and their text, and between attributes. It is on for all four; with `enabled = false` the spaces and tabs at the line ends stay as written, whitespace-only lines included.",
+      "The formatter does it in ERB, Haml, Slim and Pug, on Format Document, on save and in `lamina format`. In Pug it goes after buffered code (`= x`), `if`, `each` and the other keywords, `.`, `//-` comments and their text, and between attributes. It is on for all four; with `enabled = false` the spaces and tabs at the line ends stay as written, whitespace-only lines included.",
     setting: {
       label: "Turn it off",
       code: `[Layout.TrailingWhitespace]
@@ -1379,7 +1379,7 @@ enabled = false`,
     status: "available",
     code: "Rails/InstanceVariableInPartial",
     today:
-      "The first read of each `@name` in a partial (a file starting with `_`), also inside `#{}`. Not reported: a variable the partial assigns itself (`@count = 0`, `@x ||= …`), `defined?(@name)`, ActionView's own (`@output_buffer`, `@virtual_path`, `@view_flow`, anything starting `@_`) and partials under app/views/layouts. Reported as information: visible in the editor, and `ruby-templates check` prints it without failing. Only in Rails projects, in templates under app/views.",
+      "The first read of each `@name` in a partial (a file starting with `_`), also inside `#{}`. Not reported: a variable the partial assigns itself (`@count = 0`, `@x ||= …`), `defined?(@name)`, ActionView's own (`@output_buffer`, `@virtual_path`, `@view_flow`, anything starting `@_`) and partials under app/views/layouts. Reported as information: visible in the editor, and `lamina check` prints it without failing. Only in Rails projects, in templates under app/views.",
     setting: {
       label: "Turn it off",
       code: `[Rails.InstanceVariableInPartial]
@@ -1942,7 +1942,7 @@ enabled = false`,
     status: "available",
     code: "Rails/UnknownRoute",
     today:
-      "A `*_path` or `*_url` call without a receiver that no route of the app defines but that is within two edits of one (`usr_path` for `user_path`) is reported, with that route offered; a name with no route near it may come from a gem, a concern or `lib`, which can\'t be seen, so it is left alone. The routes are read with `bin/rails runner` once the editor has loaded them (setting `rubyTemplates.routes.enabled`), so it is reported in the editor and never by `ruby-templates check`. Not reported: a call on a receiver (`main_app.users_path`, `admin.users_path` for an engine), Rails' asset and polymorphic helpers (`asset_path`, `image_url`, `polymorphic_path`, …), `rails_*`, `turbo_*`, `action_mailbox_*`, `omniauth_*`, `vite_*` and `asset_pack_*` helpers, Devise\'s own helpers (`session_path`, `new_registration_url`, `edit_password_url`, …) when the Gemfile.lock has `devise`, a view in a folder named for a gem (`spree/`, `rails_admin/`), which uses the engine\'s routes, a helper the app defines in app/helpers or names with a symbol (`helper_method`, `delegate`, `define_method`), a call under `defined?`, a route declared with `direct`, and a local variable or block parameter. A bare name (`item_path` with `resources :items`) could be a local the caller passes, so it is reported only when called with arguments or when the template\'s strict locals don\'t list it. The quick fix \"Replace with `user_path`\" renames the helper. Rails projects only, in templates under app/views.",
+      "A `*_path` or `*_url` call without a receiver that no route of the app defines but that is within two edits of one (`usr_path` for `user_path`) is reported, with that route offered; a name with no route near it may come from a gem, a concern or `lib`, which can\'t be seen, so it is left alone. The routes are read with `bin/rails runner` once the editor has loaded them (setting `lamina.routes.enabled`), so it is reported in the editor and never by `lamina check`. Not reported: a call on a receiver (`main_app.users_path`, `admin.users_path` for an engine), Rails' asset and polymorphic helpers (`asset_path`, `image_url`, `polymorphic_path`, …), `rails_*`, `turbo_*`, `action_mailbox_*`, `omniauth_*`, `vite_*` and `asset_pack_*` helpers, Devise\'s own helpers (`session_path`, `new_registration_url`, `edit_password_url`, …) when the Gemfile.lock has `devise`, a view in a folder named for a gem (`spree/`, `rails_admin/`), which uses the engine\'s routes, a helper the app defines in app/helpers or names with a symbol (`helper_method`, `delegate`, `define_method`), a call under `defined?`, a route declared with `direct`, and a local variable or block parameter. A bare name (`item_path` with `resources :items`) could be a local the caller passes, so it is reported only when called with arguments or when the template\'s strict locals don\'t list it. The quick fix \"Replace with `user_path`\" renames the helper. Rails projects only, in templates under app/views.",
     setting: {
       label: "Turn it off",
       code: `[Rails.UnknownRoute]
@@ -1954,7 +1954,7 @@ enabled = false`,
         file: ERB_FILE,
         before: text("<%= link_to @user.name, usr_path(@user) %>"),
         after: text("<%= link_to @user.name, user_path(@user) %>"),
-        note: "`config/routes.rb` has `resources :users`. The editor loads the routes, so `ruby-templates check` doesn't report this.",
+        note: "`config/routes.rb` has `resources :users`. The editor loads the routes, so `lamina check` doesn't report this.",
         faults: [
           {
             line: 1,

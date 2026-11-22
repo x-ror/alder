@@ -4,10 +4,9 @@ import { spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
 
-const name =
-  process.platform === "win32" ? "ruby-templates.exe" : "ruby-templates";
+const name = process.platform === "win32" ? "lamina.exe" : "lamina";
 const bin =
-  process.env.RUBY_TEMPLATES ??
+  process.env.LAMINA ??
   path.join(import.meta.dirname, "target", "release", name);
 const testDir = path.join(import.meta.dirname, "..", "test");
 const samples = fs

@@ -417,7 +417,7 @@ mod tests {
 
     #[test]
     fn model_render_partials() {
-        let root = std::env::temp_dir().join(format!("rt-models-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-models-{}", std::process::id()));
         let views = root.join("app/views");
         for f in ["users/_user.html.erb", "comments/_comment.html.erb", "people/_person.html.haml", "categories/_category.html.erb"] {
             let p = views.join(f);
@@ -449,7 +449,7 @@ mod tests {
 
     #[test]
     fn model_render_partials_of_namespaced_models() {
-        let root = std::env::temp_dir().join(format!("rt-ns-models-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-ns-models-{}", std::process::id()));
         let views = root.join("app/views");
         for f in [
             "app/models/admin/user.rb",
@@ -481,7 +481,7 @@ mod tests {
 
     #[test]
     fn a_partial_under_a_controller_folder_falls_back_to_the_model_folder() {
-        let root = std::env::temp_dir().join(format!("rt-model-partial-fallback-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-model-partial-fallback-{}", std::process::id()));
         crate::util::write_files(
             &root,
             &[
@@ -500,7 +500,7 @@ mod tests {
 
     #[test]
     fn namespaced_models_in_several_namespaces_prefer_the_views_own() {
-        let root = std::env::temp_dir().join(format!("rt-ns-two-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-ns-two-{}", std::process::id()));
         let views = root.join("app/views");
         for f in [
             "app/models/admin/user.rb",
@@ -524,7 +524,7 @@ mod tests {
 
     #[test]
     fn model_partials_get_the_views_namespace_prefixed_like_rails() {
-        let root = std::env::temp_dir().join(format!("rt-ns-prefix-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-ns-prefix-{}", std::process::id()));
         let views = root.join("app/views");
         for f in [
             "app/models/admin/user.rb",
@@ -549,7 +549,7 @@ mod tests {
 
     #[test]
     fn model_partials_of_namespaced_views_fall_back_only_when_rails_would() {
-        let root = std::env::temp_dir().join(format!("rt-ns-fallback-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-ns-fallback-{}", std::process::id()));
         let views = root.join("app/views");
         let controller = "class Admin::UsersController < ApplicationController\nend\n";
         crate::util::write_files(
@@ -581,7 +581,7 @@ mod tests {
 
     #[test]
     fn bare_names_resolve_through_the_controllers_parents() {
-        let root = std::env::temp_dir().join(format!("rt-bare-prefixes-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-bare-prefixes-{}", std::process::id()));
         crate::util::write_files(
             &root,
             &[
@@ -603,7 +603,7 @@ mod tests {
 
     #[test]
     fn bare_names_resolve_when_only_the_checks_are_unsure_of_the_lookup() {
-        let root = std::env::temp_dir().join(format!("rt-bare-prefixes-unsure-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-bare-prefixes-unsure-{}", std::process::id()));
         crate::util::write_files(
             &root,
             &[
@@ -633,7 +633,7 @@ mod tests {
 
     #[test]
     fn resolve_leading_slash_folder_from_views_root() {
-        let root = std::env::temp_dir().join(format!("rt-slash-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-slash-{}", std::process::id()));
         let users = root.join("app/views/users");
         std::fs::create_dir_all(&users).unwrap();
         std::fs::write(users.join("_card.html.erb"), "").unwrap();
@@ -645,7 +645,7 @@ mod tests {
 
     #[test]
     fn qualified_names_fall_back_to_engine_then_gem_roots() {
-        let root = std::env::temp_dir().join(format!("rt-other-roots-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-other-roots-{}", std::process::id()));
         std::fs::remove_dir_all(&root).ok();
         let lock = "GEM\n  specs:\n    actionview (7.1.0)\n    devise (4.9.4)\n      railties (>= 4.1)\n    railties (7.1.0)\n";
         let gem_views = "vendor/bundle/ruby/3.3.0/gems/devise-4.9.4/app/views";
@@ -693,7 +693,7 @@ mod tests {
 
     #[test]
     fn another_rails_app_in_the_root_renders_from_its_own_views() {
-        let root = std::env::temp_dir().join(format!("rt-other-apps-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-other-apps-{}", std::process::id()));
         std::fs::remove_dir_all(&root).ok();
         crate::util::write_files(
             &root,
@@ -718,7 +718,7 @@ mod tests {
 
     #[test]
     fn resolve_by_view_format() {
-        let root = std::env::temp_dir().join(format!("rt-formats-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-formats-{}", std::process::id()));
         let users = root.join("app/views/users");
         std::fs::create_dir_all(&users).unwrap();
         for f in ["_user.html.erb", "_user.json.jbuilder", "_user.html+phone.erb", "_user.erb"] {
@@ -741,7 +741,7 @@ mod tests {
 
     #[test]
     fn turbo_stream_view_renders_turbo_stream_then_html_partials() {
-        let root = std::env::temp_dir().join(format!("rt-turbo-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-turbo-{}", std::process::id()));
         let cards = root.join("app/views/cards");
         std::fs::create_dir_all(&cards).unwrap();
         let views = root.join("app/views");
@@ -757,7 +757,7 @@ mod tests {
 
     #[test]
     fn partials_are_ordered_by_the_views_formats_then_variants_then_handlers() {
-        let root = std::env::temp_dir().join(format!("rt-partial-order-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-partial-order-{}", std::process::id()));
         let cards = root.join("app/views/cards");
         std::fs::create_dir_all(&cards).unwrap();
         let views = root.join("app/views");
@@ -796,7 +796,7 @@ mod tests {
 
     #[test]
     fn app_registered_format_is_not_part_of_the_name() {
-        let root = std::env::temp_dir().join(format!("rt-registered-format-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-registered-format-{}", std::process::id()));
         let users = root.join("app/views/users");
         std::fs::create_dir_all(&users).unwrap();
         for f in ["_card.html.erb", "_card.mobile.erb"] {
@@ -823,7 +823,7 @@ mod tests {
 
     #[test]
     fn partial_in_the_views_own_unregistered_format() {
-        let root = std::env::temp_dir().join(format!("rt-own-format-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-own-format-{}", std::process::id()));
         let users = root.join("app/views/users");
         std::fs::create_dir_all(&users).unwrap();
         for f in ["_card.mobile.haml", "_row.amp.erb", "_row.html.erb", "_item.mobile.erb"] {
@@ -850,7 +850,7 @@ mod tests {
 
     #[test]
     fn candidates_per_render_kind() {
-        let root = std::env::temp_dir().join(format!("rt-candidates-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-candidates-{}", std::process::id()));
         let views = root.join("app/views");
         for f in [
             "users/index.html.erb",
@@ -879,7 +879,7 @@ mod tests {
 
     #[test]
     fn component_classes_by_constant() {
-        let root = std::env::temp_dir().join(format!("rt-components-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-components-{}", std::process::id()));
         for f in [
             "app/components/admin/user_card_component.rb",
             "app/components/button_component.rb",
@@ -902,7 +902,7 @@ mod tests {
 
     #[test]
     fn component_haml_sidecar() {
-        let root = std::env::temp_dir().join(format!("rt-component-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-component-{}", std::process::id()));
         let components = root.join("app/components/users");
         std::fs::create_dir_all(&components).unwrap();
         std::fs::create_dir_all(root.join("app/views/users")).unwrap();
@@ -916,7 +916,7 @@ mod tests {
 
     /// Files of `dir` under a fresh temp `app/views`, and a resolver from `view` (path under app/views) to file names.
     fn partial_tree(tag: &str, files: &[&str]) -> (PathBuf, PathBuf) {
-        let root = std::env::temp_dir().join(format!("rt-{tag}-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-{tag}-{}", std::process::id()));
         let views = root.join("app/views");
         for f in files {
             let p = views.join(f);

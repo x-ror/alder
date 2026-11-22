@@ -2,7 +2,7 @@
 import path from "node:path";
 
 const ROUTES_SCRIPT = path.join(import.meta.dirname, "..", "ruby", "routes.rb");
-const MARKER = "__RUBY_TEMPLATES_ROUTES__";
+const MARKER = "__LAMINA_ROUTES__";
 
 /** The routes `routes.rb` printed after its marker, or undefined when the output has none. */
 function routesFromOutput(stdout) {

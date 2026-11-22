@@ -15,7 +15,7 @@ use crate::util::{coded, warning, LineIndex};
 use std::ops::Range as ByteRange;
 use tower_lsp_server::ls_types::{Diagnostic, Position, Range};
 
-/// Stable diagnostic codes; `rubyTemplates.erb.disabledDiagnostics` refers to these.
+/// Stable diagnostic codes; `lamina.erb.disabledDiagnostics` refers to these.
 pub mod code {
     pub const UNCLOSED_TAG: &str = "Syntax/UnclosedErbTag";
 }

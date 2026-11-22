@@ -1,4 +1,4 @@
-//! Shared by the language server (`ruby-templates-ls`) and the command line (`ruby-templates`).
+//! Shared by the language server (`lamina-ls`) and the command line (`lamina`).
 
 mod attribute_insert;
 mod attributes;

@@ -140,7 +140,7 @@ const codeParts = (text: string) => backtickParts(text);
                   <div class="roster__field">
                     <strong class="roster__term">{rule.status === "planned" ? "Planned config" : "Turn it on"}</strong>{" "}
                     <div class="roster__detail">
-                      <pre class="roster__setting" tabindex="0" role="region" aria-label="Configuration in .ruby-templates.toml"><code>{rule.config}</code></pre>
+                      <pre class="roster__setting" tabindex="0" role="region" aria-label="Configuration in .lamina.toml"><code>{rule.config}</code></pre>
                     </div>
                   </div>
                 )}
@@ -185,7 +185,7 @@ const codeParts = (text: string) => backtickParts(text);
 
   .rules__scroll {
     overflow-x: auto;
-    border-block: 1px solid var(--rt-hairline);
+    border-block: 1px solid var(--lamina-hairline);
   }
 
   .rules__scroll:focus-visible {
@@ -203,7 +203,7 @@ const codeParts = (text: string) => backtickParts(text);
     padding: 0 0 0.75rem;
     text-align: left;
     font-size: 0.9375rem;
-    color: var(--rt-ink-muted);
+    color: var(--lamina-ink-muted);
   }
 
   .rules__head {
@@ -211,8 +211,8 @@ const codeParts = (text: string) => backtickParts(text);
     text-align: left;
     font-size: 0.875rem;
     font-weight: 650;
-    color: var(--rt-ink-muted);
-    border-bottom: 1px solid var(--rt-ink);
+    color: var(--lamina-ink-muted);
+    border-bottom: 1px solid var(--lamina-ink);
     white-space: nowrap;
   }
 
@@ -220,11 +220,11 @@ const codeParts = (text: string) => backtickParts(text);
     padding: 0.5rem 1rem 0.5rem 0;
     text-align: left;
     vertical-align: top;
-    border-bottom: 1px solid var(--rt-hairline);
+    border-bottom: 1px solid var(--lamina-hairline);
   }
 
   .rules__cell--rule {
-    font-family: var(--rt-font-mono);
+    font-family: var(--lamina-font-mono);
     font-size: 0.875rem;
     font-weight: 400;
     white-space: nowrap;
@@ -239,7 +239,7 @@ const codeParts = (text: string) => backtickParts(text);
   .rules__mark {
     display: inline-block;
     padding: 0 0.5rem;
-    border: 1px solid var(--rt-ink);
+    border: 1px solid var(--lamina-ink);
     border-radius: 3px;
     font-size: 0.8125rem;
     font-weight: 650;
@@ -248,14 +248,14 @@ const codeParts = (text: string) => backtickParts(text);
   }
 
   .rules__mark--partial {
-    background: var(--rt-code-bg);
+    background: var(--lamina-code-bg);
   }
 
   .rules__mark--planned {
     border-style: dashed;
-    border-color: var(--rt-ink-muted);
+    border-color: var(--lamina-ink-muted);
     font-weight: 550;
-    color: var(--rt-ink-muted);
+    color: var(--lamina-ink-muted);
   }
 
   .rules__status-line {
@@ -275,7 +275,7 @@ const codeParts = (text: string) => backtickParts(text);
   .rules__note {
     margin: 0 0 0.5rem;
     font-size: 0.9375rem;
-    color: var(--rt-ink-muted);
+    color: var(--lamina-ink-muted);
   }
 
   .rules__pair {

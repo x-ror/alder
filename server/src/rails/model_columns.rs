@@ -352,7 +352,7 @@ mod tests {
 
     #[test]
     fn column_of_an_inferred_record() {
-        let root = std::env::temp_dir().join(format!("rt-model-columns-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-model-columns-{}", std::process::id()));
         let write = |rel: &str, text: &str| {
             let p = root.join(rel);
             std::fs::create_dir_all(p.parent().unwrap()).unwrap();
@@ -394,7 +394,7 @@ mod tests {
 
     #[test]
     fn namespace_prefixes_tables_only_when_declared() {
-        let root = std::env::temp_dir().join(format!("rt-model-tables-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-model-tables-{}", std::process::id()));
         std::fs::create_dir_all(root.join("app/models/billing")).unwrap();
         std::fs::create_dir_all(root.join("app/models/admin")).unwrap();
         std::fs::write(root.join("app/models/billing.rb"), "module Billing\n  def self.table_name_prefix = \"billing_\"\nend\n").unwrap();

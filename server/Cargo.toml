@@ -1,5 +1,5 @@
 [package]
-name = "ruby-templates-ls"
+name = "lamina-ls"
 version = "1.1.0"
 edition = "2021"
 rust-version = "1.85"
@@ -7,16 +7,16 @@ description = "Language server for ERB, Haml and Slim templates"
 license = "MIT"
 
 [lib]
-name = "ruby_templates"
+name = "lamina"
 path = "src/lib.rs"
 
 [[bin]]
-name = "ruby-templates-ls"
+name = "lamina-ls"
 path = "src/main.rs"
 
 [[bin]]
-name = "ruby-templates"
-path = "src/bin/ruby-templates.rs"
+name = "lamina"
+path = "src/bin/lamina.rs"
 
 [dependencies]
 tower-lsp-server = "0.23"

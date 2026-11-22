@@ -1,4 +1,4 @@
-//! `initializationOptions`, from the `rubyTemplates.{slim,erb,haml,jbuilder,liquid,pug}.*` settings.
+//! `initializationOptions`, from the `lamina.{slim,erb,haml,jbuilder,liquid,pug}.*` settings.
 
 use crate::lang::TemplateLang;
 

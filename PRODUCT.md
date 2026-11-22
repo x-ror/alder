@@ -14,11 +14,11 @@ Astro + Starlight in `site/`, deployed to GitHub Pages from this repository. Cod
 
 Primary: a Rails developer deciding whether to install the extension. They work in `app/views` daily, know ERB and usually Haml or Slim, and compare this extension with Ruby LSP and other ERB/Haml/Slim extensions. They need to see quickly what it does in their own templates and that it is trustworthy.
 
-Secondary (served by the same pages, not designed around): existing users looking up a setting, a diagnostic code or a troubleshooting step, and teams wiring the `ruby-templates` CLI into CI.
+Secondary (served by the same pages, not designed around): existing users looking up a setting, a diagnostic code or a troubleshooting step, and teams wiring the `lamina` CLI into CI.
 
 ## Product Purpose
 
-Ruby Templates is one VS Code extension for Rails views in ERB, Haml and Slim: highlighting, errors as you type, whitespace-only formatting, and navigation and completion that understand the Rails app (partials, components, helpers, routes, instance variables, translations, Stimulus). The site is the canonical documentation; success is a Rails developer understanding what it does for their templates and installing it.
+Lamina is one VS Code extension for Rails views in ERB, Haml and Slim: highlighting, errors as you type, whitespace-only formatting, and navigation and completion that understand the Rails app (partials, components, helpers, routes, instance variables, translations, Stimulus). The site is the canonical documentation; success is a Rails developer understanding what it does for their templates and installing it.
 
 ## Positioning
 
@@ -26,7 +26,7 @@ Ruby Templates is one VS Code extension for Rails views in ERB, Haml and Slim: h
 - Errors follow Erubi, Rails, Haml 7 and Slim 5 and use those projects' own messages, at the same line and column.
 - Formatting changes only whitespace and verifies the template still compiles to the same thing; when unsure it leaves the file alone.
 - Works alongside Ruby LSP (Ruby LSP for `.rb`, this extension for templates).
-- The same checks and formatter run in CI through the `@x-ror/ruby-templates` npm CLI.
+- The same checks and formatter run in CI through the `@x-ror/lamina` npm CLI.
 
 ## Operating Context
 
@@ -35,14 +35,14 @@ Evaluated in a browser next to VS Code, often after landing from the Marketplace
 ## Capabilities and Constraints
 
 - Languages: ERB (with host variants such as `.js.erb`, `.yml.erb`), Haml, Slim, Skim; Liquid for highlighting and editing only; Pug (`pug-rails` `.jst.pug` and plain `.pug`, on VS Code's own `jade` language) with snippets, syntax errors (Pug 3.0.4's own), the HTML rules that need no Ruby, an outline, `include`/`extends` navigation and checks, whitespace-only Format Document (no Format Selection), and the toggle, wrap and extract-to-`include` commands, its JavaScript code kept away from every Rails feature and not checked.
-- Every diagnostic has a stable code listed in `package.json` (`rubyTemplates.<lang>.disabledDiagnostics`); the site documents each one.
+- Every diagnostic has a stable code listed in `package.json` (`lamina.<lang>.disabledDiagnostics`); the site documents each one.
 - `README.md` stays the Marketplace page but becomes a short overview linking to the site; the site holds the full documentation.
 - `CHANGELOG.md` is rendered on the site from the file itself.
 - English only.
 
 ## Brand Commitments
 
-- Name: "Ruby Templates".
+- Name: "Lamina".
 - Icon: `images/icon.png`. Everything else (colour, type, voice beyond the README's plain, factual tone) is open.
 
 ## Evidence on Hand

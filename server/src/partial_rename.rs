@@ -417,7 +417,7 @@ mod tests {
 
     impl Tree {
         fn new(name: &str, files: &[&str]) -> Self {
-            let root = std::env::temp_dir().join(format!("rt-rename-{name}-{}", std::process::id()));
+            let root = std::env::temp_dir().join(format!("lamina-rename-{name}-{}", std::process::id()));
             for f in files {
                 let path = root.join(f);
                 std::fs::create_dir_all(path.parent().unwrap()).unwrap();

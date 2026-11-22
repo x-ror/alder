@@ -1,4 +1,4 @@
-//! Every rule, by the `Department/Name` that is its diagnostic code (lint rules) and its name in `.ruby-templates.toml`.
+//! Every rule, by the `Department/Name` that is its diagnostic code (lint rules) and its name in `.lamina.toml`.
 
 pub mod file;
 pub mod resolve;

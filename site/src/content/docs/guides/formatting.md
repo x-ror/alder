@@ -29,7 +29,7 @@ One indent per open HTML element and ERB block (`if`/`else`/`end`, `do … end`,
 
 `<script>`, `<style>`, `<pre>`, `<textarea>` and `<title>` bodies, quoted attribute values and the continuation lines of multi-line ERB tags keep every byte.
 
-Only HTML views are formatted, not `.js.erb`, `.json.erb`, `.text.erb`, Jbuilder or generator templates. [File types](/vscode-ruby-templates/guides/file-types/) shows which files that covers.
+Only HTML views are formatted, not `.js.erb`, `.json.erb`, `.text.erb`, Jbuilder or generator templates. [File types](/lamina/guides/file-types/) shows which files that covers.
 
 ## Haml and Slim
 
@@ -73,11 +73,11 @@ ul
 
 Pug reads tabs as well as spaces, so `Layout/IndentationStyle` applies to it as to ERB (see [below](#indentation-width-and-line-endings)). A file is left unchanged when Pug would reject it (inconsistent indentation, tabs and spaces mixed in one line's indentation, any syntax error), when it has a lone CR line break, an `&attributes(...)` over several lines or a mixin call whose name is on the line after its `+`, and when the result, parsed again, is not the same Pug tree, as for a tab-indented text block one of whose lines goes on with spaces past the tabs. The tree is compared without line numbers and without the spaces that end a piece of JavaScript (`- x  `), which change nothing it does. _Format Selection_ is not offered for Pug, as for Slim: a line nests under any less indented line, so re-indenting some lines without the ones around them can change the nesting.
 
-The [rules reference](/vscode-ruby-templates/reference/rules/) lists the formatting rules, which are configured in a `.ruby-templates.toml`.
+The [rules reference](/lamina/reference/rules/) lists the formatting rules, which are configured in a `.lamina.toml`.
 
 ## Blank lines
 
-Rules in a `.ruby-templates.toml` decide what happens to blank lines; none runs on _Format Selection_. Pug has `Layout/TrailingEmptyLines` only; its other blank lines stay as written.
+Rules in a `.lamina.toml` decide what happens to blank lines; none runs on _Format Selection_. Pug has `Layout/TrailingEmptyLines` only; its other blank lines stay as written.
 
 - `Layout/TrailingEmptyLines` is on for Haml, Slim and Pug: the file ends with exactly one line break. The blank lines at the end go, and a missing final line break is added in the file's line ending. It is off for ERB, because Rails renders ERB byte for byte and the end of a partial is output (a final line break shows as a space between inline elements); turn it on with `enabled = true`, or with `insert_final_newline = true` in `.editorconfig` (a rule you turn off stays off).
 - `Layout/EmptyLines` is off. Turn it on to cut every run of blank lines longer than `max` (1 by default) down to `max`.
@@ -235,7 +235,7 @@ max_line_length = 100
 
 ## Safe by construction
 
-Every result must be stable when formatted again, keep every non-whitespace character and add no diagnostic. Otherwise the file comes back unchanged and the reason is logged in the _Ruby Templates_ channel of the Output panel. The exceptions are `Turbo/PreferTurboAttributes`, below, and the rules above, whose rewrites are the characters the formatter changes besides whitespace.
+Every result must be stable when formatted again, keep every non-whitespace character and add no diagnostic. Otherwise the file comes back unchanged and the reason is logged in the _Lamina_ channel of the Output panel. The exceptions are `Turbo/PreferTurboAttributes`, below, and the rules above, whose rewrites are the characters the formatter changes besides whitespace.
 
 ## Rails UJS attributes to Turbo's
 
@@ -250,13 +250,13 @@ enabled = true
 
 ## Indentation width and line endings
 
-`format.enabled` (under `[erb]`, `[haml]`, `[slim]` and `[pug]`) and `format.align_comments` (under `[erb]`) in a `.ruby-templates.toml` turn formatting off or on and align comments, and win over the `rubyTemplates.*` settings; its global `exclude` leaves files unformatted.
+`format.enabled` (under `[erb]`, `[haml]`, `[slim]` and `[pug]`) and `format.align_comments` (under `[erb]`) in a `.lamina.toml` turn formatting off or on and align comments, and win over the `lamina.*` settings; its global `exclude` leaves files unformatted.
 
 The indentation width comes from the editor's tab size, then `.editorconfig` (`indent_size`; `tab_width` for `indent_size = tab`), then 2. Each line keeps its ending.
 
 Haml and Slim are indented with spaces. ERB and Pug can use tabs: one tab per indent level, whatever the width. The style comes from the first of these that sets it:
 
-1. `style` of `[Layout.IndentationStyle]` in a `.ruby-templates.toml` (`"spaces"` or `"tabs"`); `enabled = false` always gives spaces.
+1. `style` of `[Layout.IndentationStyle]` in a `.lamina.toml` (`"spaces"` or `"tabs"`); `enabled = false` always gives spaces.
 2. The editor's `editor.insertSpaces` for the file. In an editor this always decides when the toml is silent, because the language server protocol always sends it (as it does the tab size). `.editorconfig` only counts there through an EditorConfig extension, which sets `insertSpaces` for the file.
 3. `.editorconfig`: `indent_style = tab` or `space`. Only the command line, which has no editor, reads it directly.
 4. Spaces.
@@ -267,7 +267,7 @@ indent_style = space
 indent_size = 2
 ```
 
-```toml title=".ruby-templates.toml"
+```toml title=".lamina.toml"
 [Layout.IndentationStyle]
 style = "tabs"
 ```
@@ -282,11 +282,11 @@ In Pug they count wherever Pug reads them as text: after a tag's text or `|`, af
 
 ## Comments in ERB
 
-`rubyTemplates.erb.format.alignComments` (`--align-comments` on the command line) moves the lines inside HTML and multi-line `<%#` comments with the comment's first line. By default they keep every byte.
+`lamina.erb.format.alignComments` (`--align-comments` on the command line) moves the lines inside HTML and multi-line `<%#` comments with the comment's first line. By default they keep every byte.
 
 ```json
 {
-  "rubyTemplates.erb.format.alignComments": true
+  "lamina.erb.format.alignComments": true
 }
 ```
 
@@ -303,9 +303,9 @@ Turn on format on save per language:
 }
 ```
 
-If another extension also formats these languages, pick this one with `"[erb]": { "editor.defaultFormatter": "x-ror.ruby-templates" }` (also `[haml]`, `[slim]`, `[jade]` for Pug). To let the other one format instead, set `rubyTemplates.<erb|haml|slim|pug>.format.enabled` to `false`. See [Troubleshooting](/vscode-ruby-templates/guides/troubleshooting/).
+If another extension also formats these languages, pick this one with `"[erb]": { "editor.defaultFormatter": "x-ror.lamina" }` (also `[haml]`, `[slim]`, `[jade]` for Pug). To let the other one format instead, set `lamina.<erb|haml|slim|pug>.format.enabled` to `false`. See [Troubleshooting](/lamina/guides/troubleshooting/).
 
-The formatter also runs in CI with `npx ruby-templates format --check`; see [Command line for CI](/vscode-ruby-templates/guides/command-line/).
+The formatter also runs in CI with `npx lamina format --check`; see [Command line for CI](/lamina/guides/command-line/).
 
 ## Not supported
 

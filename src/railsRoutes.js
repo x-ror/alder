@@ -30,7 +30,7 @@ function trustedRailsRoot(state, file) {
 
 async function sendRoutes(root, routes) {
   try {
-    await notifyServer("rubyTemplates/routes", { root, routes });
+    await notifyServer("lamina/routes", { root, routes });
   } catch (e) {
     log(`routes: sending routes for ${root}: ${e?.message ?? e}`);
   }

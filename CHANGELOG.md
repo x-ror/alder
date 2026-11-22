@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Breaking:** renamed the project to **Lamina**: VS Code extension `x-ror.lamina` (displayed as _Lamina: Ruby Templates (ERB, Haml, Slim)_), settings and commands `lamina.*`, routes notification `lamina/routes`, diagnostic source `lamina`, npm package `@x-ror/lamina`, CLI binary `lamina` (`LAMINA_BINARY`), language server `lamina-ls`, config file `.lamina.toml`, repository `x-ror/lamina`, and docs at `https://x-ror.github.io/lamina/`. Removed the legacy `rubyTemplates.extractSlimPartial` command alias.
+
 ## 1.1.0
 
 Pug support. **Note for CI:** `ruby-templates check` and `format --check` now take `.pug` and `.jade` files when they walk a folder, so a project with Pug templates that Pug itself rejects, or that aren't formatted, can start failing. `[pug]` in `.ruby-templates.toml` with `diagnostics.enabled = false` or `format.enabled = false` turns that off.
@@ -15,7 +19,7 @@ Pug support. **Note for CI:** `ruby-templates check` and `format --check` now ta
 
 ## 1.0.0
 
-The first stable release. From 1.0 the [stability page](https://x-ror.github.io/vscode-ruby-templates/reference/stability/) says what follows Semantic Versioning. When upgrading from 0.16, check the entries marked **Breaking**.
+The first stable release. From 1.0 the [stability page](https://x-ror.github.io/lamina/reference/stability/) says what follows Semantic Versioning. When upgrading from 0.16, check the entries marked **Breaking**.
 
 - **Breaking:** a department's `enabled = true` in a `.ruby-templates.toml` (`[Layout]`, `[Style]`, `[Turbo]`, ...) only turns back on the rules that are on by default, cancelling an `enabled = false` from a file above. A rule that is off by default (`Layout/EmptyLines`, `Turbo/PreferTurboAttributes`, `Layout/LineLength`, ...) needs its own `[Layout.EmptyLines] enabled = true`, so rules added later can't start rewriting files.
 - **Breaking:** `disabled_diagnostics` and the `[jbuilder]` table are removed from `.ruby-templates.toml`; the file reports them as a problem that names the replacement, `[Html.ImgAlt] enabled = false` (or `exclude = [...]` for some files). The VS Code `rubyTemplates.<language>.disabledDiagnostics` settings stay.

@@ -17,7 +17,7 @@ Report and progress live in `.claude/reviews/architect.md` (git-ignored). If it 
 - [ ] 7. Partials, references, rename: rails/render_refs.rs, rails/render_call.rs, rails/partials.rs, partial_rename.rs, rails/paths.rs, rails/inflect.rs
 - [ ] 8. Formatting and indentation: format.rs, format/erb.rs, format/haml.rs, format/slim.rs, haml/indent.rs, slim/indent.rs
 - [ ] 9. Outline: outline.rs, outline/haml.rs, outline/slim.rs, lang.rs
-- [ ] 10. Command line: cli.rs, bin/ruby-templates.rs
+- [ ] 10. Command line: cli.rs, bin/lamina.rs
 ```
 
 Then do exactly one stage:

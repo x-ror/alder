@@ -3,7 +3,7 @@
   "configVersion": 0,
   "workspaces": {
     "": {
-      "name": "ruby-templates",
+      "name": "lamina",
       "dependencies": {
         "vscode-languageclient": "^11.0.0",
       },

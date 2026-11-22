@@ -139,7 +139,7 @@ mod tests {
 
     #[test]
     fn hover_shows_signature_source_and_comment() {
-        let root = std::env::temp_dir().join(format!("rt-helper-hover-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-helper-hover-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let write = |rel: &str, text: &str| {
             let p = root.join(rel);
@@ -195,7 +195,7 @@ mod tests {
 
     #[test]
     fn helper_definitions() {
-        let root = std::env::temp_dir().join(format!("rt-helpers-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-helpers-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let write = |rel: &str, text: &str| {
             let p = root.join(rel);

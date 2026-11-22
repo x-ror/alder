@@ -23,7 +23,7 @@ The rules are generic; this repo's constraints win:
 - **Toolchain**: `server/Cargo.toml` `edition` and `rust-version` (MSRV) bound what you may suggest. Rules written for edition 2024 or a newer Rust (let chains, `unsafe extern`, newer std APIs) only apply if the MSRV allows; otherwise mention the MSRV bump as the cost.
 - **Dependencies**: std first, then what is already in `Cargo.toml`. Skip rules whose fix is a new crate (`smallvec`, `thiserror`, `anyhow`, arenas, compact strings, ...) unless you show a measured gain that a few lines of std can't reach.
 - **No speculative abstraction**: skip builder/typestate/sealed/extension-trait/newtype advice unless there is already a second use or a real bug it prevents. Library-API rules (`#[non_exhaustive]`, serde feature flags, `# Errors` docs) mostly don't apply: this is an application crate.
-- **Deliberately rejected**: `~/.claude/projects/*vscode-ruby-templates/memory/*.md` (if present) and `CHANGELOG.md` may record ideas already measured and dropped (per-doc parse caches, `Project::for_template` caching, ...). Don't re-propose them without new evidence.
+- **Deliberately rejected**: `~/.claude/projects/*lamina/memory/*.md` (if present) and `CHANGELOG.md` may record ideas already measured and dropped (per-doc parse caches, `Project::for_template` caching, ...). Don't re-propose them without new evidence.
 
 ## What to look for, in priority order
 

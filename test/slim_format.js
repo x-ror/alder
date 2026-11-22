@@ -8,14 +8,14 @@ import path from "path";
 import { loadPug } from "./oracle/pug.js";
 
 const cli =
-  process.env.RUBY_TEMPLATES ??
+  process.env.LAMINA ??
   path.join(
     import.meta.dirname,
     "..",
     "server",
     "target",
     "release",
-    `ruby-templates${process.platform === "win32" ? ".exe" : ""}`,
+    `lamina${process.platform === "win32" ? ".exe" : ""}`,
   );
 // Slim keeps a `\n;` per source line; trailing blank lines dropped by the formatter only remove the last ones.
 const compile = (source) =>
@@ -139,10 +139,10 @@ const renderHaml = (source) =>
     { input: source, encoding: "utf8" },
   );
 const withRules = (rules, work) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "rt-style-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "lamina-style-"));
   try {
     fs.writeFileSync(
-      path.join(root, ".ruby-templates.toml"),
+      path.join(root, ".lamina.toml"),
       `root = true\n${rules}\n`,
     );
     work(root);

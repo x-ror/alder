@@ -47,10 +47,10 @@ type AppHelpers = DashMap<PathBuf, Option<(String, String)>>;
 
 const DIAGNOSTICS_DEBOUNCE: Duration = Duration::from_millis(200);
 
-const SERVER_NAME: &str = "ruby-templates-ls";
+const SERVER_NAME: &str = "lamina-ls";
 
 /// The client's notification with the app's routes.
-const ROUTES_NOTIFICATION: &str = "rubyTemplates/routes";
+const ROUTES_NOTIFICATION: &str = "lamina/routes";
 
 const FORMATTING_REGISTRATION: &str = "formatting";
 const RANGE_FORMATTING_REGISTRATION: &str = "range-formatting";
@@ -1146,7 +1146,7 @@ impl Backend {
         self.locales.entry(dir.clone()).or_insert_with(|| Arc::new(i18n::locale_files(&dir))).clone()
     }
 
-    /// `rubyTemplates/routes`: `{ root, routes }` from the client's `bin/rails runner`.
+    /// `lamina/routes`: `{ root, routes }` from the client's `bin/rails runner`.
     async fn set_routes(&self, params: serde_json::Value) {
         let Some(root) = params.get("root").and_then(serde_json::Value::as_str).map(PathBuf::from) else { return };
         let parsed = routes::parse(&root, params.get("routes").unwrap_or(&serde_json::Value::Null));
@@ -1669,7 +1669,7 @@ mod tests {
     }
 
     fn views_tree(name: &str, files: &[(&str, &str)]) -> (PathBuf, PathBuf) {
-        let root = std::env::temp_dir().join(format!("rt-lsp-rename-{name}-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-lsp-rename-{name}-{}", std::process::id()));
         let views = root.join("app/views");
         for (file, text) in files {
             let path = views.join(file);
@@ -1746,7 +1746,7 @@ mod tests {
 
     #[test]
     fn strict_locals_hover() {
-        let root = std::env::temp_dir().join(format!("rt-locals-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-locals-{}", std::process::id()));
         let users = root.join("app/views/users");
         std::fs::create_dir_all(&users).unwrap();
         let card = "<%# locals: (user:, size: :md) -%>\n<p><%= user.name %></p>\n";

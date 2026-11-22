@@ -125,7 +125,7 @@ mod tests {
     fn catalog(locale: &str) -> (std::path::PathBuf, std::sync::Arc<Catalog>) {
         static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let root = std::env::temp_dir().join(format!("rt-missing-key-{}-{n}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-missing-key-{}-{n}", std::process::id()));
         util::write_files(&root, &[("config/application.rb", ""), ("config/locales/en.yml", locale)]);
         (root.clone(), i18n::catalog(&Project::unknown(), &root.join("app/views/x.erb")).unwrap())
     }

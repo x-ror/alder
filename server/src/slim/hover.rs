@@ -60,7 +60,7 @@ fn engine_doc(name: &str) -> &'static str {
         "markdown" | "textile" | "rdoc" | "asciidoc" => {
             "the nested lines are rendered to HTML when the template compiles; `#{}` interpolates Ruby."
         }
-        _ => "registered by the application (`rubyTemplates.slim.extraEngines`); the nested lines go to that engine.",
+        _ => "registered by the application (`lamina.slim.extraEngines`); the nested lines go to that engine.",
     }
 }
 

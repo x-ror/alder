@@ -17,21 +17,19 @@ import { registerRoutes } from "./railsRoutes.js";
 import { registerErbAutoClose } from "./erbAutoClose.js";
 
 const COMMANDS = {
-  "rubyTemplates.toggleErbTag": toggleErbTag,
-  "rubyTemplates.toggleErbLineComment": toggleErbLineComment,
-  "rubyTemplates.wrapInErb": wrapInErb,
-  "rubyTemplates.convertToHaml": () => convert("haml"),
-  "rubyTemplates.convertToSlim": () => convert("slim"),
-  "rubyTemplates.convertToErb": () => convert("erb"),
-  "rubyTemplates.extractPartial": extractPartial,
-  "rubyTemplates.switchRelated": switchRelated,
-  "rubyTemplates.toggleHamlPrefix": toggleActiveHamlLines,
-  "rubyTemplates.toggleSlimTag": toggleSlimTag,
-  "rubyTemplates.wrapInSlim": wrapInSlim,
-  "rubyTemplates.togglePugLine": togglePugLine,
-  "rubyTemplates.wrapInPug": wrapInPug,
-  // The former Slim-only id, kept for keybindings that still name it.
-  "rubyTemplates.extractSlimPartial": extractPartial,
+  "lamina.toggleErbTag": toggleErbTag,
+  "lamina.toggleErbLineComment": toggleErbLineComment,
+  "lamina.wrapInErb": wrapInErb,
+  "lamina.convertToHaml": () => convert("haml"),
+  "lamina.convertToSlim": () => convert("slim"),
+  "lamina.convertToErb": () => convert("erb"),
+  "lamina.extractPartial": extractPartial,
+  "lamina.switchRelated": switchRelated,
+  "lamina.toggleHamlPrefix": toggleActiveHamlLines,
+  "lamina.toggleSlimTag": toggleSlimTag,
+  "lamina.wrapInSlim": wrapInSlim,
+  "lamina.togglePugLine": togglePugLine,
+  "lamina.wrapInPug": wrapInPug,
 };
 
 function activate(context) {

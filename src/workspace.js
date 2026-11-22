@@ -3,11 +3,11 @@ import * as vscode from "vscode";
 import os from "os";
 import path from "path";
 
-const SECTION = "rubyTemplates";
+const SECTION = "lamina";
 
 const settings = () => vscode.workspace.getConfiguration(SECTION);
 
-/** The executable set in `rubyTemplates.commands.<name>`, else `name` itself. */
+/** The executable set in `lamina.commands.<name>`, else `name` itself. */
 const commandPath = (name) => settings().get(`commands.${name}`, name);
 
 const useBundler = () => settings().get("preview.useBundler", false);
