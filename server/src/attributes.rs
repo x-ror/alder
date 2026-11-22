@@ -1,4 +1,4 @@
-//! An element's attributes as a template spells them, read alike from an ERB start tag, a Haml or Slim tag and the options
+//! An element's attributes as a template spells them, read alike from an ERB start tag, a Haml, Slim or Pug tag and the options
 //! of a Rails tag helper, for the rules that look for an attribute or rename one.
 
 use crate::code_context;
@@ -7,7 +7,7 @@ use crate::lang::TemplateLang;
 use crate::rails::output_lints::TAG_BUILDER_ELEMENTS;
 use crate::ruby::generated::Compiled;
 use crate::util::BOM;
-use crate::{haml, slim};
+use crate::{haml, pug, slim};
 use ruby_prism::{CallNode, Location, Node, Visit};
 use std::ops::Range;
 
@@ -85,13 +85,14 @@ impl Element {
     }
 }
 
-/// The elements the template writes as markup: an ERB template's HTML start tags, a Haml or Slim template's tags. Tag
+/// The elements the template writes as markup: an ERB template's HTML start tags, a Haml, Slim or Pug template's tags. Tag
 /// helpers in Ruby code are `helper_elements`. None for a template its language's parser rejects.
 pub(crate) fn markup_elements(lang: TemplateLang, text: &str, extra_engines: &[String], grammar: ruby_prism::Version) -> Vec<Element> {
     match lang {
         TemplateLang::Erb => erb_elements(text),
         TemplateLang::Haml => haml_elements(text, grammar),
         TemplateLang::Slim => slim_elements(text, extra_engines),
+        TemplateLang::Pug => pug::elements::markup(text),
         _ => Vec::new(),
     }
 }

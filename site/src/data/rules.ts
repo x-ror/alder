@@ -74,6 +74,7 @@ const text = (...lines: string[]) => `${lines.join("\n")}\n`;
 const ERB_FILE = "app/views/users/index.html.erb";
 const HAML_FILE = "app/views/users/index.html.haml";
 const SLIM_FILE = "app/views/users/index.html.slim";
+const PUG_FILE = "app/assets/templates/users/list.jst.pug";
 const PARTIAL_ERB_FILE = "app/views/users/_card.html.erb";
 const PARTIAL_HAML_FILE = "app/views/users/_card.html.haml";
 const PARTIAL_SLIM_FILE = "app/views/users/_card.html.slim";
@@ -550,20 +551,20 @@ export const rules: Rule[] = [
   {
     name: "Layout/IndentationStyle",
     summary: "Indent with tabs or with spaces.",
-    languages: ["erb"],
+    languages: ["erb", "pug"],
     type: "autofix",
     safe: true,
     safeNote:
       "Leading whitespace between tags renders as nothing. Content where whitespace counts is left alone.",
     status: "available",
-    onByDefault: ["erb"],
+    onByDefault: ["erb", "pug"],
     config: text(
       "[Layout.IndentationStyle]",
       "enabled = true",
       'style = "tabs" # or "spaces"',
     ),
     today:
-      'ERB only; Haml and Slim always use spaces, since Slim rejects mixed indentation and Haml wants it consistent. Each indent level the formatter writes is one tab with `style = "tabs"`, or the width in spaces (the default of 2) with `"spaces"`. Only the leading whitespace of the lines the formatter indents changes: `<pre>`, `<textarea>`, `<script>`, `<style>`, `<xmp>` and `<listing>` bodies, Ruby inside tags, quoted attribute values and comments keep every byte. The lines of a tag that spans several lines move with its first line and keep their indentation relative to it, as written, so a tag attribute lined up with spaces stays lined up. Without `style`, the style comes from the first of these that has one: the `editor.insertSpaces` setting, then `.editorconfig` (`indent_style = tab` or `space`), then spaces. In an editor `insertSpaces` always decides, because the language server protocol always sends it, as it does the tab size; `.editorconfig` counts only on the command line, or through an EditorConfig extension that sets `insertSpaces`. `style` in `.ruby-templates.toml` beats all of them, and `enabled = false` always writes spaces. The width is the editor\'s tab size, then `.editorconfig` (`indent_size`, or `tab_width` for `indent_size = tab`), then 2; it only matters for spaces. Format selection applies the style to the lines it covers.',
+      'ERB and Pug; Haml and Slim always use spaces, since Slim rejects mixed indentation and Haml wants it consistent. In Pug a text block (`script.`, a comment, a filter, a `-` code block) moves to one level below its line, and the indentation its lines have past the block\'s stays as written; a Pug template is left as it is when that would change its text, as when a line of a tab-indented block goes on with spaces. Each indent level the formatter writes is one tab with `style = "tabs"`, or the width in spaces (the default of 2) with `"spaces"`. Only the leading whitespace of the lines the formatter indents changes: `<pre>`, `<textarea>`, `<script>`, `<style>`, `<xmp>` and `<listing>` bodies, Ruby inside tags, quoted attribute values and comments keep every byte. The lines of a tag that spans several lines move with its first line and keep their indentation relative to it, as written, so a tag attribute lined up with spaces stays lined up. Without `style`, the style comes from the first of these that has one: the `editor.insertSpaces` setting, then `.editorconfig` (`indent_style = tab` or `space`), then spaces. In an editor `insertSpaces` always decides, because the language server protocol always sends it, as it does the tab size; `.editorconfig` counts only on the command line, or through an EditorConfig extension that sets `insertSpaces`. `style` in `.ruby-templates.toml` beats all of them, and `enabled = false` always writes spaces. The width is the editor\'s tab size, then `.editorconfig` (`indent_size`, or `tab_width` for `indent_size = tab`), then 2; it only matters for spaces. Format selection applies the style to the lines it covers.',
     setting: {
       label: "Always indent with spaces",
       code: `[Layout.IndentationStyle]
@@ -589,21 +590,28 @@ enabled = false`,
         ),
         note: 'With `style = "tabs"`.',
       },
+      {
+        lang: "pug",
+        file: PUG_FILE,
+        before: text("ul", "  each user in users", "    li= user.name"),
+        after: text("ul", "\teach user in users", "\t\tli= user.name"),
+        note: 'With `style = "tabs"`.',
+      },
     ],
   },
   {
     name: "Layout/TrailingWhitespace",
     summary: "No spaces or tabs at the end of a line.",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     type: "autofix",
     safe: true,
     safeNote:
-      "Whitespace that is content stays: `<pre>` and `<textarea>` bodies, ERB comments, Haml filters, and Slim text lines (`| text`, text after a tag).",
+      "Whitespace that is content stays: `<pre>` and `<textarea>` bodies, ERB comments, Haml filters, Slim text lines (`| text`, text after a tag), and in Pug text after a tag or `|`, the spaces after a bare tag (Pug outputs `div ` as `<div> </div>`), inline HTML, `//` comments, `doctype`, text blocks and `- code` lines (Pug joins consecutive ones into one piece of JavaScript, so a string may go on past the line end). A value that goes on over several lines keeps them too.",
     status: "available",
-    onByDefault: ["erb", "haml", "slim"],
+    onByDefault: ["erb", "haml", "slim", "pug"],
     config: text("[Layout.TrailingWhitespace]", "enabled = true"),
     today:
-      "The formatter does it in ERB, Haml and Slim, on Format Document, on save and in `ruby-templates format`. It is on for all three; with `enabled = false` the spaces and tabs at the line ends stay as written, whitespace-only lines included.",
+      "The formatter does it in ERB, Haml, Slim and Pug, on Format Document, on save and in `ruby-templates format`. In Pug it goes after buffered code (`= x`), `if`, `each` and the other keywords, `.`, `//-` comments and their text, and between attributes. It is on for all four; with `enabled = false` the spaces and tabs at the line ends stay as written, whitespace-only lines included.",
     setting: {
       label: "Turn it off",
       code: `[Layout.TrailingWhitespace]
@@ -651,23 +659,41 @@ enabled = false`,
           "      = user.name",
         ),
       },
+      {
+        lang: "pug",
+        file: PUG_FILE,
+        before: text(
+          "//- one row per user  ",
+          "ul",
+          "  each user in users  ",
+          "    li= user.name \t",
+          "    li Text stays as written  ",
+        ),
+        after: text(
+          "//- one row per user",
+          "ul",
+          "  each user in users",
+          "    li= user.name",
+          "    li Text stays as written  ",
+        ),
+      },
     ],
   },
   {
     name: "Layout/TrailingEmptyLines",
     summary: "The file ends with exactly one line break.",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     type: "autofix",
     safe: false,
     safeNote:
-      'Safe in Haml and Slim, which ignore the blank lines at the end. Not safe in ERB: Rails renders a template or partial byte for byte, so a final line break or the blank lines at the end become output. A partial `_icon.html.erb` that is `<svg></svg>` renders with a line break after it once the rule adds one, and that shows as a space in `<button><%= render "icon" %>Save</button>`.',
+      'Safe in Haml, Slim and Pug, which ignore the blank lines at the end. Not safe in ERB: Rails renders a template or partial byte for byte, so a final line break or the blank lines at the end become output. A partial `_icon.html.erb` that is `<svg></svg>` renders with a line break after it once the rule adds one, and that shows as a space in `<button><%= render "icon" %>Save</button>`.',
     status: "available",
-    onByDefault: ["haml", "slim"],
+    onByDefault: ["haml", "slim", "pug"],
     config: text("[Layout.TrailingEmptyLines]", "enabled = true"),
     today:
-      "The blank lines at the end of the file go, and a file that doesn't end with a line break gets one, using the line ending the file mostly has. It is on for Haml and Slim and off for ERB, where `enabled = true` turns it on, and `include` limits it to some files. Format selection leaves the end of the file as it is.",
+      "The blank lines at the end of the file go, and a file that doesn't end with a line break gets one, using the line ending the file mostly has. It is on for Haml, Slim and Pug and off for ERB, where `enabled = true` turns it on, and `include` limits it to some files. Format selection leaves the end of the file as it is.",
     setting: {
-      label: "Turn it off (Haml and Slim)",
+      label: "Turn it off (Haml, Slim and Pug)",
       code: `[Layout.TrailingEmptyLines]
 enabled = false`,
     },
@@ -687,6 +713,12 @@ enabled = false`,
       {
         lang: "slim",
         file: SLIM_FILE,
+        before: text("h1 Users", "", ""),
+        after: text("h1 Users"),
+      },
+      {
+        lang: "pug",
+        file: PUG_FILE,
         before: text("h1 Users", "", ""),
         after: text("h1 Users"),
       },
@@ -775,7 +807,7 @@ enabled = false`,
   {
     name: "Layout/LineLength",
     summary: "A line longer than the limit.",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     type: "warning",
     safe: true,
     status: "available",
@@ -839,6 +871,26 @@ enabled = false`,
             line: 1,
             column: 101,
             message: "line is 105 characters long; the limit is 100",
+            code: "Layout/LineLength",
+          },
+        ],
+      },
+      {
+        lang: "pug",
+        file: PUG_FILE,
+        before: text(
+          "p.lead.text-muted Read the full announcement on our blog: #{announcement.title}, posted #{announcement.date}",
+        ),
+        after: text(
+          "p.lead.text-muted",
+          "  | Read the full announcement on our blog: #{announcement.title},",
+          "  | posted #{announcement.date}",
+        ),
+        faults: [
+          {
+            line: 1,
+            column: 101,
+            message: "line is 108 characters long; the limit is 100",
             code: "Layout/LineLength",
           },
         ],
@@ -2275,13 +2327,13 @@ enabled = false`,
   {
     name: "Html/ImgAlt",
     summary: "An image without alt text.",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     type: "warning",
     safe: true,
     status: "available",
     code: "Html/ImgAlt",
     today:
-      'For `<img>` (ERB start tags, `%img` and `img`) and for `image_tag` and `tag.img` without `alt:`, in templates that output HTML (not `.js.erb`, `.text.erb` or `.xml.haml`). An empty `alt=""` counts as alt text, and so does `generator-unable-to-provide-required-alt`. Not reported where attributes may come from code that can\'t be read (ERB inside the start tag, a Haml `**attrs`, a Slim `*attrs`, a helper\'s `**options` or options in a variable). The quick fix adds an empty `alt` for you to fill in (an empty one says the image is decorative): `alt=""` after the tag name in ERB and Slim, inside the hash or the parentheses the Haml tag has (`(alt="")` without either), and `alt: ""` as the last argument of `image_tag` or `tag.img`.',
+      'For `<img>` (ERB start tags, `%img` and `img` in Haml, Slim and Pug) and for `image_tag` and `tag.img` without `alt:`, in templates that output HTML (not `.js.erb`, `.text.erb`, `.xml.haml` or a Pug `doctype xml`). An empty `alt=""` counts as alt text, and so does `generator-unable-to-provide-required-alt`; in Pug, so does an `alt` set to any JavaScript. Not reported where attributes may come from code that can\'t be read (ERB inside the start tag, a Haml `**attrs`, a Slim `*attrs`, a Pug `&attributes(…)`, a helper\'s `**options` or options in a variable). The quick fix adds an empty `alt` for you to fill in (an empty one says the image is decorative): `alt=""` after the tag name in ERB and Slim, inside the hash or the parentheses the Haml tag has (`(alt="")` without either), inside the Pug tag\'s first `(…)` list (`(alt="")` after the name, `#id` and `.class` without one), and `alt: ""` as the last argument of `image_tag` or `tag.img`.',
     setting: {
       label: "Turn it off",
       code: `[Html.ImgAlt]
@@ -2358,18 +2410,27 @@ enabled = false`,
           },
         ],
       },
+      {
+        lang: "pug",
+        file: PUG_FILE,
+        before: text("img(src=user.avatarUrl)"),
+        after: text("img(src=user.avatarUrl alt=user.name)"),
+        faults: [
+          { line: 1, column: 1, message: IMG_MESSAGE, code: "Html/ImgAlt" },
+        ],
+      },
     ],
   },
   {
     name: "Html/DuplicateId",
     summary: "The same static id twice in one template.",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     type: "warning",
     safe: true,
     status: "available",
     code: "Html/DuplicateId",
     today:
-      "At the second occurrence, in templates that output HTML. In Haml and Slim, `#id` and `id:` count. Ids that hold ERB or interpolation, ids in different branches of a conditional (ERB `if`/`else`, Haml and Slim `- if`/`- else`) and content inside `<template>` are left alone; in Haml and Slim, so are ids where one of them sits in a conditional, a loop or a block the other is not in. A Haml element with both `#id` and `id:` gets one joined id and is skipped.",
+      'At the second occurrence, in templates that output HTML. In Haml, Slim and Pug, `#id` and an `id` attribute count; in Pug only a string literal, `id="a"`, is a static id. Ids that hold ERB, interpolation or JavaScript, ids in different branches of a conditional (ERB `if`/`else`, Haml and Slim `- if`/`- else`, Pug `if`/`else` and `case`) and content inside `<template>` are left alone; in Haml, Slim and Pug, so are ids where one of them sits in a conditional, a loop or a block the other is not in (in Pug also a `mixin`, a `+mixin` call\'s block, a `block` and `- code`). A Haml element with both `#id` and `id:` gets one joined id and is skipped.',
     setting: {
       label: "Turn it off",
       code: `[Html.DuplicateId]
@@ -2405,6 +2466,20 @@ enabled = false`,
         file: SLIM_FILE,
         before: text("#profile", "  = @user.name", "#profile"),
         after: text("#profile", "  = @user.name", "#settings"),
+        faults: [
+          {
+            line: 3,
+            column: 2,
+            message: DUPLICATE_ID_MESSAGE,
+            code: "Html/DuplicateId",
+          },
+        ],
+      },
+      {
+        lang: "pug",
+        file: PUG_FILE,
+        before: text("#profile", "  = user.name", "#profile"),
+        after: text("#profile", "  = user.name", "#settings"),
         faults: [
           {
             line: 3,
@@ -2500,13 +2575,13 @@ enabled = false`,
   {
     name: "Html/VoidChildren",
     summary: "Content inside a void element such as `img` or `input`.",
-    languages: ["haml", "slim"],
+    languages: ["haml", "slim", "pug"],
     type: "warning",
     safe: true,
     status: "available",
     code: "Html/VoidChildren",
     today:
-      "Haml reports content on the tag's line or nested under it; Slim reports lines nested under a void element, in HTML templates only.",
+      "Haml reports content on the tag's line or nested under it; Slim reports lines nested under a void element, in HTML templates only. Pug refuses to compile a void element (or a tag closed with `/`) with any content but blank text, so there it is an error with Pug's message at the first such tag; after a Pug `doctype xml` (until another `doctype`) `img` and the like may hold content, as in Pug.",
     setting: {
       label: "Turn it off",
       code: `[Html.VoidChildren]
@@ -2517,6 +2592,21 @@ enabled = false`,
         lang: "slim",
         ...reported("Html/VoidChildren"),
         after: text('img src="/logo.png" alt="Logo"'),
+      },
+      {
+        lang: "pug",
+        file: PUG_FILE,
+        before: text('img(src="/logo.png")', "  | Logo"),
+        after: text('img(src="/logo.png" alt="Logo")'),
+        faults: [
+          {
+            line: 1,
+            column: 1,
+            message:
+              "img is a self closing element: <img/> but contains nested content.",
+            code: "Html/VoidChildren",
+          },
+        ],
       },
     ],
   },
@@ -2529,7 +2619,7 @@ enabled = false`,
     status: "available",
     code: "Html/DuplicateAttribute",
     today:
-      'At the second one, for names written out in ERB start tags, Haml tags (the `(…)` list and the `{…}` hash, `data: { … }` keys included) and Slim tags, and in the literal options of `tag.div`, `content_tag`, `link_to` and the form and button helpers, in templates that output HTML. `class` and `id` are repeated on purpose in Haml, Slim and the helpers, which merge them (`.card{class: "wide"}`), so only plain ERB start tags are checked for them. An ERB start tag with ERB inside is left alone, since it may pick one of two attributes. Slim itself rejects a repeated attribute other than `class`, so there it is an error with Slim\'s message, `Multiple href attributes specified`.',
+      "At the second one, for names written out in ERB start tags, Haml tags (the `(…)` list and the `{…}` hash, `data: { … }` keys included) and Slim tags, and in the literal options of `tag.div`, `content_tag`, `link_to` and the form and button helpers, in templates that output HTML. `class` and `id` are repeated on purpose in Haml, Slim and the helpers, which merge them (`.card{class: \"wide\"}`), so only plain ERB start tags are checked for them. An ERB start tag with ERB inside is left alone, since it may pick one of two attributes. Slim itself rejects a repeated attribute other than `class`, so there it is an error with Slim's message, `Multiple href attributes specified`. Pug does too (`id` included, `class` merged), which is `Syntax/PugDuplicateAttribute`, so this rule doesn't run on Pug.",
     setting: {
       label: "Turn it off",
       code: `[Html.DuplicateAttribute]
@@ -2582,13 +2672,13 @@ enabled = false`,
     name: "Html/NestedInteractive",
     summary:
       "An interactive element inside another: a link in a link, a form in a form, including `link_to` and `form_with`.",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     type: "warning",
     safe: true,
     status: "available",
     code: "Html/NestedInteractive",
     today:
-      "Reported on the inner element's tag name (or helper name). Inside an `<a>` or `<button>` (also `link_to`, `tag.a`, `button_tag`, `content_tag :button` with a block) these are interactive content and can't be nested (HTML 4.5.1): `<a>` (inside another `<a>` always, inside a `<button>` when it has an `href`), `<button>`, `<input>` (not `type=\"hidden\"`), `<select>`, `<textarea>`, `<label>`, `<iframe>`, `<embed>`, `<details>`, `<audio>` and `<video>` with `controls`, and `<img>` with `usemap`. A `<form>` can't contain a form (HTML 4.10.3), and `button_to` renders a form around its button, so it counts as both, inside `form_with`, `form_for`, `form_tag` and `<form>`. Nesting is the template's own: ERB by the matching start and end tags and `do … end` blocks of the helper, Haml and Slim by indentation (an element on the same line as its parent, `li: a …`, isn't followed). Elements whose start and end tags sit in different branches of an `if`, partials rendered inside the element, a layout's `yield`, and anything inside `<svg>`, `<math>` or `<template>` are not followed. A `<label>` around an `<input>`, a `<summary>` in `<details>`, a `<button form=\"…\">` outside its form and a hidden input are fine. Templates that output HTML only.",
+      "Reported on the inner element's tag name (or helper name). Inside an `<a>` or `<button>` (also `link_to`, `tag.a`, `button_tag`, `content_tag :button` with a block) these are interactive content and can't be nested (HTML 4.5.1): `<a>` (inside another `<a>` always, inside a `<button>` when it has an `href`), `<button>`, `<input>` (not `type=\"hidden\"`), `<select>`, `<textarea>`, `<label>`, `<iframe>`, `<embed>`, `<details>`, `<audio>` and `<video>` with `controls`, and `<img>` with `usemap`. A `<form>` can't contain a form (HTML 4.10.3), and `button_to` renders a form around its button, so it counts as both, inside `form_with`, `form_for`, `form_tag` and `<form>`. Nesting is the template's own: ERB by the matching start and end tags and `do … end` blocks of the helper, Haml and Slim by indentation (an element on the same line as its parent, `li: a …`, isn't followed), Pug by the tree Pug parses, `a: button` and `#[a #[button …]]` included. Elements whose start and end tags sit in different branches of an `if`, partials rendered inside the element, a layout's `yield`, and anything inside `<svg>`, `<math>` or `<template>` are not followed. A `<label>` around an `<input>`, a `<summary>` in `<details>`, a `<button form=\"…\">` outside its form and a hidden input are fine. Templates that output HTML only.",
     setting: {
       label: "Turn it off",
       code: `[Html.NestedInteractive]
@@ -2671,19 +2761,33 @@ enabled = false`,
           },
         ],
       },
+      {
+        lang: "pug",
+        file: PUG_FILE,
+        before: text('a(href="/users")', '  a(href="/users/new") New'),
+        after: text('a(href="/users") Users', 'a(href="/users/new") New'),
+        faults: [
+          {
+            line: 2,
+            column: 3,
+            message: NESTED_MESSAGE,
+            code: "Html/NestedInteractive",
+          },
+        ],
+      },
     ],
   },
   {
     name: "Html/AnchorHref",
     summary:
       "An `<a>` without an `href`, which is not a link and cannot be reached with the keyboard.",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     type: "warning",
     safe: true,
     status: "available",
     code: "Html/AnchorHref",
     today:
-      "On the tag name of `<a>` in ERB start tags and of `%a` and `a` in Haml and Slim, in templates that output HTML. `link_to` always has an `href` and is not checked. An `<a>` with a `name` (the old way to mark a place to jump to), a `tabindex` (the keyboard can reach it), an `id` and no text of its own (a target to jump to), or an attribute ending in `:href` (`:href`, `x-bind:href`, `xlink:href`) is left alone, and so is one inside an `<svg>`, and so is one whose attributes may come from code that can't be read (ERB inside the start tag, a Haml `**attrs` or `data: attrs`, a Slim `*attrs` or `data=` hash).",
+      "On the tag name of `<a>` in ERB start tags and of `%a` and `a` in Haml, Slim and Pug, in templates that output HTML. `link_to` always has an `href` and is not checked. An `<a>` with a `name` (the old way to mark a place to jump to), a `tabindex` (the keyboard can reach it), an `id` and no text of its own (a target to jump to), or an attribute ending in `:href` (`:href`, `x-bind:href`, `xlink:href`) is left alone, and so is one inside an `<svg>`, and so is one whose attributes may come from code that can't be read (ERB inside the start tag, a Haml `**attrs` or `data: attrs`, a Slim `*attrs` or `data=` hash, a Pug `&attributes(…)`).",
     setting: {
       label: "Turn it off",
       code: `[Html.AnchorHref]
@@ -2734,19 +2838,33 @@ enabled = false`,
           },
         ],
       },
+      {
+        lang: "pug",
+        file: PUG_FILE,
+        before: text('a.btn(data-action="click->menu#open") Menu'),
+        after: text('button.btn(data-action="click->menu#open") Menu'),
+        faults: [
+          {
+            line: 1,
+            column: 1,
+            message: HREF_MESSAGE,
+            code: "Html/AnchorHref",
+          },
+        ],
+      },
     ],
   },
   {
     name: "A11y/IframeTitle",
     summary:
       "An `<iframe>` without a `title`, which screen readers use to name it.",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     type: "warning",
     safe: true,
     status: "available",
     code: "A11y/IframeTitle",
     today:
-      "On the tag name of an `<iframe>` in ERB start tags, Haml and Slim tags, and of `tag.iframe` and `content_tag :iframe`, in templates that output HTML. An `aria-label` or `aria-labelledby` (also in an `aria: { label: … }` hash) names the frame as well. Not reported where attributes may come from code that can't be read (ERB inside the start tag, `**attrs`, `*attrs`).",
+      "On the tag name of an `<iframe>` in ERB start tags, Haml, Slim and Pug tags, and of `tag.iframe` and `content_tag :iframe`, in templates that output HTML. An `aria-label` or `aria-labelledby` (also in an `aria: { label: … }` hash) names the frame as well. Not reported where attributes may come from code that can't be read (ERB inside the start tag, `**attrs`, `*attrs`, `&attributes(…)`).",
     setting: {
       label: "Turn it off",
       code: `[A11y.IframeTitle]
@@ -2807,19 +2925,37 @@ enabled = false`,
           },
         ],
       },
+      {
+        lang: "pug",
+        file: PUG_FILE,
+        before: text(
+          'iframe(src="https://www.youtube.com/embed/" + video.youtubeId)',
+        ),
+        after: text(
+          'iframe(src="https://www.youtube.com/embed/" + video.youtubeId title=video.title)',
+        ),
+        faults: [
+          {
+            line: 1,
+            column: 1,
+            message: TITLE_MESSAGE,
+            code: "A11y/IframeTitle",
+          },
+        ],
+      },
     ],
   },
   {
     name: "A11y/GenericLinkText",
     summary:
       'Link text that says nothing out of context: "click here", "here", "read more".',
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     type: "warning",
     safe: true,
     status: "available",
     code: "A11y/GenericLinkText",
     today:
-      'On the text of an `<a>` that holds only text (ERB, Haml and Slim tags) and of a `link_to`, `tag.a` or `content_tag :a` given a string literal: "click here", "here", "read more", "learn more", "more", "more info", "more information", "link", "this link" and "click", in any case and ignoring punctuation. A link with an `aria-label`, `aria-labelledby` or `aria-describedby` (also in an `aria: { … }` hash), with ERB, interpolation, other elements or code in its content, or whose attributes may come from code that can\'t be read is left alone.',
+      'On the text of an `<a>` that holds only text (ERB, Haml, Slim and Pug tags, Pug\'s `#[a(href=…) …]` included) and of a `link_to`, `tag.a` or `content_tag :a` given a string literal: "click here", "here", "read more", "learn more", "more", "more info", "more information", "link", "this link" and "click", in any case and ignoring punctuation. A link with an `aria-label`, `aria-labelledby` or `aria-describedby` (also in an `aria: { … }` hash), with ERB, interpolation, other elements or code in its content, or whose attributes may come from code that can\'t be read is left alone.',
     setting: {
       label: "Turn it off",
       code: `[A11y.GenericLinkText]
@@ -2867,6 +3003,22 @@ enabled = false`,
           {
             line: 1,
             column: 14,
+            message: LINK_TEXT_MESSAGE,
+            code: "A11y/GenericLinkText",
+          },
+        ],
+      },
+      {
+        lang: "pug",
+        file: PUG_FILE,
+        before: text(
+          'p Our new pricing is live. #[a(href="/pricing") Click here]',
+        ),
+        after: text('p #[a(href="/pricing") See the new pricing]'),
+        faults: [
+          {
+            line: 1,
+            column: 49,
             message: LINK_TEXT_MESSAGE,
             code: "A11y/GenericLinkText",
           },

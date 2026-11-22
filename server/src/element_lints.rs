@@ -1,4 +1,4 @@
-//! Lints on the elements of ERB, Haml and Slim templates, as `attributes` reads them: missing `alt`, `href`, `title`,
+//! Lints on the elements of ERB, Haml, Slim and Pug templates, as `attributes` reads them: missing `alt`, `href`, `title`,
 //! repeated ids and attributes, and link text that says nothing. ERB's `alt` and id checks stay in `erb::html_lint`, which
 //! also knows the ERB branches.
 
@@ -6,6 +6,7 @@ use crate::attribute_insert::empty_attribute;
 use crate::attributes::{Attribute, Element, Value};
 use crate::erb::html_lint::{self, ALT_RULE, NO_ALT_AVAILABLE};
 use crate::lang::TemplateLang;
+use crate::pug;
 use crate::ruby::{analyze, BlockEffect, CONTINUERS};
 use crate::util::{coded, lines_with_offsets, warning, with_data, LineIndex};
 use serde_json::json;
@@ -28,9 +29,16 @@ const ANCHOR_EXCEPTIONS: [&str; 2] = ["name", "tabindex"];
 /// Haml and Slim merge these from the shorthand, the list and the hash instead of repeating them.
 const MERGED: [&str; 2] = ["class", "id"];
 
-/// The findings in a template's `markup` (its tags) and `helpers` (the elements Rails tag helpers make). A repeated attribute
-/// in Slim markup is not reported: Slim rejects it itself, and its parser reports that as `Syntax/Template`.
-pub(crate) fn diagnostics(lang: TemplateLang, text: &str, markup: &[Element], helpers: &[Element]) -> Vec<Diagnostic> {
+/// The findings in a template's `markup` (its tags) and `helpers` (the elements Rails tag helpers make); a Pug template's
+/// tags are placed by its `ancestry`, the others' by their lines' indentation. A repeated attribute in Slim or Pug markup is
+/// not reported: each rejects it itself, and its parser reports that (`Syntax/Template`, `Syntax/PugDuplicateAttribute`).
+pub(crate) fn diagnostics(
+    lang: TemplateLang,
+    text: &str,
+    markup: &[Element],
+    helpers: &[Element],
+    ancestry: Option<&pug::elements::Ancestry>,
+) -> Vec<Diagnostic> {
     let index = LineIndex::new(text);
     let lines: Vec<(usize, &str)> = lines_with_offsets(text).collect();
     let report = |at: &Range<usize>, message: String, code: &str| coded(warning(index.range(at.start, at.end), message), code);
@@ -46,20 +54,20 @@ pub(crate) fn diagnostics(lang: TemplateLang, text: &str, markup: &[Element], he
             }
         }
         out.extend(
-            duplicate_ids(text, &lines, markup, &index)
+            duplicate_ids(text, &lines, markup, &index, ancestry)
                 .into_iter()
                 .map(|(at, message)| report(&at, message, html_lint::code::DUPLICATE_ID)),
         );
     }
     for element in markup {
-        if lang != TemplateLang::Slim {
+        if !matches!(lang, TemplateLang::Slim | TemplateLang::Pug) {
             out.extend(
                 repeated_attributes(element, lang == TemplateLang::Erb)
                     .into_iter()
                     .map(|(at, message)| report(&at, message, DUPLICATE_ATTRIBUTE)),
             );
         }
-        out.extend(anchor_without_href(lang, text, &lines, &index, element).map(|at| {
+        out.extend(anchor_without_href(lang, text, &lines, &index, element, ancestry).map(|at| {
             report(
                 &at,
                 "`<a>` without `href` is not a link and the keyboard can't reach it; use a `<button>` for an action".into(),
@@ -97,42 +105,62 @@ fn missing_alt(text: &str, element: &Element) -> Option<(Range<usize>, String)> 
     Some((element.at.clone(), message))
 }
 
-/// Static ids used twice that no Ruby control flow separates. Both ids must sit in the same blocks and no `if`, `else`, loop
+/// Static ids used twice that no control flow separates. Both ids must sit in the same blocks and no `if`, `else`, loop
 /// or block may start between them, since one of them may then not be rendered; ids inside a template's shared blocks count.
-fn duplicate_ids(text: &str, lines: &[(usize, &str)], elements: &[Element], index: &LineIndex) -> Vec<(Range<usize>, String)> {
-    let mut seen: HashMap<&str, usize> = HashMap::new();
+/// Pug's are placed by its tree (`ancestry`), the others by their lines' indentation.
+fn duplicate_ids(
+    text: &str,
+    lines: &[(usize, &str)],
+    elements: &[Element],
+    index: &LineIndex,
+    ancestry: Option<&pug::elements::Ancestry>,
+) -> Vec<(Range<usize>, String)> {
+    let in_template = |element: &Element, id_start: usize| match ancestry {
+        Some(ancestry) => ancestry.inside(element.at.start, "template"),
+        None => ancestors(lines, index.line_of(id_start)).iter().any(|&line| tag_name(lines[line].1) == "template"),
+    };
+    let separated = |first: (usize, usize), second: (usize, usize)| match ancestry {
+        Some(ancestry) => ancestry.separated(first.1, second.1),
+        None => separated_by_control_flow(lines, index.line_of(first.0), index.line_of(second.0)),
+    };
+    // Each id's first use: where its value and its element start.
+    let mut seen: HashMap<&str, (usize, usize)> = HashMap::new();
     let mut out = Vec::new();
     for element in elements.iter().filter(|element| element.name != "template") {
         let mut ids = element.attributes.iter().filter(|attribute| attribute.name == "id");
         // Haml joins an `#id` and an `id:` into one id.
         let (Some(id), None) = (ids.next(), ids.next()) else { continue };
         let Value::Text(range) = &id.value else { continue };
-        if range.is_empty() {
-            continue;
-        }
         // A `<template>`'s content isn't in the document yet.
-        if ancestors(lines, index.line_of(range.start)).iter().any(|&line| tag_name(lines[line].1) == "template") {
+        if range.is_empty() || in_template(element, range.start) {
             continue;
         }
         let name = &text[range.clone()];
-        let Some(first) = seen.insert(name, range.start) else { continue };
-        if !separated_by_control_flow(lines, index.line_of(first), index.line_of(range.start)) {
-            out.push((range.clone(), html_lint::duplicate_id_message(name, index.line_of(first) + 1)));
+        let this = (range.start, element.at.start);
+        let Some(first) = seen.insert(name, this) else { continue };
+        if !separated(first, this) {
+            out.push((range.clone(), html_lint::duplicate_id_message(name, index.line_of(first.0) + 1)));
         }
     }
     out
 }
 
 fn separated_by_control_flow(lines: &[(usize, &str)], first: usize, second: usize) -> bool {
-    let between = lines.get(first + 1..second).is_some_and(|inner| inner.iter().any(|(_, line)| ruby_of(line).is_some_and(branches)));
+    let between = lines.get(first + 1..second).is_some_and(|inner| inner.iter().any(|(_, line)| controls_flow(line)));
     between || enclosing_control_flow(lines, first) != enclosing_control_flow(lines, second)
 }
 
-/// The lines of Ruby control flow that a line is nested in, innermost first.
+/// The lines of control flow that a line is nested in, innermost first, its own included.
 fn enclosing_control_flow(lines: &[(usize, &str)], line: usize) -> Vec<usize> {
     let mut found = ancestors(lines, line);
-    found.retain(|&at| ruby_of(lines[at].1).is_some_and(branches));
+    found.insert(0, line);
+    found.retain(|&at| controls_flow(lines[at].1));
     found
+}
+
+/// Whether a Haml or Slim line may leave a later element unrendered: Ruby that branches.
+fn controls_flow(line: &str) -> bool {
+    ruby_of(line).is_some_and(branches)
 }
 
 /// The lines a line is nested in by indentation, innermost first.
@@ -201,6 +229,7 @@ fn anchor_without_href(
     lines: &[(usize, &str)],
     index: &LineIndex,
     element: &Element,
+    ancestry: Option<&pug::elements::Ancestry>,
 ) -> Option<Range<usize>> {
     let has = |name: &str| element.attribute(name).is_some();
     let linked = element.attributes.iter().any(|attribute| attribute.name == "href" || attribute.name.ends_with(":href"));
@@ -209,8 +238,9 @@ fn anchor_without_href(
     if element.name != "a" || exempt || element.may_have_more() || element.at.is_empty() {
         return None;
     }
-    let in_svg = match lang {
-        TemplateLang::Erb => {
+    let in_svg = match (lang, ancestry) {
+        (_, Some(ancestry)) => ancestry.inside(element.at.start, "svg"),
+        (TemplateLang::Erb, _) => {
             text[..element.at.start].to_ascii_lowercase().rsplit_once("<svg").is_some_and(|(_, after)| !after.contains("</svg"))
         }
         _ => ancestors(lines, index.line_of(element.at.start)).iter().any(|&line| tag_name(lines[line].1) == "svg"),
@@ -243,7 +273,7 @@ mod tests {
     use super::*;
     use crate::attributes::{helper_elements, markup_elements};
     use crate::code_context;
-    use TemplateLang::{Erb, Haml, Slim};
+    use TemplateLang::{Erb, Haml, Pug, Slim};
 
     /// Each finding as its code, the text it underlines and the line it is on.
     fn run(lang: TemplateLang, text: &str) -> Vec<(String, String, u32)> {
@@ -254,7 +284,7 @@ mod tests {
         let helpers = helper_elements(&compiled, &compiled.parse(&options).unwrap().node());
         let index = LineIndex::new(text);
         let at = |position| (0..=text.len()).find(|&offset| index.position(offset) == position).unwrap();
-        diagnostics(lang, text, &markup, &helpers)
+        diagnostics(lang, text, &markup, &helpers, None)
             .into_iter()
             .map(|d| (crate::util::code(&d).unwrap().to_string(), text[at(d.range.start)..at(d.range.end)].to_string(), d.range.start.line))
             .collect()
@@ -302,7 +332,7 @@ mod tests {
             let options = ruby_prism::Options::default().build();
             let parsed = compiled.parse(&options).unwrap();
             let helpers = crate::attributes::helper_elements(&compiled, &parsed.node());
-            let found = diagnostics(lang, text, &markup, &helpers);
+            let found = diagnostics(lang, text, &markup, &helpers, None);
             crate::util::edited(text, &crate::util::data_edit(&found[0]).unwrap())
         };
         assert_eq!(fix(Haml, "%img{src: x}\n"), "%img{src: x, alt: \"\"}\n");
@@ -481,7 +511,7 @@ mod tests {
     fn messages() {
         let message = |lang, text: &str| {
             let markup = markup_elements(lang, text, &[], ruby_prism::Version::Latest);
-            diagnostics(lang, text, &markup, &[]).remove(0).message
+            diagnostics(lang, text, &markup, &[], None).remove(0).message
         };
         assert_eq!(message(Haml, "%img{src: x}\n"), "`<img>` without `alt`: the alt attribute must be specified (HTML 4.8.4.4.1)");
         assert_eq!(
@@ -505,7 +535,7 @@ mod tests {
     fn a_repeated_key_is_reported_at_the_value_that_is_dropped() {
         let columns = |lang, text: &str| {
             let markup = markup_elements(lang, text, &[], ruby_prism::Version::Latest);
-            diagnostics(lang, text, &markup, &[]).into_iter().map(|d| d.range.start.character).collect::<Vec<_>>()
+            diagnostics(lang, text, &markup, &[], None).into_iter().map(|d| d.range.start.character).collect::<Vec<_>>()
         };
         assert_eq!(columns(Haml, "%a{href: 1, href: 2}\n"), [3], "the last in a hash wins");
         assert_eq!(columns(Haml, "%a(href=1){href: 2}\n"), [3], "the hash beats the list");
@@ -546,6 +576,113 @@ mod tests {
         assert_eq!(flagged(Erb, anchor, "<a id=\"menu\" data-action=\"click->m#open\">Menu</a>"), ["a"]);
         assert_eq!(flagged(Haml, anchor, "%svg\n  %g\n%a x\n"), ["a"]);
         assert_eq!(flagged(Slim, anchor, "a#menu data-action=\"x\" Menu\n"), ["a"]);
+    }
+
+    /// The findings in a Pug template, which has no Ruby, so no helper elements.
+    fn pug_diagnostics(text: &str) -> Vec<Diagnostic> {
+        let index = LineIndex::new(text);
+        let Ok(tree) = pug::parser::parse(text) else { return Vec::new() };
+        diagnostics(Pug, text, &pug::elements::tags(text, &index, &tree), &[], Some(&pug::elements::ancestry(&index, &tree)))
+    }
+
+    fn pug(code: &str, text: &str) -> Vec<String> {
+        let index = LineIndex::new(text);
+        let at = |position| (0..=text.len()).find(|&offset| index.position(offset) == position).unwrap();
+        let found = pug_diagnostics(text);
+        found
+            .into_iter()
+            .filter(|d| crate::util::code(d) == Some(code))
+            .map(|d| text[at(d.range.start)..at(d.range.end)].to_string())
+            .collect()
+    }
+
+    #[test]
+    fn pug_images_without_alt_and_their_fix() {
+        let alt = html_lint::code::IMG_MISSING_ALT;
+        assert_eq!(pug(alt, "img(src=\"a.png\")\n"), ["img"]);
+        assert_eq!(pug(alt, "p\n  img.big\n"), ["img"]);
+        assert_eq!(pug(alt, "p Hi #[img(src=x)] there\n"), ["img"]);
+        for text in [
+            "img(src=x alt=\"\")\n",
+            "img(src=x alt=user.name)\n",
+            "img(src=x)&attributes(attrs)\n",
+            "img(src=x generator-unable-to-provide-required-alt)\n",
+            "#{tag}(src=x)\n",
+            "+img(src=x)\n",
+            "script.\n  img(src=x)\n",
+            "p\n  <img src=\"x\">\n",
+            "doctype xml\nimg(src=x)\n",
+        ] {
+            assert!(pug(alt, text).is_empty(), "{text}");
+        }
+        let fix = |text: &str| {
+            let found = pug_diagnostics(text);
+            crate::util::data_edit(&found[0]).map(|edit| crate::util::edited(text, &edit))
+        };
+        assert_eq!(fix("img(src=\"a.png\")\n").as_deref(), Some("img(src=\"a.png\" alt=\"\")\n"));
+        assert_eq!(fix("img(src=\"a.png\",)\n").as_deref(), Some("img(src=\"a.png\", alt=\"\")\n"));
+        assert_eq!(fix("img.big#logo\n").as_deref(), Some("img.big#logo(alt=\"\")\n"));
+        assert_eq!(fix("img/\n").as_deref(), Some("img(alt=\"\")/\n"));
+        assert_eq!(fix("img.big(src=x).dark\n").as_deref(), Some("img.big(src=x alt=\"\").dark\n"));
+        assert_eq!(fix("p Hi #[img(src=x)] there\n").as_deref(), Some("p Hi #[img(src=x alt=\"\")] there\n"));
+    }
+
+    #[test]
+    fn pug_ids_links_frames_and_link_text() {
+        let id = html_lint::code::DUPLICATE_ID;
+        assert_eq!(pug(id, "#a\np#a\n"), ["a"]);
+        assert_eq!(pug(id, "div(id=\"a\")\np\n  span#a x\n"), ["a"]);
+        assert_eq!(pug(id, "p: #a\n#a\n"), ["a"]);
+        // Pug keeps the spaces before a comma in the value.
+        assert_eq!(pug(id, "div(id=\"dup\" , class=\"a\")\ndiv(id=\"dup\")\n"), ["dup"]);
+        // Control flow is what Pug lexes as such: `block_item` is a tag, `if-card` an `if` (JavaScript's `\b` is before `-`).
+        for tag in ["block_item", "blockquote", "mixins", "whiles", "cases"] {
+            assert_eq!(pug(id, &format!("p#x\n{tag}\np#x\n")), ["x"], "{tag}");
+        }
+        assert!(pug(id, "p#x\nif-card\np#x\n").is_empty());
+        for text in [
+            "if x\n  #a\nelse\n  #a\n",
+            "#a\nunless x\n  p\n#a\n",
+            "case x\n  when 1\n    #a\n  when 2\n    #a\n",
+            "mixin m\n  #a\n#a\n",
+            "#a\n+m\n  #a\n",
+            "#a\n+m: #a\n",
+            "case x\n  when 1: #a\n  when 2: #a\n",
+            "#a\n- var x = 1\n#a\n",
+            "p(id=x)\np(id=x)\n",
+            "p(id=`a${i}`)\np(id=`a${i}`)\n",
+            "template\n  #a\n#a\n",
+            "template: #a\n#a\n",
+            "if x: #a\nelse: #a\n",
+            "each x in xs\n  #a\nelse\n  #a\n",
+        ] {
+            assert!(pug(id, text).is_empty(), "{text}");
+        }
+        assert_eq!(pug(ANCHOR_HREF, "a.btn(data-action=\"click->menu#open\") Menu\n"), ["a"]);
+        for text in [
+            "a(href=url) x\n",
+            "a&attributes(attrs) x\n",
+            "svg\n  a x\n",
+            "svg: a x\n",
+            "a#top\n",
+            "a(name=\"top\")\n",
+            "a(:href=\"u\") x\n",
+        ] {
+            assert!(pug(ANCHOR_HREF, text).is_empty(), "{text}");
+        }
+        assert_eq!(pug(IFRAME_TITLE, "iframe(src=\"https://e.com/\" + id)\n"), ["iframe"]);
+        assert_eq!(pug(ANCHOR_HREF, "svg\na x\n"), ["a"]);
+        for text in ["iframe(src=x title=video.title)\n", "iframe(src=x aria-label=\"V\")\n", "iframe(src=x)&attributes(a)\n"] {
+            assert!(pug(IFRAME_TITLE, text).is_empty(), "{text}");
+        }
+        assert_eq!(pug(GENERIC_LINK_TEXT, "a(href=x) Click here\n"), ["Click here"]);
+        assert_eq!(pug(GENERIC_LINK_TEXT, "p Pricing: #[a(href=x) read more].\n"), ["read more"]);
+        assert_eq!(pug(GENERIC_LINK_TEXT, "a(href=x)\n  | here\n"), ["here"]);
+        for text in ["a(href=x) here #{y}\n", "a(href=x)= here\n", "a(href=x aria-label=\"P\") here\n", "a(href=x) See pricing\n"] {
+            assert!(pug(GENERIC_LINK_TEXT, text).is_empty(), "{text}");
+        }
+        // Pug refuses a repeated attribute itself (`Syntax/PugDuplicateAttribute`) and merges `class`.
+        assert!(pug(DUPLICATE_ATTRIBUTE, "a.b(class=\"c\" href=x) x\n").is_empty());
     }
 
     #[test]

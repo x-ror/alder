@@ -254,6 +254,7 @@ fn section(lang: TemplateLang) -> Option<&'static str> {
         TemplateLang::Erb => Some("erb"),
         TemplateLang::Haml => Some("haml"),
         TemplateLang::Slim | TemplateLang::Skim => Some("slim"),
+        TemplateLang::Pug => Some("pug"),
         TemplateLang::Ruby | TemplateLang::Liquid => None,
     }
 }
@@ -650,5 +651,28 @@ mod tests {
         assert!(trailing(&silent, "a.html.erb", TemplateLang::Erb), "on by default");
         let no_trim = toml("[Layout.TrailingWhitespace]\nenabled = false\n");
         assert!(!trailing(&no_trim, "a.html.erb", TemplateLang::Erb) && !trailing(&no_trim, "b.html.haml", TemplateLang::Haml));
+    }
+
+    #[test]
+    fn pug_has_its_table_and_the_whitespace_rules() {
+        let pug = |project: &Project, editor: &Options| project.resolve("a.jst.pug", TemplateLang::Pug, editor);
+        let silent = Project::new("pug-silent", &[("a.jst.pug", "")]);
+        let settings =
+            pug(&silent, &Options::default()).format_settings(Settings { indent_style: IndentStyle::Tabs, ..Settings::default() }, false);
+        assert!(pug(&silent, &Options::default()).format_enabled());
+        assert_eq!(
+            (settings.trailing_whitespace, settings.trailing_empty_lines, settings.indent_style, settings.max_empty_lines),
+            (true, true, IndentStyle::Tabs, None),
+            "whitespace rules on, the base's style kept, no blank-line rule"
+        );
+        let switched_off = editor(serde_json::json!({ "pug": { "format": { "enabled": false }, "diagnostics": { "enabled": false } } }));
+        assert!(!pug(&silent, &switched_off).format_enabled() && !pug(&silent, &switched_off).diagnostics_enabled());
+        let toml = "[pug]\nformat.enabled = true\ndiagnostics.enabled = true\n[Layout.IndentationStyle]\nstyle = \"spaces\"\n";
+        let file = Project::new("pug-file", &[(".ruby-templates.toml", toml), ("a.jst.pug", "")]);
+        let rules = pug(&file, &switched_off);
+        assert!(rules.format_enabled() && rules.diagnostics_enabled(), "the file beats the editor");
+        assert!(rules.files().iter().all(|f| f.problems.is_empty()));
+        let base = Settings { indent_style: IndentStyle::Tabs, ..Settings::default() };
+        assert_eq!(rules.format_settings(base, false).indent_style, IndentStyle::Spaces);
     }
 }

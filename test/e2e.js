@@ -436,6 +436,114 @@ const check = (label, actual, expected) => {
     (await req("textDocument/hover", liquidHelperUri, 0, 5)).result ?? null,
     null,
   );
+  // pug-rails JST: its code is JavaScript, so a `render` or helper name is no Rails one, even under app/views.
+  const pugUri = fileUri(path.join(views, "users", "row.jst.pug"));
+  await send(
+    "textDocument/didOpen",
+    {
+      textDocument: {
+        uri: pugUri,
+        languageId: "jade",
+        version: 1,
+        text: '- render("users/card")\np= link_to("x")\n- render("us',
+      },
+    },
+    true,
+  );
+  check(
+    "definition: none for a render in pug",
+    targets(await req("textDocument/definition", pugUri, 0, 12)),
+    [],
+  );
+  check(
+    "hover: none for a render or a helper in pug",
+    [
+      (await req("textDocument/hover", pugUri, 0, 12)).result ?? null,
+      (await req("textDocument/hover", pugUri, 1, 5)).result ?? null,
+    ],
+    [null, null],
+  );
+  check(
+    "completion: no partials in pug",
+    labels(await req("textDocument/completion", pugUri, 2, 12)),
+    [],
+  );
+  check(
+    "document links: none for a render in pug",
+    (
+      await send("textDocument/documentLink", {
+        textDocument: { uri: pugUri },
+      })
+    ).result,
+    [],
+  );
+  // pug-rails templates under app/assets/templates: `.pug` is implied, `/` starts from the asset root.
+  const templates = path.join(root, "app", "assets", "templates");
+  fs.mkdirSync(path.join(templates, "users", "parts"), { recursive: true });
+  fs.writeFileSync(path.join(templates, "layout.pug"), "block content\n");
+  fs.writeFileSync(path.join(templates, "users", "row.pug"), "li row\n");
+  fs.writeFileSync(path.join(templates, "users", "cell.jst.pug"), "td\n");
+  const listUri = fileUri(path.join(templates, "users", "list.jst.pug"));
+  await send(
+    "textDocument/didOpen",
+    {
+      textDocument: {
+        uri: listUri,
+        languageId: "jade",
+        version: 1,
+        text: "extends /layout\nblock content\n  include row\n  include \n  include parts/\n",
+      },
+    },
+    true,
+  );
+  check(
+    "definition: pug include adds .pug",
+    targets(await req("textDocument/definition", listUri, 2, 12)),
+    ["/app/assets/templates/users/row.pug"],
+  );
+  check(
+    "definition: pug extends from the asset root",
+    targets(await req("textDocument/definition", listUri, 0, 10)),
+    ["/app/assets/templates/layout.pug"],
+  );
+  check(
+    "document links: pug include and extends",
+    (
+      await send("textDocument/documentLink", {
+        textDocument: { uri: listUri },
+      })
+    ).result.map((l) => [l.range.start.line, rel(l.target)]),
+    [
+      [0, "/app/assets/templates/layout.pug"],
+      [2, "/app/assets/templates/users/row.pug"],
+    ],
+  );
+  check(
+    "hover: pug include names its file",
+    (await req("textDocument/hover", listUri, 2, 12)).result.contents.value,
+    "**Include** `row`\n\n`app/assets/templates/users/row.pug`",
+  );
+  check(
+    "completion: pug include names as written",
+    labels(await req("textDocument/completion", listUri, 3, 10)),
+    ["cell.jst.pug", "parts/", "row"],
+  );
+  check(
+    "completion: pug extends from the asset root",
+    (await req("textDocument/completion", listUri, 0, 9)).result.map((i) => [
+      i.label,
+      i.textEdit.range.start.character,
+    ]),
+    [
+      ["layout", 9],
+      ["users/", 9],
+    ],
+  );
+  check(
+    "completion: pug include in an empty folder",
+    labels(await req("textDocument/completion", listUri, 4, 16)),
+    [],
+  );
   check(
     "hover",
     firstLine(await req("textDocument/hover", uri, 0, 14)),
@@ -724,6 +832,215 @@ const check = (label, actual, expected) => {
       "<p>{{ a }}</p>\n{% if a %}\n  b\n",
     ),
     ["1:Syntax/LiquidUnclosedBlock"],
+  );
+  const latestCodes = (uri) =>
+    notes
+      .filter(
+        (n) =>
+          n.method === "textDocument/publishDiagnostics" &&
+          n.params.uri === uri,
+      )
+      .at(-1)
+      ?.params.diagnostics.map((d) => `${d.range.start.line}:${d.code}`);
+  const waitForCodes = async (uri, expected) => {
+    for (
+      let waited = 0;
+      waited < 2000 &&
+      JSON.stringify(latestCodes(uri)) !== JSON.stringify(expected);
+      waited += 50
+    ) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    return latestCodes(uri);
+  };
+  check(
+    "pug: no Rails checks on a render",
+    await diagnosticsFor(
+      fileUri(path.join(views, "users", "list.jst.pug")),
+      "jade",
+      '- render("users/missing")\nimg(src="x" alt="")\n',
+    ),
+    [],
+  );
+  check(
+    "pug: a syntax error is reported with its code",
+    await diagnosticsFor(
+      fileUri(path.join(views, "users", "broken.jst.pug")),
+      "jade",
+      "ul\n    li\n  li\n",
+    ),
+    ["2:Syntax/PugInconsistentIndent"],
+  );
+  fs.writeFileSync(path.join(views, "users", "layout.pug"), "block content\n");
+  const pugShowUri = fileUri(path.join(views, "users", "show.jst.pug"));
+  check(
+    "pug: nothing for a valid template",
+    await diagnosticsFor(
+      pugShowUri,
+      "jade",
+      "extends layout\nblock content\n  section#main\n    .card= user.name\nmixin badge(x)\n  span.badge= x\n",
+    ),
+    [],
+  );
+  const pugAssets = path.join(root, "app", "assets", "templates", "users");
+  const lateUri = fileUri(path.join(pugAssets, "late.jst.pug"));
+  check(
+    "pug: a missing include and a late extends; no mixin check without it",
+    await diagnosticsFor(
+      lateUri,
+      "jade",
+      "p\n  include missing\n  +nope\nextends /layout\n",
+    ),
+    ["1:Syntax/PugMissingFile", "3:Syntax/PugExtendsNotFirst"],
+  );
+  const missingPug = path.join(pugAssets, "missing.pug");
+  fs.writeFileSync(missingPug, "p\n");
+  await send(
+    "workspace/didChangeWatchedFiles",
+    { changes: [{ uri: fileUri(missingPug), type: 1 }] },
+    true,
+  );
+  const lateAfterCreate = [
+    "3:Syntax/PugExtendsNotFirst",
+    "2:Syntax/PugUnknownMixin",
+  ];
+  check(
+    "pug: a created include is found, and the mixin call then checked",
+    await waitForCodes(lateUri, lateAfterCreate),
+    lateAfterCreate,
+  );
+  fs.unlinkSync(missingPug);
+  check(
+    "pug: a block the layout lacks",
+    await diagnosticsFor(
+      fileUri(path.join(pugAssets, "sidebar.jst.pug")),
+      "jade",
+      "extends /layout\nblock content\n  p\nblock sidebar\n",
+    ),
+    ["3:Syntax/PugUnexpectedBlock"],
+  );
+  check(
+    "pug: an unknown mixin, with every include in place",
+    await diagnosticsFor(
+      fileUri(path.join(pugAssets, "mixin-call.jst.pug")),
+      "jade",
+      "include row\n+nope\n",
+    ),
+    ["1:Syntax/PugUnknownMixin"],
+  );
+  const pugHtmlUri = fileUri(path.join(pugAssets, "card.jst.pug"));
+  const pugHtml = await diagnosticsFor(
+    pugHtmlUri,
+    "jade",
+    'img(src=user.avatarUrl)\na(href="/x")\n  a(href="/y") y\nimg.logo\n  | Logo\n',
+  );
+  check("pug: HTML rules on the tags", pugHtml, [
+    "3:Html/VoidChildren",
+    "0:Html/ImgAlt",
+    "3:Html/ImgAlt",
+    "2:Html/NestedInteractive",
+  ]);
+  const altDiagnostic = notes
+    .filter(
+      (n) =>
+        n.method === "textDocument/publishDiagnostics" &&
+        n.params.uri === pugHtmlUri,
+    )
+    .at(-1)
+    .params.diagnostics.find(
+      (d) => d.code === "Html/ImgAlt" && d.range.start.line === 0,
+    );
+  check(
+    "pug: the alt quick fix goes in the attribute list",
+    (
+      await send("textDocument/codeAction", {
+        textDocument: { uri: pugHtmlUri },
+        range: altDiagnostic.range,
+        context: { diagnostics: [altDiagnostic] },
+      })
+    ).result
+      .filter((a) => a.kind === "quickfix")
+      .map((a) => [
+        a.title,
+        Object.values(a.edit.changes)[0].map(
+          (e) =>
+            `${e.range.start.line}:${e.range.start.character} ${e.newText}`,
+        ),
+      ]),
+    [['Add `alt=""`', ['0:22  alt=""']]],
+  );
+  check(
+    "pug documentSymbols",
+    (
+      (
+        await send("textDocument/documentSymbol", {
+          textDocument: { uri: pugShowUri },
+        })
+      ).result || []
+    ).map(tree),
+    ["block content [section#main [.card]]", "mixin badge [span.badge]"],
+  );
+  // Nesting that used to overflow the stack: refused past 256 levels, the server living on.
+  const deepTags = Array.from(
+    { length: 1500 },
+    (_, i) => `${"  ".repeat(i)}div#d${i}`,
+  ).join("\n");
+  const deepUri = fileUri(path.join(pugAssets, "deep.jst.pug"));
+  check(
+    "pug: nesting too deep is reported",
+    [
+      ...(await diagnosticsFor(deepUri, "jade", `${deepTags}\n`)),
+      ...(await diagnosticsFor(
+        fileUri(path.join(pugAssets, "deep-inline.jst.pug")),
+        "jade",
+        `p ${"#[b ".repeat(1500)}x${"]".repeat(1500)}\n`,
+      )),
+    ],
+    ["256:Syntax/PugTemplate", "0:Syntax/PugTemplate"],
+  );
+  check(
+    "pug: the deep template's outline, links and formatting",
+    [
+      (
+        await send("textDocument/documentSymbol", {
+          textDocument: { uri: deepUri },
+        })
+      ).result.length,
+      (
+        await send("textDocument/documentLink", {
+          textDocument: { uri: deepUri },
+        })
+      ).result.length,
+      (
+        (
+          await send("textDocument/formatting", {
+            textDocument: { uri: deepUri },
+            options: { tabSize: 2, insertSpaces: true },
+          })
+        ).result ?? []
+      ).length,
+    ],
+    [1, 0, 0],
+  );
+  check(
+    "pug: the server answers after the deep template",
+    (
+      (
+        await send("textDocument/documentSymbol", {
+          textDocument: { uri: pugShowUri },
+        })
+      ).result || []
+    ).length,
+    2,
+  );
+  check(
+    "pug foldingRanges: VS Code's own",
+    (
+      await send("textDocument/foldingRange", {
+        textDocument: { uri: pugShowUri },
+      })
+    ).result ?? null,
+    null,
   );
   check(
     "erb: the same text has a stray else",
@@ -1666,6 +1983,37 @@ const check = (label, actual, expected) => {
       rangeEdits[0].newText === "  %i",
     JSON.stringify(rangeEdits),
   );
+  // Pug: the editor's width and style; a text block moves as a block and keeps its trailing spaces.
+  const pugFormatUri = fileUri(path.join(views, "users", "reindent.jst.pug"));
+  await send(
+    "textDocument/didOpen",
+    {
+      textDocument: {
+        uri: pugFormatUri,
+        languageId: "jade",
+        version: 1,
+        text: "ul\n    li hi  \n    = x  \n    script.\n        if (a) {\n          b();  \n        }\n\n\n",
+      },
+    },
+    true,
+  );
+  const pugFormat = async (insertSpaces) =>
+    (
+      await send("textDocument/formatting", {
+        textDocument: { uri: pugFormatUri },
+        options: { tabSize: 2, insertSpaces },
+      })
+    ).result?.[0]?.newText;
+  check(
+    "pug formatting",
+    await pugFormat(true),
+    "ul\n  li hi  \n  = x\n  script.\n    if (a) {\n      b();  \n    }\n",
+  );
+  check(
+    "pug formatting, tabs",
+    await pugFormat(false),
+    "ul\n\tli hi  \n\t= x\n\tscript.\n\t\tif (a) {\n\t\t  b();  \n\t\t}\n",
+  );
   // Without dynamic registration nothing is advertised.
   const staticFormatting = init.result.capabilities.documentFormattingProvider;
   expect(
@@ -2104,26 +2452,6 @@ const check = (label, actual, expected) => {
     [["users_path"], "`users_path` → `/users`", ["/config/routes.rb:1"]],
   );
   const unknownRouteUri = fileUri(path.join(views, "users", "links.html.erb"));
-  const latestCodes = (uri) =>
-    notes
-      .filter(
-        (n) =>
-          n.method === "textDocument/publishDiagnostics" &&
-          n.params.uri === uri,
-      )
-      .at(-1)
-      ?.params.diagnostics.map((d) => `${d.range.start.line}:${d.code}`);
-  const waitForCodes = async (uri, expected) => {
-    for (
-      let waited = 0;
-      waited < 2000 &&
-      JSON.stringify(latestCodes(uri)) !== JSON.stringify(expected);
-      waited += 50
-    ) {
-      await new Promise((r) => setTimeout(r, 50));
-    }
-    return latestCodes(uri);
-  };
   await send(
     "textDocument/didOpen",
     {
@@ -2858,6 +3186,7 @@ const check = (label, actual, expected) => {
     initializationOptions: {
       erb: { diagnostics: { enabled: false }, format: { enabled: false } },
       haml: { format: { enabled: false } },
+      pug: { format: { enabled: false } },
     },
   });
   await off.send("initialized", {}, true);
@@ -2893,6 +3222,8 @@ const check = (label, actual, expected) => {
       })
     ).result;
   check("haml format off", await formatResult(reindentUri), null);
+  await open(pugFormatUri, "jade", "ul\n    li\n");
+  check("pug format off", await formatResult(pugFormatUri), null);
   const rangeOff = await off.send("textDocument/rangeFormatting", {
     textDocument: { uri: reindentUri },
     options: { tabSize: 2, insertSpaces: true },
@@ -3659,7 +3990,7 @@ const check = (label, actual, expected) => {
     ]),
   );
   check("dynamic formatting registration", registeredLanguages, {
-    "textDocument/formatting": ["erb", "haml", "slim", "skim"],
+    "textDocument/formatting": ["erb", "haml", "slim", "skim", "jade"],
     "textDocument/rangeFormatting": ["erb", "haml"],
   });
   await dynamic.send("shutdown", {});

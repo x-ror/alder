@@ -11,6 +11,7 @@ use crate::erb::tags;
 use crate::lang::{file_name, is_partial, TemplateLang};
 use crate::liquid;
 use crate::options::Options;
+use crate::pug::refs as pug_refs;
 use crate::rails::controllers::Target;
 use crate::rails::output_lints::{output_marker_edit, SILENT_HELPER, SILENT_RENDER};
 use crate::rails::project::{Project, Projects};
@@ -54,8 +55,9 @@ const ROUTES_NOTIFICATION: &str = "rubyTemplates/routes";
 const FORMATTING_REGISTRATION: &str = "formatting";
 const RANGE_FORMATTING_REGISTRATION: &str = "range-formatting";
 
-const FORMATTING_LANGUAGES: [&str; 4] = ["erb", "haml", "slim", "skim"];
-/// Not Slim/Skim: range formatting re-indents only the range, which breaks nesting in indentation-sensitive languages.
+const FORMATTING_LANGUAGES: [&str; 5] = ["erb", "haml", "slim", "skim", "jade"];
+/// Not Slim/Skim or Pug (`jade`): range formatting re-indents only the range, and a line of theirs deeper than the one
+/// above it, by any amount, nests under it, so a range re-indented without the lines around it can change the nesting.
 const RANGE_FORMATTING_LANGUAGES: [&str; 2] = ["erb", "haml"];
 
 /// Which formatting requests the client takes dynamic registrations for.
@@ -315,6 +317,9 @@ impl LanguageServer for Backend {
             self.app_helpers.clear();
             unknown_route::clear_cache();
         }
+        if may_change_pug_includes(&events) {
+            pug_refs::clear_cache();
+        }
         self.templates.retain(|root, _| !stale(root, &events, false));
         self.locales.retain(|root, _| !stale(root, &events, true));
         // Unresolved-render and strict-locals warnings read other templates from disk.
@@ -341,12 +346,17 @@ impl LanguageServer for Backend {
     async fn goto_definition(&self, p: GotoDefinitionParams) -> Result<Option<GotoDefinitionResponse>> {
         let uri = p.text_document_position_params.text_document.uri;
         let pos = p.text_document_position_params.position;
-        if let Some((path, doc)) = self.liquid_doc(&uri) {
+        if let Some((path, doc)) = self.file_doc(&uri, TemplateLang::Liquid) {
             let (_, line, col) = util::line_at(&doc.text, pos);
             let found = liquid::ref_at(line, col).map(|r| liquid::resolve(&path, &r)).unwrap_or_default();
             return Ok(locations_response(found.into_iter().filter_map(file_location).collect()));
         }
-        if self.is_liquid(&uri) {
+        if let Some((path, doc)) = self.file_doc(&uri, TemplateLang::Pug) {
+            let found = util::position_to_offset(&doc.text, pos).and_then(|at| pug_refs::ref_at(&doc.text, at));
+            let target = found.and_then(|r| pug_refs::target(&path, &r));
+            return Ok(locations_response(target.into_iter().filter_map(file_location).collect()));
+        }
+        if self.without_rails(&uri) {
             return Ok(None);
         }
         let Some(path) = util::file_path(&uri) else { return Ok(None) };
@@ -409,7 +419,15 @@ impl LanguageServer for Backend {
 
     async fn document_link(&self, p: DocumentLinkParams) -> Result<Option<Vec<DocumentLink>>> {
         let uri = p.text_document.uri;
-        if let Some((path, doc)) = self.liquid_doc(&uri) {
+        if let Some((path, doc)) = self.file_doc(&uri, TemplateLang::Pug) {
+            let index = util::LineIndex::new(&doc.text);
+            let links = pug_refs::file_refs(&doc.text).into_iter().filter_map(|r| {
+                let target = pug_refs::target(&path, &r)?;
+                file_link(index.range(r.start, r.end), &target, &path)
+            });
+            return Ok(Some(links.collect()));
+        }
+        if let Some((path, doc)) = self.file_doc(&uri, TemplateLang::Liquid) {
             let mut links = Vec::new();
             for (i, (_, line)) in util::lines_with_offsets(&doc.text).enumerate() {
                 for r in liquid::refs(line) {
@@ -419,7 +437,7 @@ impl LanguageServer for Backend {
             }
             return Ok(Some(links));
         }
-        if self.is_liquid(&uri) {
+        if self.without_rails(&uri) {
             return Ok(None);
         }
         let Some(path) = util::file_path(&uri) else { return Ok(None) };
@@ -455,11 +473,15 @@ impl LanguageServer for Backend {
     async fn hover(&self, p: HoverParams) -> Result<Option<Hover>> {
         let uri = p.text_document_position_params.text_document.uri;
         let pos = p.text_document_position_params.position;
-        if let Some((path, doc)) = self.liquid_doc(&uri) {
+        if let Some((path, doc)) = self.file_doc(&uri, TemplateLang::Liquid) {
             let (_, line, col) = util::line_at(&doc.text, pos);
             return Ok(liquid::ref_at(line, col).and_then(|r| markdown_hover(liquid::hover(&path, &r))));
         }
-        if self.is_liquid(&uri) {
+        if let Some((path, doc)) = self.file_doc(&uri, TemplateLang::Pug) {
+            let found = util::position_to_offset(&doc.text, pos).and_then(|at| pug_refs::ref_at(&doc.text, at));
+            return Ok(found.and_then(|r| markdown_hover(pug_refs::hover(&path, &r))));
+        }
+        if self.without_rails(&uri) {
             return Ok(None);
         }
         let file = match util::file_path(&uri) {
@@ -588,7 +610,8 @@ impl LanguageServer for Backend {
             TemplateLang::Haml => Some(outline::haml::folding_ranges(&text)),
             TemplateLang::Slim | TemplateLang::Skim => Some(outline::slim::folding_ranges(&text, &extra_engines)),
             TemplateLang::Erb if html => Some(outline::folding_ranges(&text)),
-            TemplateLang::Erb | TemplateLang::Ruby | TemplateLang::Liquid => None,
+            // VS Code's off-side folding of `jade` is all ours would give: Pug has no region markers.
+            TemplateLang::Erb | TemplateLang::Ruby | TemplateLang::Liquid | TemplateLang::Pug => None,
         })
         .await
     }
@@ -621,6 +644,7 @@ impl LanguageServer for Backend {
                 TemplateLang::Erb => outline::document_symbols(&text, html),
                 TemplateLang::Haml => outline::haml::document_symbols(&text),
                 TemplateLang::Slim | TemplateLang::Skim => outline::slim::document_symbols(&text, &extra_engines),
+                TemplateLang::Pug => outline::pug::document_symbols(&text),
                 TemplateLang::Ruby | TemplateLang::Liquid => return None,
             };
             Some(DocumentSymbolResponse::Nested(symbols))
@@ -630,6 +654,10 @@ impl LanguageServer for Backend {
 
     async fn code_action(&self, p: CodeActionParams) -> Result<Option<CodeActionResponse>> {
         let uri = p.text_document.uri;
+        // Pug's fixes, such as an added `alt`, only edit the template.
+        if let Some((_, doc)) = self.file_doc(&uri, TemplateLang::Pug) {
+            return Ok(Some(fixes::document_fixes(&uri, &doc, &p.context.diagnostics)));
+        }
         let Some(doc) = self.template_doc(&uri) else { return Ok(None) };
         let Some(path) = util::file_path(&uri) else { return Ok(None) };
         // Asked on every cursor move; the project is only needed for a missing partial's quick fix.
@@ -737,7 +765,7 @@ impl LanguageServer for Backend {
     async fn references(&self, p: ReferenceParams) -> Result<Option<Vec<Location>>> {
         let uri = p.text_document_position.text_document.uri;
         let pos = p.text_document_position.position;
-        if self.is_liquid(&uri) {
+        if self.without_rails(&uri) {
             return Ok(None);
         }
         let Some(path) = util::file_path(&uri) else { return Ok(None) };
@@ -799,8 +827,7 @@ impl LanguageServer for Backend {
         let mut out = Vec::new();
         for views in roots {
             let is_template = |f: &&PathBuf| {
-                crate::util::file_uri(f)
-                    .is_some_and(|u| TemplateLang::from_uri_or_id(&u, None).is_some_and(|lang| lang != TemplateLang::Liquid))
+                crate::util::file_uri(f).is_some_and(|u| TemplateLang::from_uri_or_id(&u, None).is_some_and(TemplateLang::uses_rails))
             };
             let templates: Vec<PathBuf> = self.views_files(&views).iter().filter(is_template).cloned().collect();
             let project = Project::for_views(&views).with_view_cache(Arc::clone(&self.view_roots));
@@ -865,7 +892,24 @@ impl LanguageServer for Backend {
     async fn completion(&self, p: CompletionParams) -> Result<Option<CompletionResponse>> {
         let uri = p.text_document_position.text_document.uri;
         let pos = p.text_document_position.position;
-        if let Some((path, doc)) = self.liquid_doc(&uri) {
+        if let Some((path, doc)) = self.file_doc(&uri, TemplateLang::Pug) {
+            let (_, line, col) = util::line_at(&doc.text, pos);
+            let Some((keyword, start, typed)) = pug_refs::path_prefix(line, col) else { return Ok(None) };
+            let range = util::span_range(pos.line as usize, line, start, col);
+            let typed = typed.to_string();
+            let found = off_server_task({
+                let path = path.clone();
+                move || pug_refs::candidates(&path, keyword, &typed)
+            })
+            .await?;
+            let items = found.into_iter().map(|c| {
+                let kind = if c.folder { CompletionItemKind::FOLDER } else { CompletionItemKind::FILE };
+                let edit = CompletionTextEdit::Edit(TextEdit::new(range, c.label.clone()));
+                CompletionItem { text_edit: Some(edit), ..util::completion_item(c.label, kind, paths::rails_relative(&c.file, &path)) }
+            });
+            return Ok(Some(CompletionResponse::Array(items.collect())));
+        }
+        if let Some((path, doc)) = self.file_doc(&uri, TemplateLang::Liquid) {
             let (_, line, col) = util::line_at(&doc.text, pos);
             let Some((tag, prefix)) = liquid::name_prefix(line, col) else { return Ok(None) };
             let names = off_server_task(move || liquid::candidates(&path, tag)).await?;
@@ -873,7 +917,7 @@ impl LanguageServer for Backend {
             let items = named.map(|(name, file)| util::completion_item(name, CompletionItemKind::FILE, file_name_of(&file))).collect();
             return Ok(Some(CompletionResponse::Array(items)));
         }
-        if self.is_liquid(&uri) {
+        if self.without_rails(&uri) {
             return Ok(None);
         }
         let Some(doc) = self.docs.get(&uri) else { return Ok(None) };
@@ -936,21 +980,20 @@ impl Backend {
         }
     }
 
-    /// Liquid has its own lookups and none of Rails': every Rails one would misfire on it.
-    fn is_liquid(&self, uri: &Uri) -> bool {
-        self.docs.get(uri).is_some_and(|doc| doc.lang == TemplateLang::Liquid)
+    fn without_rails(&self, uri: &Uri) -> bool {
+        self.docs.get(uri).is_some_and(|doc| !doc.lang.uses_rails())
     }
 
-    /// The path and a copy of the open Liquid file at `uri`.
-    fn liquid_doc(&self, uri: &Uri) -> Option<(PathBuf, Doc)> {
-        let doc = self.docs.get(uri).filter(|doc| doc.lang == TemplateLang::Liquid).map(|doc| doc.clone())?;
+    /// The path and a copy of the open `lang` file at `uri`.
+    fn file_doc(&self, uri: &Uri, lang: TemplateLang) -> Option<(PathBuf, Doc)> {
+        let doc = self.docs.get(uri).filter(|doc| doc.lang == lang).map(|doc| doc.clone())?;
         Some((util::file_path(uri)?, doc))
     }
 
     /// A copy of the open template at `uri`, so no `docs` guard is held across an `.await` (it would block the next
-    /// `did_change`) or while other documents are read; none for Liquid.
+    /// `did_change`) or while other documents are read; none for a language `without_rails`.
     fn template_doc(&self, uri: &Uri) -> Option<Doc> {
-        self.docs.get(uri).filter(|doc| doc.lang != TemplateLang::Liquid).map(|doc| doc.clone())
+        self.docs.get(uri).filter(|doc| doc.lang.uses_rails()).map(|doc| doc.clone())
     }
 
     /// The Slim engines that apply to `uri`.
@@ -1072,6 +1115,9 @@ impl Backend {
     /// Fills the app/views and locale caches of `uri`'s app in the background, so the first render or i18n request
     /// after a view opens or files change finds them ready instead of walking the app on the server task.
     fn warm_caches(&self, uri: &Uri) {
+        if self.without_rails(uri) {
+            return;
+        }
         let Some(path) = util::file_path(uri) else { return };
         let claim = |root: &PathBuf, cached: bool| !cached && self.warming.insert(root.clone());
         let views = paths::views_root(&path).filter(|views| claim(views, self.templates.contains_key(views)));
@@ -1279,6 +1325,12 @@ fn may_change_controllers(events: &[(PathBuf, FileChangeType)]) -> bool {
 /// A file under a `config` folder may add a translation or change where translations come from and the default locale.
 fn may_change_config(events: &[(PathBuf, FileChangeType)]) -> bool {
     events.iter().any(|(path, _)| path.components().any(|part| part.as_os_str() == "config"))
+}
+
+/// A Pug template may include or extend another; a folder created, moved or deleted may hold some.
+fn may_change_pug_includes(events: &[(PathBuf, FileChangeType)]) -> bool {
+    let template = |path: &Path| TemplateLang::from_file_name(&path.to_string_lossy()) == Some(TemplateLang::Pug);
+    events.iter().any(|(path, kind)| template(path) || *kind != FileChangeType::CHANGED)
 }
 
 /// A file in the app's helpers or controllers, or its config (the route files), may define a helper a view calls.
@@ -1545,6 +1597,16 @@ mod tests {
         assert!(may_change_controllers(&event("/r/app", FileChangeType::DELETED)));
         assert!(!may_change_controllers(&event("/r/app/views/users/_card.erb", FileChangeType::CHANGED)));
         assert!(!may_change_controllers(&event("/r/app", FileChangeType::CHANGED)));
+    }
+
+    #[test]
+    fn pug_includes_are_dropped_when_a_template_changes_whatever_its_extensions_case() {
+        let event = |path: &str, kind| vec![(PathBuf::from(path), kind)];
+        for path in ["/r/app/a.pug", "/r/app/B.PUG", "/r/app/c.Jade"] {
+            assert!(may_change_pug_includes(&event(path, FileChangeType::CHANGED)), "{path}");
+        }
+        assert!(!may_change_pug_includes(&event("/r/app/a.erb", FileChangeType::CHANGED)));
+        assert!(may_change_pug_includes(&event("/r/app/views", FileChangeType::DELETED)));
     }
 
     #[test]

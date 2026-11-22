@@ -76,6 +76,10 @@ function initializationOptions(config) {
     liquid: {
       disabledDiagnostics: config.get("liquid.disabledDiagnostics", []),
     },
+    pug: {
+      disabledDiagnostics: config.get("pug.disabledDiagnostics", []),
+      ...switches("pug"),
+    },
   };
 }
 
@@ -88,8 +92,9 @@ const SERVER_SETTINGS = [
   "haml.disabledDiagnostics",
   "jbuilder.disabledDiagnostics",
   "liquid.disabledDiagnostics",
+  "pug.disabledDiagnostics",
   "erb.format.alignComments",
-  ...["erb", "haml", "slim"].flatMap((lang) => [
+  ...["erb", "haml", "slim", "pug"].flatMap((lang) => [
     `${lang}.diagnostics.enabled`,
     `${lang}.format.enabled`,
   ]),
@@ -124,7 +129,7 @@ async function doStart(context) {
   const command = findServer(context);
   log(`starting language server: ${command}`);
 
-  // The server caches app/views listings, parsed locales (and the config that sets their default locale and sources), the helpers and routes files that define route helpers and the Stimulus controllers app/javascript registers, and a changed Gemfile.lock or .ruby-version changes its framework gates and the Ruby grammar, and a .ruby-templates.toml changes which rules apply; these events invalidate them. The folder globs
+  // The server caches app/views listings, parsed locales (and the config that sets their default locale and sources), the helpers and routes files that define route helpers and the Stimulus controllers app/javascript registers, and a changed Gemfile.lock or .ruby-version changes its framework gates and the Ruby grammar, and a .ruby-templates.toml changes which rules apply, and a Pug file changes what the templates that include or extend it find; these events invalidate them. The folder globs
   // catch deleting/renaming a whole app/ or config/ tree, which VS Code reports as one event for the folder.
   // Created once: restarts reuse them instead of piling up live watchers.
   if (!watchers) {
@@ -138,6 +143,7 @@ async function doStart(context) {
       "**/Gemfile.lock",
       "**/.ruby-version",
       "**/.ruby-templates.toml",
+      "**/*.{pug,jade}",
       "**/{app,config,app/views,config/locales}",
     ].map((glob) => vscode.workspace.createFileSystemWatcher(glob));
     context.subscriptions.push(...watchers);
@@ -149,10 +155,13 @@ async function doStart(context) {
     {
       // Scheme-less selectors also match git diff sides and chat code blocks, duplicating diagnostics.
       // `ruby` is contributed only for Jbuilder/Builder views; other Ruby files are not templates.
+      // `jade` is VS Code's own Pug language, which we don't contribute.
       documentSelector: [
         ...context.extension.packageJSON.contributes.languages
-          .filter(({ id }) => id !== "ruby")
-          .flatMap(({ id }) => [
+          .map(({ id }) => id)
+          .filter((id) => id !== "ruby")
+          .concat("jade")
+          .flatMap((id) => [
             { scheme: "file", language: id },
             { scheme: "untitled", language: id },
           ]),

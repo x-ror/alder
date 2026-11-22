@@ -653,6 +653,80 @@ const checks = {
     }
   },
 
+  async "toggle Pug marker cycles lines but not text blocks"() {
+    const editor = await open("app/assets/templates/users/toggle.jst.pug");
+    assert.strictEqual(editor.document.languageId, "jade");
+    try {
+      select(editor, 0, 0, 5, 0);
+      await vscode.commands.executeCommand("rubyTemplates.togglePugLine");
+      assert.strictEqual(
+        editor.document.getText(),
+        "= x++\n!= y\n//- z\n- w\nscript.\n  - not a marker\n",
+      );
+    } finally {
+      await revert(editor);
+    }
+  },
+
+  async "wrap in Pug output: text, whole line and empty cursor"() {
+    const file = "app/assets/templates/users/wrap.jst.pug";
+    assert.strictEqual(
+      await runOnSelection(file, [1, 10, 1, 15], "rubyTemplates.wrapInPug"),
+      "p\n  | hello #{world}\nitems.length > 0\n",
+    );
+    assert.strictEqual(
+      await runOnSelection(file, [2, 0, 2, 16], "rubyTemplates.wrapInPug"),
+      "p\n  | hello world\n= items.length > 0\n",
+    );
+    // `p` has a block, which Pug refuses under `=`, and `#{` there would name a tag.
+    assert.strictEqual(
+      await runOnSelection(file, [0, 0, 0, 1], "rubyTemplates.wrapInPug"),
+      "p\n  | hello world\nitems.length > 0\n",
+    );
+    const editor = await open(file);
+    try {
+      select(editor, 1, 10, 1, 10);
+      await vscode.commands.executeCommand("rubyTemplates.wrapInPug");
+      assert.strictEqual(editor.document.lineAt(1).text, "  | hello #{}world");
+      assert.strictEqual(editor.selection.active.character, 12);
+    } finally {
+      await revert(editor);
+    }
+  },
+
+  async "extract Pug lines to an include the server resolves"() {
+    const rel = "app/assets/templates/users/extract.jst.pug";
+    const partial = path.join(app, "app/assets/templates/users/row.jst.pug");
+    return answeringInputBox("row", async () => {
+      const editor = await open(rel);
+      try {
+        select(editor, 1, 2, 1, 6);
+        await vscode.commands.executeCommand("rubyTemplates.extractPartial");
+        assert.strictEqual(
+          editor.document.getText(),
+          "ul\n  include row.jst.pug\n  li.b\n",
+        );
+        assert.strictEqual(fs.readFileSync(partial, "utf8"), "li.a\n  | one\n");
+        const target = await until("the include's definition", async () => {
+          const found = await vscode.commands.executeCommand(
+            "vscode.executeDefinitionProvider",
+            editor.document.uri,
+            new vscode.Position(1, 12),
+          );
+          return found?.[0];
+        });
+        assert.strictEqual((target.targetUri ?? target.uri).fsPath, partial);
+        const problems = vscode.languages
+          .getDiagnostics(editor.document.uri)
+          .map((d) => d.code?.value ?? d.code);
+        assert.deepStrictEqual(problems, []);
+      } finally {
+        await revert(editor);
+        fs.rmSync(partial, { force: true });
+      }
+    });
+  },
+
   async "switch to related: component class"() {
     await open("app/components/badge_component.html.erb");
     await vscode.commands.executeCommand("rubyTemplates.switchRelated");

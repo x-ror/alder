@@ -42,5 +42,7 @@ function grammarOf({ language, path: file }) {
 export const LANGS = [
   ...Object.values(EMBEDDED).map((name) => bundledLanguages[name]),
   bundledLanguages.shellscript,
+  // The extension ships no Pug grammar (VS Code has one), so Pug examples use Shiki's.
+  bundledLanguages.pug,
   ...manifest.contributes.grammars.filter((g) => g.language).map(grammarOf),
 ];

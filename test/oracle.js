@@ -1,9 +1,10 @@
-// Oracle harness: compares the official template engine with ruby-templates. `bun test/oracle.js slim|haml`
+// Oracle harness: compares the official template engine with ruby-templates. `bun test/oracle.js slim|haml|erb|pug`
 // Stage 0 measures today's code, so mismatches don't fail the run; only a broken harness does.
 import { spawn, spawnSync } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import * as pugOracle from "./oracle/pug.js";
 
 // The oracle scripts' `column` (Haml reports none) is a 0-based UTF-16 offset in the line; `ruby-templates check` prints 1-based columns.
 const COLUMN_TO_CLI = 1;
@@ -195,6 +196,13 @@ const languages = {
     breakVariants: (source) => erbBreakVariants(source),
     breakSample: 10,
   },
+  // A devDependency rather than a gem.
+  pug: {
+    gem: "pug",
+    version: pugOracle.VERSION,
+    installed: () => true,
+    report: () => pugReport(),
+  },
 };
 
 // Whether the gem and the gems it is pinned to load at the expected versions.
@@ -260,6 +268,10 @@ const checkExpectation = (
   );
 };
 
+// `check` ends a message, on its last line when it has several, with its rule, ` [Syntax/Ruby]`, which the official
+// message doesn't have.
+const withoutRule = (message) => message.replace(/ \[[A-Z]\w*\/\w+\]$/, "");
+
 // Diagnostics by absolute file path: [{line, column, severity, message}].
 const oursByPath = ({ extension }, files) => {
   const known = new Set(files.map((file) => path.resolve(file)));
@@ -278,14 +290,14 @@ const oursByPath = ({ extension }, files) => {
         line: Number(m[2]),
         column: Number(m[3]),
         severity: m[4],
-        message: m[5],
+        message: withoutRule(m[5]),
       };
       const file = path.resolve(m[1]);
       if (!known.has(file))
         throw new Error(`check reported an unknown file: ${m[1]}`);
       byPath.set(file, [...(byPath.get(file) ?? []), last]);
     } else if (last && text) {
-      last.message += `\n${text}`;
+      last.message = withoutRule(`${last.message}\n${text}`);
     }
   }
   return byPath;
@@ -1312,6 +1324,102 @@ const contextReport = async () => {
       console.log(`mismatches: ${mismatches.length}`);
       if (process.env.VERBOSE) mismatches.forEach((m) => console.log(m));
     }
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+};
+
+// Pug's column counts UTF-16 units from 1 after its byte order mark; `check` counts characters. 0-based, as the Ruby scripts give it.
+const pugCharColumn = (source, line, column) => {
+  const text = source.replace(/^﻿/, "").split(/\r\n|\r|\n/)[line - 1] ?? "";
+  return [...text.slice(0, column - 1)].length;
+};
+
+// test/oracle/pug_cases.json and Pug's own test templates through Pug in Node and through `ruby-templates check`: the
+// first error, at the same line and column with the same message. Pug's `PUG:SYNTAX_ERROR` is about the JavaScript,
+// which ours doesn't check, so it is counted apart.
+const pugReport = async () => {
+  const pug = pugOracle.loadPug();
+  const recorded = JSON.parse(fs.readFileSync(pugOracle.casesFile, "utf8"));
+  const sources = [
+    ...recorded.map(({ source }, i) => ({
+      label: `pug_cases.json #${i + 1}`,
+      source,
+    })),
+    ...pugOracle.upstreamTemplates(pug),
+  ];
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rt-oracle-pug-"));
+  // Pug's parser doesn't read the files a template includes or extends, and content in a void element is an error of
+  // pug-code-gen, which the oracle doesn't run; ours reports these.
+  fs.writeFileSync(
+    path.join(dir, ".ruby-templates.toml"),
+    [
+      "Syntax.PugMissingFile",
+      "Syntax.PugExtendsNotFirst",
+      "Syntax.PugUnexpectedBlock",
+      "Syntax.PugUnknownMixin",
+      "Html.VoidChildren",
+    ]
+      .map((rule) => `[${rule}]\nenabled = false\n`)
+      .join("\n"),
+  );
+  try {
+    const items = sources.map((item, n) => {
+      const file = path.join(dir, `${n}.pug`);
+      fs.writeFileSync(file, item.source);
+      return { ...item, path: file };
+    });
+    const ours = oursByPath(
+      { extension: ".pug" },
+      items.map((item) => item.path),
+    );
+    const counts = { officialErrors: 0, oursErrors: 0, same: 0, javascript: 0 };
+    const mismatches = [];
+    for (const item of items) {
+      const { error } = pugOracle.record(pug, item.source);
+      const errors = (ours.get(path.resolve(item.path)) ?? []).filter(
+        (d) => d.severity === "error",
+      );
+      if (error?.code === "PUG:SYNTAX_ERROR") {
+        counts.javascript++;
+        continue;
+      }
+      if (error) counts.officialErrors++;
+      if (errors.length) counts.oursErrors++;
+      const official = error && {
+        message: error.message,
+        line: error.line,
+        column:
+          error.line === null
+            ? null
+            : pugCharColumn(item.source, error.line, error.column),
+      };
+      // A JavaScript error Pug throws has no position, and the engine words it: ours follows Node, this runs on Bun.
+      const thrown = error?.line === null;
+      const agree = official
+        ? errors.some((e) => thrown || sameError(official, e))
+        : !errors.length;
+      if (agree) {
+        if (official) counts.same++;
+        continue;
+      }
+      mismatches.push(
+        `${item.label} ${JSON.stringify(item.source)}\n` +
+          `    official: ${official ? describe(official) : "compiles"}\n` +
+          `    ours:     ${errors.length ? errors.map(describe).join("; ") : "no error"}`,
+      );
+    }
+    console.log(
+      `pug ${pug.version} vs ruby-templates  (${items.length.toLocaleString("en-US")} templates)`,
+    );
+    console.log(
+      `errors:  official ${counts.officialErrors}, ours ${counts.oursErrors}, same ${counts.same}`,
+    );
+    console.log(
+      `skipped: ${counts.javascript} (Pug's JavaScript syntax errors, not checked by ours)`,
+    );
+    console.log(`mismatches: ${mismatches.length}`);
+    if (process.env.VERBOSE) mismatches.forEach((m) => console.log(m));
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

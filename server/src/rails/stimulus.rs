@@ -1,10 +1,10 @@
 //! Stimulus identifiers in `data-*` attributes → app/javascript/controllers files.
 
 use crate::rails::paths::{app_root, rails_root};
-use crate::util::slash_path;
+use crate::util::{lexically_normal, slash_path};
 use dashmap::DashMap;
 use regex::Regex;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::LazyLock;
 use walkdir::WalkDir;
@@ -446,17 +446,7 @@ fn is_inside(dir: &Path, path: &str, controllers_dir: &Path) -> bool {
     if !path.starts_with('.') {
         return false;
     }
-    let mut resolved = PathBuf::new();
-    for part in dir.join(path).components() {
-        match part {
-            Component::ParentDir => {
-                resolved.pop();
-            }
-            Component::CurDir => {}
-            other => resolved.push(other),
-        }
-    }
-    resolved.starts_with(controllers_dir)
+    lexically_normal(&dir.join(path)).starts_with(controllers_dir)
 }
 
 /// The Stimulus application is only registered on, loaded from a context or handed to stimulus-loading: not to a library

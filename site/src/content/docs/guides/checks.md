@@ -1,11 +1,11 @@
 ---
 title: Errors as you type
-description: What the language server checks in ERB, Haml and Slim templates, and how to turn single checks or whole languages off.
+description: What the language server checks in ERB, Haml, Slim and Pug templates, and how to turn single checks or whole languages off.
 sidebar:
   order: 2
 ---
 
-The language server checks every template as you type and reports problems in the editor and the _Problems_ panel. The checks follow Erubi, Rails, Haml 7 and Slim 5, and Haml, Slim and Rails errors use those projects' own messages. No gems are needed.
+The language server checks every template as you type and reports problems in the editor and the _Problems_ panel. The checks follow Erubi, Rails, Haml 7, Slim 5 and Pug 3, and Haml, Slim, Pug and Rails errors use those projects' own messages. No gems or npm packages are needed. Liquid's tag checks are described under [File types](/vscode-ruby-templates/guides/file-types/#liquid).
 
 Every check has a code. The [diagnostics reference](/vscode-ruby-templates/reference/diagnostics/) lists each code with what it means.
 
@@ -52,6 +52,10 @@ Ruby syntax errors in code lines, attribute hashes and `#{}` are reported too.
 The third line is reported with Haml's own message: `Inconsistent indentation: 5 spaces used for indentation, but the rest of the document was indented using 2 spaces.`
 
 Slim engines your app registers itself (for example `mjml:`) can be accepted with [`rubyTemplates.slim.extraEngines`](/vscode-ruby-templates/guides/settings/#slim).
+
+## Pug
+
+Pug templates get the first error Pug raises, the checks on what they include and extend, and the HTML rules that need no Ruby (`alt`, duplicate ids, links, nested interactive content, iframe titles, link text, content in a void element). Their code is JavaScript, so none of the Rails checks run on them; see [File types](/vscode-ruby-templates/guides/file-types/#pug).
 
 ## Rails checks
 

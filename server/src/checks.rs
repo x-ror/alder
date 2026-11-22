@@ -8,6 +8,7 @@ use crate::haml;
 use crate::lang::{haml_html_host, html_host, is_partial, slim_html_host, TemplateLang};
 use crate::line_length;
 use crate::liquid;
+use crate::pug;
 use crate::rails::project::{Framework, Project, Projects};
 use crate::rails::render_call::HamlPipes;
 use crate::rails::{
@@ -81,9 +82,14 @@ pub(crate) fn diagnostics_in(
     if uri.path().as_str().to_ascii_lowercase().ends_with(".tt") || !rules.diagnostics_enabled() {
         return vec![];
     }
-    // Liquid has none of the Rails lookups, so only its own tags are checked.
-    if doc.lang == TemplateLang::Liquid {
-        let reported = liquid::diagnostics(&doc.text).into_iter().filter(|d| util::code(d).is_none_or(|code| rules.reports(code)));
+    // Liquid and Pug have none of the Rails lookups: their own syntax is checked, and Pug's includes and HTML.
+    let own_syntax = match doc.lang {
+        TemplateLang::Liquid => Some(liquid::diagnostics(&doc.text)),
+        TemplateLang::Pug => Some(pug_diagnostics(uri, doc, rules)),
+        _ => None,
+    };
+    if let Some(found) = own_syntax {
+        let reported = found.into_iter().filter(|d| util::code(d).is_none_or(|code| rules.reports(code)));
         return reported.map(|d| Diagnostic { source: Some(DIAGNOSTIC_SOURCE.into()), ..d }).collect();
     }
     let path = util::file_path(uri);
@@ -111,8 +117,8 @@ pub(crate) fn diagnostics_in(
         tree.as_ref().filter(|_| elements_wanted || attributes_wanted).map(|tree| attributes::helper_elements(tree.compiled, &tree.root));
     let helpers = helpers.unwrap_or_default();
     if elements_wanted {
-        out.extend(element_lints::diagnostics(doc.lang, &doc.text, &markup, &helpers));
-        out.extend(nested_interactive::diagnostics(doc.lang, &doc.text, &markup, &helpers));
+        out.extend(element_lints::diagnostics(doc.lang, &doc.text, &markup, &helpers, None));
+        out.extend(nested_interactive::diagnostics(doc.lang, &doc.text, &markup, &helpers, None));
     }
     if let (Some(path), Some(views_root), Some(tree)) = (&path, &views_root, &tree) {
         out.extend(view_diagnostics(doc, rules, path, views_root, tree, &[markup.as_slice(), helpers.as_slice()].concat(), &ruby));
@@ -130,6 +136,27 @@ pub(crate) fn diagnostics_in(
     out.retain(|d| (html || util::code(d) != Some(unsafe_output::UNSAFE_OUTPUT)) && util::code(d).is_none_or(|code| rules.reports(code)));
     for d in &mut out {
         d.source = Some(DIAGNOSTIC_SOURCE.into());
+    }
+    out
+}
+
+/// Pug's own checks, then the element lints on its tags and the line length, all on one parse; a Pug template has no Ruby
+/// to make elements.
+fn pug_diagnostics(uri: &Uri, doc: &Doc, rules: &ResolvedRules) -> Vec<Diagnostic> {
+    let text = doc.text.as_str();
+    let (index, parsed) = (util::LineIndex::new(text), pug::parser::parse(text));
+    let mut out = pug::diagnostics(text, &index, &parsed, util::file_path(uri).as_deref(), |code| rules.reports(code));
+    if pug::has_lone_cr(text) {
+        return out;
+    }
+    if let (Ok(tree), true) = (&parsed, ELEMENT_LINTS.iter().any(|code| rules.reports(code))) {
+        let markup = pug::elements::tags(text, &index, tree);
+        let ancestry = pug::elements::ancestry(&index, tree);
+        out.extend(element_lints::diagnostics(doc.lang, text, &markup, &[], Some(&ancestry)));
+        out.extend(nested_interactive::diagnostics(doc.lang, text, &markup, &[], Some(&ancestry)));
+    }
+    if let Some(max) = rules.line_length() {
+        out.extend(line_length::diagnostics(&doc.text, max));
     }
     out
 }
@@ -284,7 +311,7 @@ pub(crate) fn language_diagnostics(
             .collect(),
         // Syntax errors are Ruby LSP's job, but it doesn't know the `locals:` comment is code to Rails.
         TemplateLang::Ruby => locals_signature(text, ruby),
-        TemplateLang::Liquid => Vec::new(),
+        TemplateLang::Liquid | TemplateLang::Pug => Vec::new(),
     };
     // Void elements are an HTML rule; Slim itself renders `<img>x</img>` for `.xml.slim` and friends.
     if lang == TemplateLang::Slim && !slim_html_host(uri) {
@@ -552,6 +579,14 @@ mod tests {
             assert!(codes(path, lang, text, &options).is_empty(), "{path}");
         }
         assert_eq!(codes("show.html.haml", TemplateLang::Haml, haml, &disabling_haml("A11y/IframeTitle")), ["Html/AnchorHref"]);
+        // Pug's tags, with its own settings; a `doctype xml` template isn't HTML.
+        let pug = "a x\niframe\n";
+        assert_eq!(codes("row.jst.pug", TemplateLang::Pug, pug, &options), both);
+        let pug_off = Options::from_init(Some(&serde_json::json!({ "pug": { "disabledDiagnostics": ["Html/AnchorHref"] } }))).0;
+        assert_eq!(codes("row.jst.pug", TemplateLang::Pug, pug, &pug_off), ["A11y/IframeTitle"]);
+        assert!(codes("feed.pug", TemplateLang::Pug, &format!("doctype xml\n{pug}"), &options).is_empty());
+        // Past a lone `\r` the positions, and the quick fixes' edits, would land on the wrong line.
+        assert!(codes("row.jst.pug", TemplateLang::Pug, "a x\riframe\r", &options).is_empty());
     }
 
     #[test]
@@ -660,6 +695,13 @@ mod tests {
         // Every check carries a code, or the setting can't turn it off.
         assert!(!codes(erb_path, TemplateLang::Erb, include_str!("../../test/broken/bad.html.erb"), &all).is_empty());
         assert!(!codes(haml_path, TemplateLang::Haml, include_str!("../../test/broken/bad.html.haml"), &all).is_empty());
+        // Pug gets its own syntax errors and none of the Rails checks, which would misread its JavaScript.
+        let pug_path = "file:///v/app/views/users/row.jst.pug";
+        let pug = "- render(\"users/missing\")\np\n   a\n  b\n";
+        assert_eq!(codes(pug_path, TemplateLang::Pug, pug, &all), [pug::code::INCONSISTENT_INDENT]);
+        let pug_off =
+            Options::from_init(Some(&serde_json::json!({ "pug": { "disabledDiagnostics": [pug::code::INCONSISTENT_INDENT] } }))).0;
+        assert!(codes(pug_path, TemplateLang::Pug, pug, &pug_off).is_empty());
     }
 
     #[test]
@@ -698,6 +740,7 @@ mod tests {
             ("slim", TemplateLang::Slim),
             ("jbuilder", TemplateLang::Ruby),
             ("liquid", TemplateLang::Liquid),
+            ("pug", TemplateLang::Pug),
         ] {
             let items = items(section);
             let listed: BTreeSet<&str> = items["enum"].as_array().unwrap().iter().map(|c| c.as_str().unwrap()).collect();
@@ -722,6 +765,7 @@ mod tests {
             include_str!("haml/indent.rs"),
             include_str!("slim/indent.rs"),
             include_str!("liquid.rs"),
+            include_str!("pug.rs"),
         ] {
             assert!(!literal.is_match(src.split("#[cfg(test)]").next().unwrap()), "coded(…, \"literal\")");
         }

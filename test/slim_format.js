@@ -1,10 +1,11 @@
-// The Slim and Haml formatters must never change what the template compiles to: compile each fixture with the slim
-// or haml gem before and after formatting and compare. Skipped when the gem is missing.
+// The Slim, Haml and Pug formatters must never change what the template compiles to: compile each fixture with the slim
+// or haml gem, or render it with `pug`, before and after formatting and compare. Slim and Haml are skipped without their gem.
 import assert from "assert";
 import { execFileSync, spawnSync } from "child_process";
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { loadPug } from "./oracle/pug.js";
 
 const cli =
   process.env.RUBY_TEMPLATES ??
@@ -91,6 +92,35 @@ function checkHaml() {
   console.log("haml formatting keeps compiled output ok");
 }
 
+// The fixtures define their data, so they render without locals; `:keep` is a filter that outputs its text as written.
+function checkPug({ pug }) {
+  for (const name of fs.readdirSync(dir).filter((f) => f.endsWith(".pug"))) {
+    const file = path.join(dir, name);
+    const source = fs.readFileSync(file, "utf8");
+    const render = (text) =>
+      pug.render(text, { filename: file, filters: { keep: (text) => text } });
+    const run = formatStdin(name, source);
+    assert.strictEqual(run.status, 0, `${name}: ${run.stderr}`);
+    assert.notStrictEqual(
+      run.stdout,
+      source,
+      `${name}: fixture should need formatting`,
+    );
+    assert.strictEqual(
+      render(run.stdout),
+      render(source),
+      `${name}: rendered output changed`,
+    );
+    assert.strictEqual(
+      formatStdin(name, run.stdout).stdout,
+      run.stdout,
+      `${name}: not idempotent`,
+    );
+  }
+  console.log("pug formatting keeps rendered output ok");
+}
+
+checkPug(loadPug());
 if (hasGem("slim")) checkSlim();
 else console.log("slim formatting: skipped (`ruby -rslim` unavailable)");
 if (hasGem("haml")) checkHaml();

@@ -6,6 +6,9 @@ use tower_lsp_server::ls_types::{
 };
 
 pub const BOM: char = '\u{feff}';
+/// The stack of a thread that checks or formats templates, a main thread's usual one: Prism and the template walkers
+/// recurse with the nesting of the code, Pug's down to `pug::MAX_DEPTH` levels.
+pub const THREAD_STACK: usize = 8 << 20;
 
 /// `path` with `/` separators on every platform, the form render names and Rails paths take.
 pub fn slash_path(path: &Path) -> String {
@@ -23,6 +26,21 @@ fn without_verbatim_drive(path: PathBuf) -> PathBuf {
     let Some(std::path::Component::Prefix(prefix)) = components.next() else { return path };
     let std::path::Prefix::VerbatimDisk(drive) = prefix.kind() else { return path };
     PathBuf::from(format!("{}:{}", drive as char, components.as_path().display()))
+}
+
+/// `path` with its `.` and `..` parts worked out without reading the disk, as Node's `path.join` does.
+pub fn lexically_normal(path: &Path) -> PathBuf {
+    let mut normal = PathBuf::new();
+    for part in path.components() {
+        match part {
+            std::path::Component::ParentDir => {
+                normal.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => normal.push(other),
+        }
+    }
+    normal
 }
 
 /// Convert a byte offset within `text` to an LSP position (line, UTF-16 column); for many offsets, use one `LineIndex`.

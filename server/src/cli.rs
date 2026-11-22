@@ -24,8 +24,6 @@ use tower_lsp_server::ls_types::{DiagnosticSeverity, Range, Uri};
 const OK: i32 = 0;
 const FINDINGS: i32 = 1;
 const USAGE: i32 = 2;
-/// The main thread's usual stack: Prism and the template walkers recurse with the nesting of the code.
-const WORKER_STACK: usize = 8 << 20;
 
 const HELP: &str = "\
 Usage:
@@ -34,14 +32,16 @@ Usage:
   ruby-templates format [--check | --write] [--format text|github] [--verbose] [--align-comments] <files|dirs>...
   ruby-templates format [--check] [--format text|github] [--verbose] [--align-comments] --stdin-filepath <path> [-]
 
-check   prints the diagnostics of ERB, Haml, Slim, Jbuilder and Builder templates (for Jbuilder and Builder, partials and
-        locals, not Ruby syntax errors), and with Layout/LineLength (off) the lines over its max.
-format  re-indents HTML ERB, Haml and Slim templates and fixes trailing whitespace. The rules Layout/EmptyLines,
+check   prints the diagnostics of ERB, Haml, Slim, Pug, Jbuilder and Builder templates (for Pug, its own errors, includes
+        and the HTML rules; for Jbuilder and Builder, partials and locals, not Ruby syntax errors), and with
+        Layout/LineLength (off) the lines over its max.
+format  re-indents HTML ERB, Haml, Slim and Pug templates and fixes trailing whitespace. The rules Layout/EmptyLines,
         Layout/EmptyLinesAroundBlockBody, Layout/EmptyLinesAroundElementBody and Layout/EmptyLinesAroundBranches (all
-        off) and Layout/TrailingEmptyLines (on for Haml and Slim, off for ERB) set blank lines and the final newline.
+        off; not Pug) and Layout/TrailingEmptyLines (on for Haml, Slim and Pug, off for ERB) set blank lines and the
+        final newline.
         Layout/SpaceInsideErbTag, Layout/SpaceInHtmlTag, Style/ErbCommentSyntax and Layout/SpaceAfterScriptMarker
         (all off) set spaces inside ERB and HTML tags and after Haml and Slim script markers. Layout/IndentationStyle
-        (ERB; spaces unless .editorconfig or its style say tabs) and Layout/TrailingWhitespace (on) set the indent
+        (ERB and Pug; spaces unless .editorconfig or its style say tabs) and Layout/TrailingWhitespace (on) set the indent
         character and whether line-end whitespace goes. Turbo/PreferTurboAttributes (off) renames the Rails UJS
         attributes data-confirm, data-method and data-disable-with to Turbo's. Style/AttributeQuotes, Style/BooleanAttributes,
         Style/VoidTagClosing and Style/TagNameCase (all off) set attribute quotes, boolean attributes, the end of void
@@ -274,7 +274,7 @@ fn check(paths: &[PathBuf], format: Format) -> i32 {
                 }
             };
             // A thread the system refuses still gets its share of the files, here.
-            if std::thread::Builder::new().stack_size(WORKER_STACK).spawn_scoped(scope, work.clone()).is_err() {
+            if std::thread::Builder::new().stack_size(crate::util::THREAD_STACK).spawn_scoped(scope, work.clone()).is_err() {
                 work();
             }
         }
@@ -516,7 +516,7 @@ fn format_text(
                 format::format_in(&uri, lang, false, text, &settings, rules.extra_engines(), projects)
             }
         }
-        _ => format::skip(SkipKind::NotHandled, "not an ERB, Haml or Slim template"),
+        _ => format::skip(SkipKind::NotHandled, "not an ERB, Haml, Slim or Pug template"),
     };
     let mut code = OK;
     let formatted = match result {

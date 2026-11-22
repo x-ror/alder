@@ -16,6 +16,9 @@ pub enum TemplateLang {
     Ruby,
     /// Liquid (Rails `liquid` gem, Jekyll, Shopify): its own file lookups and tag checks; none of the Rails features apply.
     Liquid,
+    /// Pug (`pug-rails` JST and plain `.pug`), attached through VS Code's `jade` id: its code is JavaScript, so none of the
+    /// Rails features apply.
+    Pug,
 }
 
 impl TemplateLang {
@@ -26,6 +29,7 @@ impl TemplateLang {
             Some("slim") => return Some(Self::Slim),
             Some("skim") => return Some(Self::Skim),
             Some("liquid") => return Some(Self::Liquid),
+            Some("jade") => return Some(Self::Pug),
             _ => {}
         }
         Self::from_file_name(uri.path().as_str())
@@ -47,9 +51,16 @@ impl TemplateLang {
             Some(Self::Skim)
         } else if path.ends_with(".liquid") {
             Some(Self::Liquid)
+        } else if path.ends_with(".pug") || path.ends_with(".jade") {
+            Some(Self::Pug)
         } else {
             None
         }
+    }
+
+    /// Liquid and Pug code isn't Ruby that Rails renders: every Rails lookup would misfire on it.
+    pub fn uses_rails(self) -> bool {
+        !matches!(self, Self::Liquid | Self::Pug)
     }
 }
 
@@ -219,6 +230,16 @@ mod tests {
         for name in ["file:///t/sections/header.liquid", "file:///t/page.html.LIQUID"] {
             assert_eq!(TemplateLang::from_uri_or_id(&name.parse::<Uri>().unwrap(), None), Some(TemplateLang::Liquid), "{name}");
         }
+    }
+
+    #[test]
+    fn pug_by_id_or_extension() {
+        let untitled = "untitled:Untitled-1".parse::<Uri>().unwrap();
+        assert_eq!(TemplateLang::from_uri_or_id(&untitled, Some("jade")), Some(TemplateLang::Pug));
+        for name in ["file:///a/app/assets/templates/users/card.jst.pug", "file:///a/views/index.PUG", "file:///a/old.jade"] {
+            assert_eq!(TemplateLang::from_uri_or_id(&name.parse::<Uri>().unwrap(), None), Some(TemplateLang::Pug), "{name}");
+        }
+        assert!(!TemplateLang::Pug.uses_rails() && !TemplateLang::Liquid.uses_rails() && TemplateLang::Erb.uses_rails());
     }
 
     #[test]

@@ -6,7 +6,13 @@ const dir = path.join(import.meta.dirname, "../snippets");
 // An unescaped `$` that isn't a tabstop/variable silently breaks a snippet (e.g. Ruby's `$stdout`).
 const strayDollar =
   /(?<!\\)\$(?![0-9{]|TM_|CLIPBOARD|CURRENT_|RANDOM|LINE_COMMENT|BLOCK_COMMENT|WORKSPACE_)/;
+const registered = new Set(
+  JSON.parse(
+    fs.readFileSync(path.join(import.meta.dirname, "../package.json"), "utf8"),
+  ).contributes.snippets.map(({ path: file }) => path.basename(file)),
+);
 for (const file of fs.readdirSync(dir).filter((f) => f.endsWith(".json"))) {
+  assert(registered.has(file), `${file}: not in package.json snippets`);
   const seen = new Set();
   for (const [name, { prefix, body }] of Object.entries(
     JSON.parse(fs.readFileSync(path.join(dir, file), "utf8")),

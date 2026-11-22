@@ -3,7 +3,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export type Language = "erb" | "haml" | "slim" | "jbuilder" | "liquid";
+export type Language = "erb" | "haml" | "slim" | "jbuilder" | "liquid" | "pug";
 
 export const LANGUAGE_NAMES: Record<Language, string> = {
   erb: "ERB",
@@ -11,6 +11,7 @@ export const LANGUAGE_NAMES: Record<Language, string> = {
   slim: "Slim",
   jbuilder: "Jbuilder",
   liquid: "Liquid",
+  pug: "Pug",
 };
 
 export interface Diagnostic {
@@ -106,10 +107,10 @@ export const diagnostics: Diagnostic[] = [
   },
   {
     code: "Html/ImgAlt",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     summary: "An image without alt text.",
     explanation:
-      'Fires for an `<img>` (`%img` in Haml, `img` in Slim) with no `alt` attribute and for an `image_tag` call whose options have no `alt:`; that one reads "`image_tag` without `alt:`". In ERB the call must be in an output tag. Not reported for an `<img>` with ERB where attributes go (`<img <%= attrs %>>`), a Haml `**attrs` or a Slim `*attrs`, an `image_tag` given a `**splat`, or `generator-unable-to-provide-required-alt`, since each may supply the text. An empty `alt=""` counts as alt text. Templates that output HTML only: not `.js.erb`, `.text.erb` or `.xml.haml`.',
+      'Fires for an `<img>` (`%img` in Haml, `img` in Slim and Pug) with no `alt` attribute and for an `image_tag` call whose options have no `alt:`; that one reads "`image_tag` without `alt:`". In ERB the call must be in an output tag. Not reported for an `<img>` with ERB where attributes go (`<img <%= attrs %>>`), a Haml `**attrs`, a Slim `*attrs` or a Pug `&attributes(…)`, an `image_tag` given a `**splat`, or `generator-unable-to-provide-required-alt`, since each may supply the text. An empty `alt=""` counts as alt text. Templates that output HTML only: not `.js.erb`, `.text.erb` or `.xml.haml`.',
     example: {
       file: "app/views/users/show.html.erb",
       lang: "erb",
@@ -123,7 +124,7 @@ export const diagnostics: Diagnostic[] = [
   },
   {
     code: "Html/DuplicateId",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     summary: "The same static id twice in one template.",
     explanation:
       "Reported at the second occurrence, naming the line of the first. Only literal values count: an id holding ERB or interpolation is left alone, and so is an element with both `#id` and `id:` in Haml (it gets one joined id). Two ids in different branches of a conditional don't clash, and content inside `<template>` isn't in the document yet. In Haml and Slim, ids are also left alone when one of them sits in a conditional, a loop or a block that the other is not in. Templates that output HTML only.",
@@ -162,7 +163,7 @@ export const diagnostics: Diagnostic[] = [
   },
   {
     code: "Html/AnchorHref",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     summary:
       "An `<a>` without an `href`, which is not a link and cannot be reached with the keyboard.",
     explanation:
@@ -180,7 +181,7 @@ export const diagnostics: Diagnostic[] = [
   },
   {
     code: "Html/NestedInteractive",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     summary:
       "An interactive element inside another: a link in a link, a form in a form.",
     explanation:
@@ -200,7 +201,7 @@ export const diagnostics: Diagnostic[] = [
   },
   {
     code: "A11y/IframeTitle",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     summary:
       "An `<iframe>` without a `title`, which screen readers use to name it.",
     explanation:
@@ -218,7 +219,7 @@ export const diagnostics: Diagnostic[] = [
   },
   {
     code: "A11y/GenericLinkText",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     summary:
       'Link text that says nothing out of context: "click here", "here", "read more".',
     explanation:
@@ -426,10 +427,10 @@ export const diagnostics: Diagnostic[] = [
   },
   {
     code: "Html/VoidChildren",
-    languages: ["haml", "slim"],
+    languages: ["haml", "slim", "pug"],
     summary: "Content inside a void element such as `img` or `input`.",
     explanation:
-      'Void elements have no end tag, so the content would end up after them. Haml reports content on the tag\'s line or nested under it. Slim reports lines nested under a void element, and "Unexpected indentation" under a tag closed with `/`. In Slim it applies to HTML templates only, not to `.xml.slim` and other formats.',
+      "Void elements have no end tag, so the content would end up after them. Haml reports content on the tag's line or nested under it. Slim reports lines nested under a void element, and \"Unexpected indentation\" under a tag closed with `/`. In Slim it applies to HTML templates only, not to `.xml.slim` and other formats. Pug refuses to compile a void element, or a tag closed with `/`, that holds anything but blank text; that is reported as an error with Pug's own message, at the first such tag. A tag closed with `/` counts whatever its name, `#{…}` too; a void element doesn't after a `doctype xml`, until a `doctype` with another name.",
     example: {
       file: "app/views/users/show.html.slim",
       lang: "slim",
@@ -546,6 +547,207 @@ export const diagnostics: Diagnostic[] = [
     message: "`endfor` doesn't close the open `if` tag; Liquid expects `endif`",
     line: 3,
     column: 1,
+  },
+  {
+    code: "Syntax/PugInconsistentIndent",
+    languages: ["pug"],
+    summary: "Indentation Pug can't follow, or tabs and spaces mixed.",
+    explanation:
+      'Pug raises `PUG:INCONSISTENT_INDENTATION` for a line un-indented to a level no open line has, and `PUG:INVALID_INDENTATION` ("Invalid indentation, you can use tabs or spaces but not both") for a line indented with the other character than the lines before it. The template doesn\'t compile. Like every Pug error, only the first one is reported, at the line and column Pug gives: Pug stops there.',
+    example: {
+      file: "app/assets/templates/users/list.jst.pug",
+      lang: "pug",
+      code: `ul.users
+    li= user.name
+  li= user.email
+`,
+    },
+    message: "Inconsistent indentation. Expecting either 0 or 4 spaces/tabs.",
+    line: 3,
+    column: 1,
+  },
+  {
+    code: "Syntax/PugUnclosedBracket",
+    languages: ["pug"],
+    summary:
+      "An attribute list, interpolation or expression whose bracket is never closed, or closed by the wrong one.",
+    explanation:
+      "Pug raises `PUG:NO_END_BRACKET` when an attribute list `(…)`, the arguments of a mixin call or of `&attributes(…)`, or a `#{…}` or `#[…]` interpolation runs to the end of the line or the file, and `PUG:BRACKET_MISMATCH` when a bracket inside it is closed by another kind. The JavaScript inside is not otherwise checked.",
+    example: {
+      file: "app/assets/templates/users/nav.jst.pug",
+      lang: "pug",
+      code: `li(class={active: user.active) Profile
+`,
+    },
+    message: "Mismatched Bracket: )",
+    line: 1,
+    column: 30,
+  },
+  {
+    code: "Syntax/PugInvalidName",
+    languages: ["pug"],
+    summary: "A `#id` or `.class` that isn't a valid name.",
+    explanation:
+      'Pug raises `PUG:INVALID_ID` or `PUG:INVALID_CLASS_NAME`: an id may hold letters, digits, `_` and `-`, and a class name the same with at least one letter or `_`. Use an attribute for any other value: `div(class="6")`.',
+    example: {
+      file: "app/assets/templates/users/row.jst.pug",
+      lang: "pug",
+      code: `.grid
+  .col.6 Name
+`,
+    },
+    message: "Class names must contain at least one letter or underscore.",
+    line: 2,
+    column: 7,
+  },
+  {
+    code: "Syntax/PugDuplicateAttribute",
+    languages: ["pug"],
+    summary: "An attribute given twice on one tag, `id` included.",
+    explanation:
+      "Pug raises `PUG:DUPLICATE_ATTRIBUTE`, or `PUG:DUPLICATE_ID` for a `#id` shorthand after an `id` attribute; the template doesn't compile. `class` is the exception: Pug joins several classes.",
+    example: {
+      file: "app/assets/templates/users/form.jst.pug",
+      lang: "pug",
+      code: `input#email(type="email" id="user-email")
+`,
+    },
+    message: 'Duplicate attribute "id" is not allowed.',
+    line: 1,
+    column: 26,
+  },
+  {
+    code: "Syntax/PugMalformedKeyword",
+    languages: ["pug"],
+    summary:
+      "A keyword such as `each`, `case` or `include` without the expression or path it needs, or with one it can't take.",
+    explanation:
+      "Pug raises `PUG:MALFORMED_EACH` (`each user from users`, or `- each` with a dash), `PUG:MALFORMED_EACH_OF_LVAL` (an `each … of` whose variable is neither a name nor a `[key, value]` pair; Pug tries `each … of` first, so `each offer in offers` is one, as ` of` starts `offers`), `PUG:NO_CASE_EXPRESSION`, `PUG:NO_WHEN_EXPRESSION`, `PUG:NO_WHILE_EXPRESSION`, `PUG:NO_INCLUDE_PATH`, `PUG:NO_EXTENDS_PATH`, `PUG:MALFORMED_INCLUDE`, `PUG:MALFORMED_EXTENDS`, `PUG:DEFAULT_WITH_EXPRESSION` and `PUG:ELSE_CONDITION` (`else x`, where `else if x` was meant).",
+    example: {
+      file: "app/assets/templates/users/list.jst.pug",
+      lang: "pug",
+      code: `each user from users
+  li= user.name
+`,
+    },
+    message:
+      "This `each` has a syntax error. `each` statements should be of the form: `each VARIABLE_NAME of JS_EXPRESSION`",
+    line: 1,
+    column: 5,
+  },
+  {
+    code: "Syntax/PugIllegalNesting",
+    languages: ["pug"],
+    summary:
+      "Lines nested under buffered code or a raw include, which can't hold them.",
+    explanation:
+      "Pug raises `PUG:BLOCK_IN_BUFFERED_CODE` for lines indented under a `= code` or `!= code` line, and `PUG:RAW_INCLUDE_BLOCK` for lines under an `include` of a file that isn't Pug. Unbuffered `- code` may hold a block.",
+    example: {
+      file: "app/assets/templates/users/list.jst.pug",
+      lang: "pug",
+      code: `ul
+  = user.name
+    li admin
+`,
+    },
+    message: "Buffered code cannot have a block attached to it",
+    line: 3,
+    column: 1,
+  },
+  {
+    code: "Syntax/PugTemplate",
+    languages: ["pug"],
+    summary: "Any other error the Pug parser raises.",
+    explanation:
+      "Pug's lexer and parser errors that belong to no other code, such as `PUG:UNEXPECTED_TEXT`, `PUG:INVALID_TOKEN`, `PUG:MIXIN_WITHOUT_BODY` and `PUG:BLOCK_OUTISDE_MIXIN` (an anonymous `block` outside a mixin), with Pug's message. A few templates make Pug itself throw a JavaScript error (a `#` with nothing after it, a lone `.` under a tag); that error's message is reported. Nesting more than 256 levels deep (tags, `#[…]`, block expansion, `if`, `else if`, loops, `case`) is reported here too, as \"Nested more than 256 levels deep, which isn't checked\", and the template is checked no further; Pug itself runs out of stack some hundreds of levels deeper. The JavaScript in `- code`, `#{}` and attribute values is not checked, so Pug's `PUG:SYNTAX_ERROR` is never reported.",
+    example: {
+      file: "app/assets/templates/users/badge.jst.pug",
+      lang: "pug",
+      code: `mixin badge
+p Hello
+`,
+    },
+    message: "Mixin badge declared without body",
+    line: 1,
+    column: 1,
+  },
+  {
+    code: "Syntax/PugMissingFile",
+    languages: ["pug"],
+    summary: "An `include` or `extends` of a file that doesn't exist.",
+    explanation:
+      "Pug reads the file when it compiles the template and fails when it isn't there. A path without an extension gets `.pug`, so `include row` never finds pug-rails' `row.jst.pug`: write `include row.jst.pug`. A relative path starts from the template's folder; an absolute one (`/shared/nav`) from `app/assets/templates`, else `app/assets/javascripts`, standing in for the `basedir` option, and isn't checked when neither exists. Here `users/row.jst.pug` and `layout.pug` exist.",
+    example: {
+      file: "app/assets/templates/users/show.jst.pug",
+      lang: "pug",
+      code: `extends ../layout
+block content
+  include row
+`,
+    },
+    message: "Missing file app/assets/templates/users/row.pug",
+    line: 3,
+    column: 11,
+  },
+  {
+    code: "Syntax/PugExtendsNotFirst",
+    languages: ["pug"],
+    summary:
+      "An `extends` that isn't the template's first statement, or a second one.",
+    explanation:
+      "pug-linker raises `PUG:EXTENDS_NOT_FIRST` with this message. Blank lines and `//-` comments may come before `extends`, since Pug drops them; a `doctype`, a `//` comment (it is output) or a `mixin` may not. The layout's `doctype` belongs in the layout.",
+    example: {
+      file: "app/assets/templates/users/show.jst.pug",
+      lang: "pug",
+      code: `doctype html
+extends ../layout
+`,
+    },
+    message:
+      'Declaration of template inheritance ("extends") should be the first thing in the file. There can only be one extends statement per file.',
+    line: 2,
+    column: 1,
+  },
+  {
+    code: "Syntax/PugUnexpectedBlock",
+    languages: ["pug"],
+    summary: "A `block` of an extending template that its layouts don't have.",
+    explanation:
+      "pug-linker raises `PUG:UNEXPECTED_BLOCK` for a block at the top level of an extending template, `append` and `prepend` included, whose name isn't in its layout once linked: no layout up the `extends` chain has it (with the files they include), a layout that replaces a block drops the blocks that block held, and a block the template nests in another counts only inside one the layout has. Blocks of a file the template includes at its top level count as its own and are reported on the `include` line. Not reported when a file on the way is missing, has a syntax error or includes itself. Here `layout.pug` has `block content` only.",
+    example: {
+      file: "app/assets/templates/users/index.jst.pug",
+      lang: "pug",
+      code: `extends ../layout
+block content
+  ul.users
+block sidebar
+  p Filters
+`,
+    },
+    message: "Unexpected block sidebar",
+    line: 4,
+    column: 1,
+  },
+  {
+    code: "Syntax/PugUnknownMixin",
+    languages: ["pug"],
+    summary:
+      "A `+mixin` call with no definition in the template, the files it includes or its layouts.",
+    explanation:
+      "Pug compiles the call and fails when the template renders (`pug_mixins.usr is not a function`). A template that another one includes or extends may call that one's mixins, so the call is only reported in a template inside an `app/` folder that no Pug file in it pulls in, and when every file it includes and extends is there and parses. A `+#{name}` call is never reported. Here `mixins.pug` defines `mixin user(user)`.",
+    example: {
+      file: "app/assets/templates/users/list.jst.pug",
+      lang: "pug",
+      code: `include ../mixins
+ul
+  each user in users
+    +usr(user)
+`,
+    },
+    message:
+      "Mixin `usr` is not defined here, in an included file or in a layout",
+    line: 4,
+    column: 5,
   },
   {
     code: "Syntax/Ruby",
@@ -868,7 +1070,7 @@ export const diagnostics: Diagnostic[] = [
   },
   {
     code: "Layout/LineLength",
-    languages: ["erb", "haml", "slim"],
+    languages: ["erb", "haml", "slim", "pug"],
     summary: "A line longer than the limit.",
     explanation:
       "Every line over `max` characters (100 unless set) is reported from the first character past the limit. Characters are counted, a tab is one, trailing whitespace is not counted, and a line that cannot be made shorter is skipped: one with no space after its indentation, such as a long URL, and the `# locals:` comment of strict locals. Off by default: turn it on with `enabled = true` under `[Layout.LineLength]` in .ruby-templates.toml, where `max` sets the limit.",

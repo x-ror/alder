@@ -5,7 +5,7 @@ sidebar:
   order: 1
 ---
 
-Ruby Templates is one VS Code extension for Rails views in ERB, Haml and Slim. It highlights your templates, finds errors as you type, formats them, and understands your Rails app: partials, components, helpers, routes, instance variables, translations and Stimulus controllers.
+Ruby Templates is one VS Code extension for Rails views in ERB, Haml and Slim. It highlights your templates, finds errors as you type, formats them, and understands your Rails app: partials, components, helpers, routes, instance variables, translations and Stimulus controllers. Pug and Liquid templates get checks, navigation and editing help without the Rails features; see [File types](/vscode-ruby-templates/guides/file-types/).
 
 ## Install
 

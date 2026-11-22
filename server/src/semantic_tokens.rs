@@ -24,7 +24,7 @@ fn type_index(kind: LocalKind) -> u32 {
 
 /// Whether the language compiles to Ruby this module reads; others are left to other servers.
 pub fn supports(lang: TemplateLang) -> bool {
-    !matches!(lang, TemplateLang::Skim | TemplateLang::Ruby | TemplateLang::Liquid)
+    !matches!(lang, TemplateLang::Skim | TemplateLang::Ruby | TemplateLang::Liquid | TemplateLang::Pug)
 }
 
 /// The tokens of the template `text`, delta-encoded in document order.

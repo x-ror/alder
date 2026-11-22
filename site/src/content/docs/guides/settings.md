@@ -27,10 +27,12 @@ Editor settings for one template language use its language id, such as `[erb]`, 
 | `rubyTemplates.haml.disabledDiagnostics`     | `[]`    | Built-in Haml diagnostics to turn off, by rule name.                                         |
 | `rubyTemplates.jbuilder.disabledDiagnostics` | `[]`    | Built-in diagnostics to turn off in Jbuilder and Builder views, by rule name.                |
 | `rubyTemplates.liquid.disabledDiagnostics`   | `[]`    | Built-in Liquid diagnostics to turn off, by rule name.                                       |
+| `rubyTemplates.pug.disabledDiagnostics`      | `[]`    | Built-in Pug diagnostics to turn off, by rule name.                                          |
 | `rubyTemplates.slim.disabledDiagnostics`     | `[]`    | Built-in Slim diagnostics to turn off, by rule name.                                         |
 | `rubyTemplates.erb.diagnostics.enabled`      | `true`  | Show the language server's diagnostics in ERB files. Turn off to silence them all.           |
 | `rubyTemplates.haml.diagnostics.enabled`     | `true`  | Show the language server's diagnostics in Haml files. Turn off to silence them all.          |
 | `rubyTemplates.slim.diagnostics.enabled`     | `true`  | Show the language server's diagnostics in Slim and Skim files. Turn off to silence them all. |
+| `rubyTemplates.pug.diagnostics.enabled`      | `true`  | Show the language server's diagnostics in Pug files. Turn off to silence them all.           |
 
 Each `disabledDiagnostics` setting takes the rule names of that language's checks (`Html/ImgAlt`); the [diagnostics reference](/vscode-ruby-templates/reference/diagnostics/) lists them. A rule that a `.ruby-templates.toml` enables with `enabled = true` stays on even when the list names it; the file's `enabled = false` also applies. [Errors as you type](/vscode-ruby-templates/guides/checks/#turning-checks-off) shows examples.
 
@@ -42,6 +44,7 @@ Each `disabledDiagnostics` setting takes the rule names of that language's check
 | `rubyTemplates.erb.format.alignComments` | `false` | Move the lines inside an ERB template's HTML comments (`<!-- … -->`) and multi-line `<%# … %>` comments with the line the comment opens on, keeping their relative indentation. Off: those lines keep their bytes. |
 | `rubyTemplates.haml.format.enabled`      | `true`  | Let the language server format Haml files (Format Document and Format Selection). Turn off for no edits.                                                                                                           |
 | `rubyTemplates.slim.format.enabled`      | `true`  | Let the language server format Slim and Skim files (Format Document and Format Selection). Turn off for no edits.                                                                                                  |
+| `rubyTemplates.pug.format.enabled`       | `true`  | Let the language server format Pug files (Format Document: indentation, trailing whitespace, final newline). Turn off for no edits.                                                                                |
 
 The indentation width isn't a setting of its own: it comes from the editor's tab size, then `.editorconfig`, then 2. See [Formatting](/vscode-ruby-templates/guides/formatting/#indentation-width-and-line-endings).
 

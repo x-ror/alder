@@ -21,7 +21,7 @@ npm install --save-dev @x-ror/ruby-templates
 npx ruby-templates check app/views
 ```
 
-`check` prints the diagnostics (errors and warnings) of ERB, Haml, Slim, Jbuilder and Builder templates, one per line with the file, line and column. Jbuilder and Builder views are plain Ruby: `check` reports their partial and `locals:` problems, as the editor does, and leaves their Ruby syntax errors to Ruby LSP or `ruby -c`:
+`check` prints the diagnostics (errors and warnings) of ERB, Haml, Slim, Pug, Jbuilder and Builder templates, one per line with the file, line and column. Pug templates get Pug's own errors, their `include` and `extends` checks and the HTML rules, none of the Rails ones. Jbuilder and Builder views are plain Ruby: `check` reports their partial and `locals:` problems, as the editor does, and leaves their Ruby syntax errors to Ruby LSP or `ruby -c`:
 
 ```text
 app/views/users/index.html.erb:4:3: error: unexpected end-of-input, assuming it is closing the parent top level context [Syntax/Ruby]
@@ -56,7 +56,7 @@ npx ruby-templates format --verbose --check app/views   # also the settings and 
 
 ## Configuration
 
-Both commands read the `.ruby-templates.toml` files above each template, as the editor does: rules turned off, files excluded, `[erb] format.enabled = false`, `format.align_comments`, `extra_engines`. The [rules reference](/vscode-ruby-templates/reference/rules/#configuration) describes the file. `format` prints a file's problems once on standard error and fails only with `--check`, never when it prints the result for an editor (`--check --format github` annotates them). `format --verbose` also prints each file read; an excluded file is reported as `left unchanged: excluded by <file>`.
+Both commands read the `.ruby-templates.toml` files above each template, as the editor does: rules turned off, files excluded, `[erb] format.enabled = false` (also `[haml]`, `[slim]`, `[pug]`), `format.align_comments`, `extra_engines`. The [rules reference](/vscode-ruby-templates/reference/rules/#configuration) describes the file. `format` prints a file's problems once on standard error and fails only with `--check`, never when it prints the result for an editor (`--check --format github` annotates them). `format --verbose` also prints each file read; an excluded file is reported as `left unchanged: excluded by <file>`.
 
 ## Files and folders
 

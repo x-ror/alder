@@ -152,6 +152,69 @@ try {
   );
   fs.unlinkSync(liquid);
 
+  // Pug code is JavaScript: no Rails checks, only Pug's own errors and the HTML rules; its formatter does whitespace.
+  const pug = file(
+    "row.jst.pug",
+    '- render("users/missing")\nimg(src="x" alt="")\n',
+  );
+  r = run(["check", pug]);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.strictEqual(r.stdout, "", "valid Pug has nothing to report");
+  const avatar = file("avatar.jst.pug", 'img(src="x")\n');
+  r = run(["check", avatar]);
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+  assert.match(
+    r.stdout,
+    /avatar\.jst\.pug:1:1: warning: `<img>` without `alt`: .* \[Html\/ImgAlt\]/,
+  );
+  fs.unlinkSync(avatar);
+  const brokenPug = file("cell.pug", "td\n    span\n  b\n");
+  r = run(["check", brokenPug]);
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+  assert.match(
+    r.stdout,
+    /cell\.pug:3:1: error: Inconsistent indentation\. Expecting either 0 or 4 spaces\/tabs\. \[Syntax\/PugInconsistentIndent\]/,
+  );
+  r = run(["check", views]);
+  assert.match(r.stdout, /cell\.pug:3:1: /, "a folder's Pug is checked");
+  assert.doesNotMatch(r.stdout, /row\.jst\.pug/);
+  fs.unlinkSync(brokenPug);
+  // `include row` reads row.pug, not pug-rails' row.jst.pug next to it.
+  const including = file("list.jst.pug", "ul\n  include row\n");
+  r = run(["check", including]);
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+  assert.match(
+    r.stdout,
+    /list\.jst\.pug:2:11: error: Missing file app\/views\/users\/row\.pug \[Syntax\/PugMissingFile\]/,
+  );
+  fs.writeFileSync(including, "ul\n  include row.jst.pug\n");
+  r = run(["check", including]);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  fs.unlinkSync(including);
+  fs.writeFileSync(
+    pug,
+    "tr\n    td= name  \n    td.\n        a  \n          b\n\n",
+  );
+  r = run(["format", pug]);
+  assert.strictEqual(r.status, 0, r.stderr);
+  const pugFormatted = "tr\n  td= name\n  td.\n    a  \n      b\n";
+  assert.strictEqual(r.stdout, pugFormatted, "re-indented, text kept");
+  r = run(["format", "--check", pug]);
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stdout, /row\.jst\.pug/);
+  assert.strictEqual(run(["format", "--write", pug]).status, 0);
+  assert.strictEqual(fs.readFileSync(pug, "utf8"), pugFormatted);
+  assert.strictEqual(run(["format", "--check", pug]).status, 0);
+  const rejected = file("odd.jade", "td\n    span\n  b\n");
+  r = run(["format", "--check", rejected]);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.match(
+    r.stderr,
+    /odd\.jade: left unchanged: Pug would reject the file/,
+  );
+  fs.unlinkSync(rejected);
+  fs.unlinkSync(pug);
+
   // Ruby 3.3 rejects a line that starts with `&&`; the latest grammar, used without a project Ruby, takes it.
   const ruby = file("ruby.html.erb", "<% x = a\n  && b %>\n");
   r = run(["check", ruby]);

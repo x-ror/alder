@@ -1,6 +1,7 @@
-//! Folding ranges and document symbols for ERB templates, and what the Haml and Slim outlines share.
+//! Folding ranges and document symbols for ERB templates, and what the Haml, Slim and Pug outlines share.
 
 pub mod haml;
+pub mod pug;
 pub mod slim;
 
 use crate::erb::tags;
@@ -133,6 +134,21 @@ pub(crate) fn indent_level(line: &str) -> Option<i64> {
         }
     }
     None
+}
+
+/// Last line of the block a structural line opens: its own span, then every following line indented deeper
+/// (trailing blank lines excluded).
+pub(crate) fn block_end(lines: &[&str], i: usize, span: usize) -> usize {
+    let Some(indent) = indent_level(lines[i]) else { return i };
+    let mut end = i + span - 1;
+    for (j, l) in lines.iter().enumerate().skip(i + span) {
+        match indent_level(l) {
+            None => {}
+            Some(level) if level > indent => end = j,
+            Some(_) => break,
+        }
+    }
+    end
 }
 
 /// Outline: `content_for`, forms, Turbo Frames, `render` calls and, with an HTML host, landmark/`id` elements.

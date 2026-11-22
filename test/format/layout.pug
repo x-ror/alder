@@ -1,0 +1,61 @@
+doctype html
+//- The list page: every region where whitespace is content, indented four.
+- var users = [{ name: "Ada", admin: true }, { name: "Linus", admin: false }]
+- var title = "Users"  
+mixin badge(label)
+    span.badge= label  
+    if block
+        block
+html(lang="en")
+    head
+        title= title
+        style.
+              body { margin: 0; }
+                .badge { color: red; }  
+    body
+        // Shown in the page source  
+            more of the comment
+              indented further
+        //- Not in the output  
+            neither is this  
+        header#top(class="site"
+                   data-count=users.length)
+            h1 #{title}  
+        ul
+            each user, i in users  
+                li(class=i % 2 ? "odd" : "even")
+                    | #{user.name}  
+                    if user.admin
+                        +badge("admin")
+                    else
+                        +badge("user")
+                            | nested in the mixin
+        -
+            var total = users.length;
+              var note = `count: ${total}  
+            done`;
+        p.
+            Some text that keeps
+              its own indentation  
+            and its trailing spaces
+        pre.
+                code
+                    deeper
+        case users.length
+            when 0
+                p none
+            when 2
+                p= note  
+            default
+                p many
+        :keep
+            filter text  
+              stays
+        div 
+        <b>inline html</b>  
+        script.
+            var x = 1;
+
+            var y = 2;
+
+

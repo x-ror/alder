@@ -12,10 +12,11 @@ use tower_lsp_server::ls_types::Range;
 pub const FILE_NAME: &str = ".ruby-templates.toml";
 
 /// The language tables, and the keys each takes.
-const LANGUAGE_TABLES: [(&str, &[&str]); 3] = [
+const LANGUAGE_TABLES: [(&str, &[&str]); 4] = [
     ("erb", &["format.enabled", "format.align_comments", "diagnostics.enabled"]),
     ("haml", &["format.enabled", "diagnostics.enabled"]),
     ("slim", &["extra_engines", "format.enabled", "diagnostics.enabled"]),
+    ("pug", &["format.enabled", "diagnostics.enabled"]),
 ];
 /// A key older versions took; it gets a problem that names the replacement.
 const REMOVED_DISABLED_DIAGNOSTICS: &str = "disabled_diagnostics";
@@ -45,7 +46,7 @@ pub struct RuleTable {
     pub lists: Vec<(&'static str, Vec<String>)>,
 }
 
-/// One of `[erb]`, `[haml]`, `[slim]` (Skim too).
+/// One of `[erb]`, `[haml]`, `[slim]` (Skim too), `[pug]`.
 #[derive(Debug, Default)]
 pub struct LanguageTable {
     pub format_enabled: Option<bool>,
