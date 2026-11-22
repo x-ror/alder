@@ -1,4 +1,4 @@
-// Oracle harness: compares the official template engine with ruby-templates. `bun test/oracle.js slim|haml|erb|pug`
+// Oracle harness: compares the official template engine with lamina. `bun test/oracle.js slim|haml|erb|pug`
 // Stage 0 measures today's code, so mismatches don't fail the run; only a broken harness does.
 import { spawn, spawnSync } from "child_process";
 import fs from "fs";
@@ -6,24 +6,24 @@ import os from "os";
 import path from "path";
 import * as pugOracle from "./oracle/pug.js";
 
-// The oracle scripts' `column` (Haml reports none) is a 0-based UTF-16 offset in the line; `ruby-templates check` prints 1-based columns.
+// The oracle scripts' `column` (Haml reports none) is a 0-based UTF-16 offset in the line; `lamina check` prints 1-based columns.
 const COLUMN_TO_CLI = 1;
 const PARALLEL_RUBY_PROCESSES = 8;
 const exe = process.platform === "win32" ? ".exe" : "";
 const bin =
-  process.env.RUBY_TEMPLATES ??
+  process.env.LAMINA ??
   path.join(
     import.meta.dirname,
     "..",
     "server",
     "target",
     "release",
-    `ruby-templates${exe}`,
+    `lamina${exe}`,
   );
 const oracleDir = path.join(import.meta.dirname, "oracle");
 // Absolute, so item paths match the paths `check` prints.
 const cacheDir = path.resolve(
-  process.env.ORACLE_CACHE ?? path.join(os.tmpdir(), "ruby-templates-oracle"),
+  process.env.ORACLE_CACHE ?? path.join(os.tmpdir(), "lamina-oracle"),
 );
 
 const run = (command, args, options = {}) => {
@@ -411,7 +411,7 @@ const compare = (lang, items, official, ours, skip) => {
   return { ...counts, mismatches, formattable, notFormatted };
 };
 
-// `ruby-templates format` of `text` as if it were the file `file`, to stdout: the text, and whether the formatter left it alone.
+// `lamina format` of `text` as if it were the file `file`, to stdout: the text, and whether the formatter left it alone.
 const formatText = (file, text) => {
   const r = run(bin, ["format", "--stdin-filepath", file, "-"], {
     input: text,
@@ -825,7 +825,7 @@ const formatReport = (lang, items, indexes, sample) =>
 // 3a "Ruby": broken variants of compiling files; each Prism error of Rails must be in ours at the same line.
 // A variant that still compiles, or that fails for a reason other than Ruby's syntax, is counted, not compared.
 const breakReport = async (lang, items, indexes, sample) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rt-oracle-break-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lamina-oracle-break-"));
   try {
     // A Rails 8.1.4 project, so the variants get the Rails checks and are named by their path from `dir`.
     fs.writeFileSync(
@@ -1115,7 +1115,7 @@ const suiteReport = async (lang, name) => {
   const skip = (reason) => skipped.set(reason, (skipped.get(reason) ?? 0) + 1);
   all.filter((c) => c.skipped).forEach((c) => skip(c.skipped.split(":")[0]));
 
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rt-oracle-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lamina-oracle-"));
   try {
     const cases = all
       .filter((c) => !c.skipped)
@@ -1131,7 +1131,7 @@ const suiteReport = async (lang, name) => {
 };
 
 const languageReport = async (lang) => {
-  const name = `${lang.title ?? `${lang.gem} ${lang.version}`} vs ruby-templates`;
+  const name = `${lang.title ?? `${lang.gem} ${lang.version}`} vs lamina`;
   if (lang.casesScript) await suiteReport(lang, name);
   for (const [index, corpus] of corpora[lang.name].entries()) {
     if (lang.casesScript || index > 0) console.log();
@@ -1231,7 +1231,7 @@ const contextOfficial = async (fixture, root, template) => {
 };
 
 const contextReport = async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rt-oracle-context-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lamina-oracle-context-"));
   try {
     for (const fixture of contextFixtures) {
       const root = path.join(dir, fixture.dir);
@@ -1335,7 +1335,7 @@ const pugCharColumn = (source, line, column) => {
   return [...text.slice(0, column - 1)].length;
 };
 
-// test/oracle/pug_cases.json and Pug's own test templates through Pug in Node and through `ruby-templates check`: the
+// test/oracle/pug_cases.json and Pug's own test templates through Pug in Node and through `lamina check`: the
 // first error, at the same line and column with the same message. Pug's `PUG:SYNTAX_ERROR` is about the JavaScript,
 // which ours doesn't check, so it is counted apart.
 const pugReport = async () => {
@@ -1348,11 +1348,11 @@ const pugReport = async () => {
     })),
     ...pugOracle.upstreamTemplates(pug),
   ];
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rt-oracle-pug-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lamina-oracle-pug-"));
   // Pug's parser doesn't read the files a template includes or extends, and content in a void element is an error of
   // pug-code-gen, which the oracle doesn't run; ours reports these.
   fs.writeFileSync(
-    path.join(dir, ".ruby-templates.toml"),
+    path.join(dir, ".lamina.toml"),
     [
       "Syntax.PugMissingFile",
       "Syntax.PugExtendsNotFirst",
@@ -1410,7 +1410,7 @@ const pugReport = async () => {
       );
     }
     console.log(
-      `pug ${pug.version} vs ruby-templates  (${items.length.toLocaleString("en-US")} templates)`,
+      `pug ${pug.version} vs lamina  (${items.length.toLocaleString("en-US")} templates)`,
     );
     console.log(
       `errors:  official ${counts.officialErrors}, ours ${counts.oursErrors}, same ${counts.same}`,

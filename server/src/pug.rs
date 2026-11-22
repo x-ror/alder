@@ -11,7 +11,7 @@ use parser::{Alternate, Block, Code, Node, NodeKind};
 use std::path::Path;
 use tower_lsp_server::ls_types::{Diagnostic, Position, Range};
 
-/// Stable diagnostic codes; `rubyTemplates.pug.disabledDiagnostics` refers to these.
+/// Stable diagnostic codes; `lamina.pug.disabledDiagnostics` refers to these.
 pub mod code {
     pub const INCONSISTENT_INDENT: &str = "Syntax/PugInconsistentIndent";
     pub const UNCLOSED_BRACKET: &str = "Syntax/PugUnclosedBracket";
@@ -525,7 +525,7 @@ mod tests {
     /// stack; the check's findings.
     fn every_walk(text: String) -> Vec<(u32, u32, u32, String, String)> {
         let walk = move || {
-            let root = std::env::temp_dir().join(format!("rt-pug-depth-{}", std::process::id()));
+            let root = std::env::temp_dir().join(format!("lamina-pug-depth-{}", std::process::id()));
             crate::util::write_files(&root, &[("layout.pug", "block content\n")]);
             // What an extending template has outside its blocks is linked too.
             let page = root.join("page.pug");

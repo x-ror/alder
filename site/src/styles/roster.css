@@ -1,16 +1,16 @@
 .roster {
   margin-top: 2.5rem;
-  color: var(--rt-ink);
-  font-family: var(--rt-font);
+  color: var(--lamina-ink);
+  font-family: var(--lamina-font);
 }
 
 .roster code {
-  font-family: var(--rt-font-mono);
+  font-family: var(--lamina-font-mono);
   font-size: 0.875em;
 }
 
 .roster a {
-  color: var(--rt-link);
+  color: var(--lamina-link);
   text-underline-offset: 0.18em;
   text-decoration-thickness: 1px;
 }
@@ -23,14 +23,14 @@
 
 .roster__index {
   padding-block: 1.25rem 1.5rem;
-  border-block: 1px solid var(--rt-hairline);
+  border-block: 1px solid var(--lamina-hairline);
 }
 
 .roster__index-title {
   margin: 0 0 1rem;
   font-size: 1rem;
   font-weight: 650;
-  color: var(--rt-ink-muted);
+  color: var(--lamina-ink-muted);
 }
 
 .roster__groups {
@@ -50,7 +50,7 @@
   margin: 0.375rem 0 0;
   padding: 0;
   list-style: none;
-  font-family: var(--rt-font-mono);
+  font-family: var(--lamina-font-mono);
   font-size: 0.875rem;
   line-height: 1.9;
 }
@@ -64,7 +64,7 @@
 .roster__section-title {
   margin: 0;
   padding-top: 1.5rem;
-  border-top: 3px double var(--rt-hairline);
+  border-top: 3px double var(--lamina-hairline);
   font-size: clamp(1.5rem, 1.25rem + 1vw, 2rem);
   font-weight: 760;
   line-height: 1.15;
@@ -77,7 +77,7 @@
 .roster__entry {
   margin-top: 2rem;
   padding-top: 1.75rem;
-  border-top: 1px solid var(--rt-hairline);
+  border-top: 1px solid var(--lamina-hairline);
 }
 
 .roster__section-title + .roster__entry {
@@ -87,7 +87,7 @@
 
 .roster__code {
   margin: 0;
-  font-family: var(--rt-font-mono);
+  font-family: var(--lamina-font-mono);
   font-size: 1.25rem;
   font-weight: 700;
   line-height: 1.3;
@@ -95,7 +95,7 @@
 }
 
 .roster .roster__anchor {
-  color: var(--rt-ink);
+  color: var(--lamina-ink);
   text-decoration: none;
 }
 
@@ -107,7 +107,7 @@
 .roster__summary {
   margin: 0.375rem 0 0;
   font-size: 1.0625rem;
-  color: var(--rt-ink);
+  color: var(--lamina-ink);
 }
 
 .roster__furniture {
@@ -121,7 +121,7 @@
   grid-template-columns: minmax(0, 1fr);
   gap: 0.25rem 1.5rem;
   padding-block: 0.75rem;
-  border-top: 1px solid var(--rt-hairline);
+  border-top: 1px solid var(--lamina-hairline);
 }
 
 @media (min-width: 50rem) {
@@ -133,13 +133,13 @@
 .roster__term {
   font-size: 0.875rem;
   font-weight: 650;
-  color: var(--rt-ink-muted);
+  color: var(--lamina-ink-muted);
 }
 
 .roster__detail {
   margin: 0;
   min-width: 0;
-  color: var(--rt-ink);
+  color: var(--lamina-ink);
   text-wrap: pretty;
 }
 
@@ -147,8 +147,8 @@
   margin: 0;
   padding: 0.625rem 0.875rem;
   overflow-x: auto;
-  background: var(--rt-code-bg);
-  border: 1px solid var(--rt-hairline);
+  background: var(--lamina-code-bg);
+  border: 1px solid var(--lamina-hairline);
   border-radius: 6px;
   font-size: 0.875rem;
   line-height: 1.6;

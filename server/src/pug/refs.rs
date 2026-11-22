@@ -286,7 +286,7 @@ fn unknown_mixins(source: &Source, tree: &Block, current: &Path, linker: &mut Li
 }
 
 /// Per app folder, which templates include or extend which, read from disk on first use: the language server keeps one and
-/// updates it file by file as watched files change, `ruby-templates check` builds one for its run.
+/// updates it file by file as watched files change, `lamina check` builds one for its run.
 #[derive(Default)]
 pub struct Includers(DashMap<PathBuf, Option<AppIncludes>>);
 
@@ -671,7 +671,7 @@ mod tests {
     use crate::util::write_files;
 
     fn temp(name: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("rt-pug-{name}-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-pug-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         root
     }

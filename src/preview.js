@@ -33,7 +33,7 @@ import {
 } from "./render.js";
 
 // The preview command and its webview's type.
-const PREVIEW = "rubyTemplates.preview";
+const PREVIEW = "lamina.preview";
 const STATUS_BAR_PRIORITY = 90;
 
 /** @type {vscode.WebviewPanel | undefined} */
@@ -110,8 +110,8 @@ async function renderPreview(doc) {
       "Render failed",
       r.stderr || r.stdout,
       isErb(doc.languageId)
-        ? "A standalone Erubi render has no Rails helpers (link_to, render, …); set rubyTemplates.preview.useRails to render inside the app."
-        : "Rails helpers (link_to, render, …) are not available in a standalone render; set rubyTemplates.preview.useRails to render inside the app.",
+        ? "A standalone Erubi render has no Rails helpers (link_to, render, …); set lamina.preview.useRails to render inside the app."
+        : "Rails helpers (link_to, render, …) are not available in a standalone render; set lamina.preview.useRails to render inside the app.",
     );
     return;
   }
@@ -190,7 +190,7 @@ function registerPreview(context) {
     STATUS_BAR_PRIORITY,
   );
   status.command = PREVIEW;
-  status.tooltip = "Ruby Templates: preview rendered HTML";
+  status.tooltip = "Lamina: preview rendered HTML";
   const updateStatus = () => {
     const ed = vscode.window.activeTextEditor;
     if (ed && isTemplateLanguage(ed.document.languageId)) {
@@ -201,7 +201,7 @@ function registerPreview(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand(PREVIEW, openPreview),
     vscode.commands.registerCommand(
-      "rubyTemplates.showRenderedSource",
+      "lamina.showRenderedSource",
       showCompiledSource,
     ),
     vscode.workspace.onDidSaveTextDocument(refreshPreviewOnSave),

@@ -1,11 +1,11 @@
 {
-  "name": "@x-ror/ruby-templates",
+  "name": "@x-ror/lamina",
   "version": "0.0.0",
   "description": "Checks and a safe, whitespace-only formatter for ERB, Haml and Slim templates, for CI and editors",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/x-ror/vscode-ruby-templates.git"
+    "url": "git+https://github.com/x-ror/lamina.git"
   },
   "keywords": [
     "erb",
@@ -17,13 +17,13 @@
     "ci",
     "views"
   ],
-  "homepage": "https://x-ror.github.io/vscode-ruby-templates/",
+  "homepage": "https://x-ror.github.io/lamina/",
   "bugs": {
-    "url": "https://github.com/x-ror/vscode-ruby-templates/issues"
+    "url": "https://github.com/x-ror/lamina/issues"
   },
   "type": "module",
   "bin": {
-    "ruby-templates": "bin/ruby-templates.js"
+    "lamina": "bin/lamina.js"
   },
   "files": [
     "bin"

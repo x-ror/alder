@@ -7,8 +7,8 @@ import * as vscode from "vscode";
 import { workspaceFolderFor } from "../../src/workspace.js";
 import { replaceContents } from "../../src/convertTemplate.js";
 
-const app = process.env.RT_APP;
-const settings = () => vscode.workspace.getConfiguration("rubyTemplates");
+const app = process.env.LAMINA_APP;
+const settings = () => vscode.workspace.getConfiguration("lamina");
 const open = async (rel) =>
   vscode.window.showTextDocument(
     await vscode.workspace.openTextDocument(path.join(app, rel)),
@@ -134,7 +134,7 @@ const checks = {
   async "toggle ERB tag"() {
     const editor = await open("app/views/users/toggle.html.erb");
     editor.selection = new vscode.Selection(0, 3, 0, 3);
-    await vscode.commands.executeCommand("rubyTemplates.toggleErbTag");
+    await vscode.commands.executeCommand("lamina.toggleErbTag");
     assert.strictEqual(editor.document.lineAt(0).text, "<%= x %>");
     await vscode.commands.executeCommand("workbench.action.files.revert");
   },
@@ -147,7 +147,7 @@ const checks = {
       b.replace(new vscode.Range(0, 0, editor.document.lineCount, 0), text),
     );
     const ctrlSlash = () =>
-      vscode.commands.executeCommand("rubyTemplates.toggleErbLineComment");
+      vscode.commands.executeCommand("lamina.toggleErbLineComment");
     const lines = (...numbers) =>
       numbers.map((n) => editor.document.lineAt(n).text);
     const select = (...ranges) => {
@@ -194,7 +194,7 @@ const checks = {
   async "Ctrl+/ in a .js.erb tag body uses # and outside uses //"() {
     const editor = await open("app/views/users/script.js.erb");
     const ctrlSlash = () =>
-      vscode.commands.executeCommand("rubyTemplates.toggleErbLineComment");
+      vscode.commands.executeCommand("lamina.toggleErbLineComment");
     editor.selection = new vscode.Selection(1, 3, 1, 3);
     await ctrlSlash();
     assert.strictEqual(editor.document.lineAt(1).text, "  # x = 1");
@@ -221,7 +221,7 @@ const checks = {
     const served = () =>
       vscode.languages
         .getDiagnostics(editor.document.uri)
-        .filter((d) => d.source === "ruby-templates");
+        .filter((d) => d.source === "lamina");
     const key = "erb.diagnostics.enabled";
     const global = vscode.ConfigurationTarget.Global;
     try {
@@ -250,7 +250,7 @@ const checks = {
 
   async "switch to related: mailer formats"() {
     await open("app/views/user_mailer/welcome.html.erb");
-    await vscode.commands.executeCommand("rubyTemplates.switchRelated");
+    await vscode.commands.executeCommand("lamina.switchRelated");
     const name = await until("related editor", () => {
       const file = vscode.window.activeTextEditor?.document.fileName;
       return file?.endsWith("welcome.text.erb") && file;
@@ -260,7 +260,7 @@ const checks = {
 
   async "switch to related: controller action"() {
     await open("app/views/orders/show.html.erb");
-    await vscode.commands.executeCommand("rubyTemplates.switchRelated");
+    await vscode.commands.executeCommand("lamina.switchRelated");
     const editor = await until("controller editor", () => {
       const e = vscode.window.activeTextEditor;
       return e?.document.fileName.endsWith("orders_controller.rb") && e;
@@ -401,7 +401,7 @@ const checks = {
     const editor = await open("app/views/users/wrap.html.erb");
     try {
       select(editor, 0, 0, 0, 5);
-      await vscode.commands.executeCommand("rubyTemplates.wrapInErb");
+      await vscode.commands.executeCommand("lamina.wrapInErb");
       assert.strictEqual(editor.document.getText(), "<%= hello %> world\n");
     } finally {
       await revert(editor);
@@ -409,7 +409,7 @@ const checks = {
     const empty = await open("app/views/users/wrap_empty.html.erb");
     try {
       select(empty, 0, 0, 0, 0);
-      await vscode.commands.executeCommand("rubyTemplates.wrapInErb");
+      await vscode.commands.executeCommand("lamina.wrapInErb");
       assert.strictEqual(empty.document.lineAt(0).text, "<%=  %>");
       // Cursor lands between the spaces, ready to type.
       assert.strictEqual(empty.selection.active.character, 4);
@@ -447,7 +447,7 @@ const checks = {
     const text = await runOnSelection(
       "app/views/users/toggle.html.slim",
       [0, 0, 5, 0],
-      "rubyTemplates.toggleSlimTag",
+      "lamina.toggleSlimTag",
     );
     assert.strictEqual(
       text,
@@ -458,17 +458,17 @@ const checks = {
   async "wrap in Slim output: whole line, inline and empty cursor"() {
     const file = "app/views/users/wrap.html.slim";
     assert.strictEqual(
-      await runOnSelection(file, [1, 2, 1, 13], "rubyTemplates.wrapInSlim"),
+      await runOnSelection(file, [1, 2, 1, 13], "lamina.wrapInSlim"),
       "p\n  = hello world\n",
     );
     assert.strictEqual(
-      await runOnSelection(file, [1, 8, 1, 13], "rubyTemplates.wrapInSlim"),
+      await runOnSelection(file, [1, 8, 1, 13], "lamina.wrapInSlim"),
       "p\n  hello #{world}\n",
     );
     const editor = await open(file);
     try {
       select(editor, 1, 2, 1, 2);
-      await vscode.commands.executeCommand("rubyTemplates.wrapInSlim");
+      await vscode.commands.executeCommand("lamina.wrapInSlim");
       assert.strictEqual(editor.document.lineAt(1).text, "  #{}hello world");
       assert.strictEqual(editor.selection.active.character, 4);
     } finally {
@@ -480,7 +480,7 @@ const checks = {
     const text = await runOnSelection(
       "app/views/users/toggle.html.haml",
       [0, 0, 4, 0],
-      "rubyTemplates.toggleHamlPrefix",
+      "lamina.toggleHamlPrefix",
     );
     assert.strictEqual(text, "= foo\n-# bar\n- baz\n%p\n");
   },
@@ -533,7 +533,7 @@ const checks = {
       const editor = await open(rel);
       try {
         select(editor, 1, 2, 2, 10);
-        await vscode.commands.executeCommand("rubyTemplates.extractPartial");
+        await vscode.commands.executeCommand("lamina.extractPartial");
         assert.strictEqual(
           editor.document.getText(),
           '<div>\n  <%= render "users/erb_part" %>\n</div>\n',
@@ -557,7 +557,7 @@ const checks = {
       const editor = await open(rel);
       try {
         select(editor, 1, 4, 2, 4);
-        await vscode.commands.executeCommand("rubyTemplates.extractPartial");
+        await vscode.commands.executeCommand("lamina.extractPartial");
         assert.strictEqual(
           editor.document.getText(),
           '%div\n  = render "users/haml_part"\n',
@@ -581,7 +581,7 @@ const checks = {
       const editor = await open(rel);
       try {
         select(editor, 1, 0, 2, 5);
-        await vscode.commands.executeCommand("rubyTemplates.extractPartial");
+        await vscode.commands.executeCommand("lamina.extractPartial");
         assert.strictEqual(
           editor.document.getText(),
           'div\n  = render "users/slim_part"\n',
@@ -608,7 +608,7 @@ const checks = {
         const editor = await open(rel);
         try {
           select(editor, 1, 0, 2, 0);
-          await vscode.commands.executeCommand("rubyTemplates.extractPartial");
+          await vscode.commands.executeCommand("lamina.extractPartial");
           assert.strictEqual(
             editor.document.getText(),
             '<div>\r\n  <%= render "users/crlf_part" %>\r\n</div>\r\n',
@@ -638,7 +638,7 @@ const checks = {
         const editor = await open(rel);
         try {
           select(editor, 0, 0, 0, 8);
-          await vscode.commands.executeCommand("rubyTemplates.extractPartial");
+          await vscode.commands.executeCommand("lamina.extractPartial");
           assert.strictEqual(editor.document.getText(), "<p>a</p>\n");
           assert.strictEqual(
             fs.readFileSync(path.join(app, rel), "utf8"),
@@ -658,7 +658,7 @@ const checks = {
     assert.strictEqual(editor.document.languageId, "jade");
     try {
       select(editor, 0, 0, 5, 0);
-      await vscode.commands.executeCommand("rubyTemplates.togglePugLine");
+      await vscode.commands.executeCommand("lamina.togglePugLine");
       assert.strictEqual(
         editor.document.getText(),
         "= x++\n!= y\n//- z\n- w\nscript.\n  - not a marker\n",
@@ -671,22 +671,22 @@ const checks = {
   async "wrap in Pug output: text, whole line and empty cursor"() {
     const file = "app/assets/templates/users/wrap.jst.pug";
     assert.strictEqual(
-      await runOnSelection(file, [1, 10, 1, 15], "rubyTemplates.wrapInPug"),
+      await runOnSelection(file, [1, 10, 1, 15], "lamina.wrapInPug"),
       "p\n  | hello #{world}\nitems.length > 0\n",
     );
     assert.strictEqual(
-      await runOnSelection(file, [2, 0, 2, 16], "rubyTemplates.wrapInPug"),
+      await runOnSelection(file, [2, 0, 2, 16], "lamina.wrapInPug"),
       "p\n  | hello world\n= items.length > 0\n",
     );
     // `p` has a block, which Pug refuses under `=`, and `#{` there would name a tag.
     assert.strictEqual(
-      await runOnSelection(file, [0, 0, 0, 1], "rubyTemplates.wrapInPug"),
+      await runOnSelection(file, [0, 0, 0, 1], "lamina.wrapInPug"),
       "p\n  | hello world\nitems.length > 0\n",
     );
     const editor = await open(file);
     try {
       select(editor, 1, 10, 1, 10);
-      await vscode.commands.executeCommand("rubyTemplates.wrapInPug");
+      await vscode.commands.executeCommand("lamina.wrapInPug");
       assert.strictEqual(editor.document.lineAt(1).text, "  | hello #{}world");
       assert.strictEqual(editor.selection.active.character, 12);
     } finally {
@@ -701,7 +701,7 @@ const checks = {
       const editor = await open(rel);
       try {
         select(editor, 1, 2, 1, 6);
-        await vscode.commands.executeCommand("rubyTemplates.extractPartial");
+        await vscode.commands.executeCommand("lamina.extractPartial");
         assert.strictEqual(
           editor.document.getText(),
           "ul\n  include row.jst.pug\n  li.b\n",
@@ -729,7 +729,7 @@ const checks = {
 
   async "switch to related: component class"() {
     await open("app/components/badge_component.html.erb");
-    await vscode.commands.executeCommand("rubyTemplates.switchRelated");
+    await vscode.commands.executeCommand("lamina.switchRelated");
     await until("component class", () =>
       vscode.window.activeTextEditor?.document.fileName.endsWith(
         "badge_component.rb",
@@ -739,7 +739,7 @@ const checks = {
 
   async "switch to related: component preview"() {
     await open("spec/components/previews/card_component_preview.rb");
-    await vscode.commands.executeCommand("rubyTemplates.switchRelated");
+    await vscode.commands.executeCommand("lamina.switchRelated");
     await until("previewed component", () =>
       vscode.window.activeTextEditor?.document.fileName.endsWith(
         path.join("app", "components", "card_component.rb"),
@@ -750,7 +750,7 @@ const checks = {
 
 export async function run() {
   // Opening the first ERB file only starts activation; its typing check would race the listeners.
-  await vscode.extensions.getExtension("x-ror.ruby-templates").activate();
+  await vscode.extensions.getExtension("x-ror.lamina").activate();
   const failures = [];
   for (const [name, check] of Object.entries(checks)) {
     try {

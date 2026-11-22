@@ -986,7 +986,7 @@ en:
 
     #[test]
     fn resolves_keys_across_locales() {
-        let root = std::env::temp_dir().join(format!("rt-i18n-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-i18n-{}", std::process::id()));
         let locales = root.join("config/locales");
         std::fs::create_dir_all(locales.join("models")).unwrap();
         std::fs::create_dir_all(root.join("app/views/users")).unwrap();
@@ -1017,7 +1017,7 @@ en:
 
     #[test]
     fn the_catalog_is_read_only_where_all_translations_are_visible() {
-        let root = std::env::temp_dir().join(format!("rt-i18n-catalog-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-i18n-catalog-{}", std::process::id()));
         let read_catalog_of = |root: &Path, files: &[(&str, &str)]| {
             let _ = std::fs::remove_dir_all(root);
             crate::util::write_files(root, files);
@@ -1058,7 +1058,7 @@ en:
 
     #[test]
     fn the_catalog_reads_the_files_that_declare_its_locale() {
-        let root = std::env::temp_dir().join(format!("rt-i18n-select-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-i18n-select-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         crate::util::write_files(
             &root,

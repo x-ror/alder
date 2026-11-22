@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 use tower_lsp_server::ls_types::{Diagnostic, Range, TextEdit};
 
-/// Stable diagnostic codes, shared with ERB's `rubyTemplates.erb.disabledDiagnostics`.
+/// Stable diagnostic codes, shared with ERB's `lamina.erb.disabledDiagnostics`.
 pub mod code {
     pub const IMG_MISSING_ALT: &str = "Html/ImgAlt";
     pub const DUPLICATE_ID: &str = "Html/DuplicateId";

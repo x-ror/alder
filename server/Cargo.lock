@@ -199,6 +199,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4"
 
 [[package]]
+name = "lamina-ls"
+version = "1.1.0"
+dependencies = [
+ "dashmap",
+ "regex",
+ "ruby-prism",
+ "serde_json",
+ "tokio",
+ "toml",
+ "tower-lsp-server",
+ "walkdir",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -358,20 +372,6 @@ checksum = "f3e6b1801eb164c6b2c6c6cd42e55bf61d73f973719f675370769ce0295ba7f1"
 dependencies = [
  "cc",
  "shlex",
-]
-
-[[package]]
-name = "ruby-templates-ls"
-version = "1.1.0"
-dependencies = [
- "dashmap",
- "regex",
- "ruby-prism",
- "serde_json",
- "tokio",
- "toml",
- "tower-lsp-server",
- "walkdir",
 ]
 
 [[package]]

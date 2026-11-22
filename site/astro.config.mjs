@@ -7,10 +7,10 @@ import { readableLines } from "./src/lib/readable-lines.mjs";
 
 export default defineConfig({
   site: "https://x-ror.github.io",
-  base: "/vscode-ruby-templates",
+  base: "/lamina",
   integrations: [
     starlight({
-      title: "Ruby Templates",
+      title: "Lamina",
       description:
         "Rails view tooling for VS Code: one extension for ERB, Haml and Slim.",
       logo: { src: "../images/icon.png", alt: "" },
@@ -19,19 +19,18 @@ export default defineConfig({
         {
           icon: "github",
           label: "GitHub",
-          href: "https://github.com/x-ror/vscode-ruby-templates",
+          href: "https://github.com/x-ror/lamina",
         },
       ],
       editLink: {
-        baseUrl:
-          "https://github.com/x-ror/vscode-ruby-templates/edit/main/site/",
+        baseUrl: "https://github.com/x-ror/lamina/edit/main/site/",
       },
       head: [
         { tag: "meta", attrs: { name: "author", content: "x-ror" } },
         {
           tag: "script",
           content:
-            'try{localStorage.getItem("rt-focus")&&document.documentElement.setAttribute("data-focus","")}catch{}',
+            'try{localStorage.getItem("lamina-focus")&&document.documentElement.setAttribute("data-focus","")}catch{}',
         },
       ],
       components: {

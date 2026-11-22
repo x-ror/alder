@@ -1,5 +1,5 @@
 // Every diagnostic code (rule name) the language server reports, with a template that triggers it and the message
-// `ruby-templates check` prints for that template.
+// `lamina check` prints for that template.
 import fs from "node:fs";
 import path from "node:path";
 
@@ -466,7 +466,7 @@ export const diagnostics: Diagnostic[] = [
     languages: ["slim"],
     summary: "An embedded engine Slim doesn't know.",
     explanation:
-      'A lone `name:` line opens an embedded engine. Slim\'s own are `ruby`, `javascript`, `css`, `sass`, `scss`, `coffee`, `markdown`, `textile`, `rdoc` and `asciidoc`; for any other Slim raises "Expected tag". Engines your app registers (such as `mjml`) go in `rubyTemplates.slim.extraEngines`.',
+      'A lone `name:` line opens an embedded engine. Slim\'s own are `ruby`, `javascript`, `css`, `sass`, `scss`, `coffee`, `markdown`, `textile`, `rdoc` and `asciidoc`; for any other Slim raises "Expected tag". Engines your app registers (such as `mjml`) go in `lamina.slim.extraEngines`.',
     example: {
       file: "app/views/users/show.html.slim",
       lang: "slim",
@@ -857,7 +857,7 @@ ul
     languages: ["erb", "haml", "slim"],
     summary: "An instance variable read inside a partial.",
     explanation:
-      'A partial that reads `@user` works only for the controllers that set it. Pass it as a local instead (`render "users/card", user: @user`). Reported once per variable and file. Not reported when the partial assigns the variable itself, for `defined?(@user)`, for ActionView\'s own variables, and in partials under app/views/layouts. Reported as information, so `ruby-templates check` prints it without failing. Rails projects only, in templates under app/views.',
+      'A partial that reads `@user` works only for the controllers that set it. Pass it as a local instead (`render "users/card", user: @user`). Reported once per variable and file. Not reported when the partial assigns the variable itself, for `defined?(@user)`, for ActionView\'s own variables, and in partials under app/views/layouts. Reported as information, so `lamina check` prints it without failing. Rails projects only, in templates under app/views.',
     example: {
       file: "app/views/users/_card.html.erb",
       lang: "erb",
@@ -980,7 +980,7 @@ ul
     languages: ["erb", "haml", "slim"],
     summary: "A `*_path` or `*_url` helper that the app's routes don't define.",
     explanation:
-      "A `*_path` or `*_url` call without a receiver that no route of the app defines but that is within two edits of one (`usr_path` for `user_path`) is reported, with that route offered; a name with no route near it may come from a gem, a concern or `lib`, which can't be seen, so it is left alone. The routes are read with `bin/rails runner` once the editor has loaded them (setting `rubyTemplates.routes.enabled`), so this is reported in the editor and not by `ruby-templates check`. Not reported: a call on a receiver (`main_app.users_path`, an engine's `admin.users_path`), Rails' asset and polymorphic helpers, `rails_*`, `turbo_*`, `action_mailbox_*`, `omniauth_*`, `vite_*` and `asset_pack_*` helpers, Devise's own helpers (`session_path`, `edit_password_url`, …) when the Gemfile.lock has `devise`, a view in a folder named for a gem (`spree/`, `rails_admin/`), a helper the app defines in app/helpers or names with a symbol (`helper_method`, `delegate`, `define_method`), a call under `defined?`, a route declared with `direct`, and a local variable or block parameter. A bare name (`item_path` with `resources :items`) could be a local the caller passes, so it is reported only when called with arguments or when the template's strict locals don't list it. Rails projects only, in templates under app/views.",
+      "A `*_path` or `*_url` call without a receiver that no route of the app defines but that is within two edits of one (`usr_path` for `user_path`) is reported, with that route offered; a name with no route near it may come from a gem, a concern or `lib`, which can't be seen, so it is left alone. The routes are read with `bin/rails runner` once the editor has loaded them (setting `lamina.routes.enabled`), so this is reported in the editor and not by `lamina check`. Not reported: a call on a receiver (`main_app.users_path`, an engine's `admin.users_path`), Rails' asset and polymorphic helpers, `rails_*`, `turbo_*`, `action_mailbox_*`, `omniauth_*`, `vite_*` and `asset_pack_*` helpers, Devise's own helpers (`session_path`, `edit_password_url`, …) when the Gemfile.lock has `devise`, a view in a folder named for a gem (`spree/`, `rails_admin/`), a helper the app defines in app/helpers or names with a symbol (`helper_method`, `delegate`, `define_method`), a call under `defined?`, a route declared with `direct`, and a local variable or block parameter. A bare name (`item_path` with `resources :items`) could be a local the caller passes, so it is reported only when called with arguments or when the template's strict locals don't list it. Rails projects only, in templates under app/views.",
     example: {
       file: "app/views/users/index.html.erb",
       lang: "erb",
@@ -1055,7 +1055,7 @@ ul
     languages: ["erb"],
     summary: "Both `%>` and `-%>` in one template.",
     explanation:
-      "Every closer of the kind the template uses less is reported, `-%>` when there are as many of each. Comments (`<%#`) and literal `<%%` tags are not counted, nor are closers with more on their line. Off by default: turn it on with `enabled = true` under `[Style.ErbTrimMode]` in .ruby-templates.toml.",
+      "Every closer of the kind the template uses less is reported, `-%>` when there are as many of each. Comments (`<%#`) and literal `<%%` tags are not counted, nor are closers with more on their line. Off by default: turn it on with `enabled = true` under `[Style.ErbTrimMode]` in .lamina.toml.",
     example: {
       file: "app/views/users/index.html.erb",
       lang: "erb",
@@ -1073,7 +1073,7 @@ ul
     languages: ["erb", "haml", "slim", "pug"],
     summary: "A line longer than the limit.",
     explanation:
-      "Every line over `max` characters (100 unless set) is reported from the first character past the limit. Characters are counted, a tab is one, trailing whitespace is not counted, and a line that cannot be made shorter is skipped: one with no space after its indentation, such as a long URL, and the `# locals:` comment of strict locals. Off by default: turn it on with `enabled = true` under `[Layout.LineLength]` in .ruby-templates.toml, where `max` sets the limit.",
+      "Every line over `max` characters (100 unless set) is reported from the first character past the limit. Characters are counted, a tab is one, trailing whitespace is not counted, and a line that cannot be made shorter is skipped: one with no space after its indentation, such as a long URL, and the `# locals:` comment of strict locals. Off by default: turn it on with `enabled = true` under `[Layout.LineLength]` in .lamina.toml, where `max` sets the limit.",
     example: {
       file: "app/views/announcements/show.html.erb",
       lang: "erb",
@@ -1096,9 +1096,7 @@ function settingCodes(): Map<string, string[]> {
     manifest.contributes.configuration.properties;
   return new Map(
     Object.entries(properties).flatMap(([key, value]) => {
-      const lang = key.match(
-        /^rubyTemplates\.(\w+)\.disabledDiagnostics$/,
-      )?.[1];
+      const lang = key.match(/^lamina\.(\w+)\.disabledDiagnostics$/)?.[1];
       return lang ? [[lang, value.items?.enum ?? []]] : [];
     }),
   );
@@ -1106,7 +1104,7 @@ function settingCodes(): Map<string, string[]> {
 
 /** Fails the build unless the entries cover exactly the codes the settings accept, language by language. */
 function checkCoverage(entries: Diagnostic[], settings: Map<string, string[]>) {
-  const setting = (lang: string) => `rubyTemplates.${lang}.disabledDiagnostics`;
+  const setting = (lang: string) => `lamina.${lang}.disabledDiagnostics`;
   const missing = [...settings].flatMap(([lang, codes]) =>
     codes
       .filter(

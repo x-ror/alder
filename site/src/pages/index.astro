@@ -8,9 +8,9 @@ import Course from "../components/Course.astro";
 import Listing from "../components/Listing.astro";
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-const MARKETPLACE = "https://marketplace.visualstudio.com/items?itemName=x-ror.ruby-templates";
-const OPEN_VSX = "https://open-vsx.org/extension/x-ror/ruby-templates";
-const NPM = "https://www.npmjs.com/package/@x-ror/ruby-templates";
+const MARKETPLACE = "https://marketplace.visualstudio.com/items?itemName=x-ror.lamina";
+const OPEN_VSX = "https://open-vsx.org/extension/x-ror/lamina";
+const NPM = "https://www.npmjs.com/package/@x-ror/lamina";
 
 const courses = [
   { id: "checks", numeral: "01", label: "Errors" },
@@ -20,7 +20,7 @@ const courses = [
   { id: "ci", numeral: "05", label: "CI" },
 ];
 
-// The output of `ruby-templates check` on this view.
+// The output of `lamina check` on this view.
 const index = `<% @users.each do |user| %>
   <%= render "users/card", user: user %>
 <% end %>
@@ -78,7 +78,7 @@ article.badge id=dom_id(user)
 `,
 };
 
-// `ruby-templates format` on the first listing gives the second, byte for byte.
+// `lamina format` on the first listing gives the second, byte for byte.
 const unformatted = `<% if @user.admin? %>
 <nav class="admin">
       <%= link_to "Users", admin_users_path %>
@@ -98,10 +98,10 @@ const formatted = `<% if @user.admin? %>
 <% end %>
 `;
 
-const ci = `npm install --save-dev @x-ror/ruby-templates
-npx ruby-templates check app/views            # errors and warnings; exit 1 if any
-npx ruby-templates format --check app/views   # files that would change; exit 1 if any
-npx ruby-templates format --write app/views   # format them
+const ci = `npm install --save-dev @x-ror/lamina
+npx lamina check app/views            # errors and warnings; exit 1 if any
+npx lamina format --check app/views   # files that would change; exit 1 if any
+npx lamina format --write app/views   # format them
 `;
 ---
 
@@ -110,7 +110,7 @@ npx ruby-templates format --write app/views   # format them
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Ruby Templates: ERB, Haml and Slim for VS Code</title>
+    <title>Lamina: ERB, Haml and Slim for VS Code</title>
     <meta
       name="description"
       content="Rails view tooling for VS Code: highlighting, errors as you type, formatting and Rails-aware navigation for ERB, Haml and Slim, with no gems to install."
@@ -130,7 +130,7 @@ npx ruby-templates format --write app/views   # format them
     <main class="menu-card" id="menu">
       <header class="menu-card__head">
         <div class="menu-card__intro">
-          <h1 class="menu-card__title">Ruby Templates</h1>
+          <h1 class="menu-card__title">Lamina</h1>
           <p class="menu-card__lede">
             One VS Code extension for Rails views in ERB, Haml and Slim, the menu chosen for you: errors as you type,
             navigation that knows your app, whitespace-only formatting. No gems to install.
@@ -235,7 +235,7 @@ npx ruby-templates format --write app/views   # format them
 
     <footer class="page__footer">
       <p>
-        MIT licensed. <a class="page__link" href="https://github.com/x-ror/vscode-ruby-templates">Source on GitHub</a>.
+        MIT licensed. <a class="page__link" href="https://github.com/x-ror/lamina">Source on GitHub</a>.
       </p>
     </footer>
   </body>

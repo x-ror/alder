@@ -2,7 +2,7 @@
 // (what `pug.compile` does before linking) and records the first error, or an outline of the AST, for `server/src/pug/parser.rs` to match.
 //   node test/oracle/pug.js           checks test/oracle/pug_cases.json against Pug (UPDATE=1 rewrites it), then
 //                                     records Pug's own test templates and runs the Rust comparison on them
-// `bun test/oracle.js pug` imports the helpers below to compare Pug with `ruby-templates check`.
+// `bun test/oracle.js pug` imports the helpers below to compare Pug with `lamina check`.
 import { spawnSync } from "child_process";
 import fs from "fs";
 import { createRequire } from "module";
@@ -20,7 +20,7 @@ const manifest = path.join(
   "Cargo.toml",
 );
 const cacheDir = path.resolve(
-  process.env.ORACLE_CACHE ?? path.join(os.tmpdir(), "ruby-templates-oracle"),
+  process.env.ORACLE_CACHE ?? path.join(os.tmpdir(), "lamina-oracle"),
 );
 // Pug's own templates at the tag, relative to the checkout: compiled cases, cases that must fail, lexer cases.
 const upstreamDirs = [

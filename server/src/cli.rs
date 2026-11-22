@@ -1,4 +1,4 @@
-//! The `ruby-templates` command line.
+//! The `lamina` command line.
 
 use crate::checks::{diagnostics_in, Doc};
 use crate::config;
@@ -28,10 +28,10 @@ const USAGE: i32 = 2;
 
 const HELP: &str = "\
 Usage:
-  ruby-templates --version
-  ruby-templates check [--format text|github|sarif|json] <files|dirs>...
-  ruby-templates format [--check | --write] [--format text|github] [--verbose] [--align-comments] <files|dirs>...
-  ruby-templates format [--check] [--format text|github] [--verbose] [--align-comments] --stdin-filepath <path> [-]
+  lamina --version
+  lamina check [--format text|github|sarif|json] <files|dirs>...
+  lamina format [--check | --write] [--format text|github] [--verbose] [--align-comments] <files|dirs>...
+  lamina format [--check] [--format text|github] [--verbose] [--align-comments] --stdin-filepath <path> [-]
 
 check   prints the diagnostics of ERB, Haml, Slim, Pug, Jbuilder and Builder templates (for Pug, its own errors, includes
         and the HTML rules; for Jbuilder and Builder, partials and locals, not Ruby syntax errors), and with
@@ -58,8 +58,8 @@ format  re-indents HTML ERB, Haml, Slim and Pug templates and fixes trailing whi
 (SARIF 2.1.0 for code scanning) or json (one object per line). With format --check, github prints a warning per file that
 would change. Columns count characters and start at 1. Severities are error, warning and info, as GitHub's notice and SARIF's note.
 
-Both read .ruby-templates.toml files, from the file's folder up. Exit codes: 0 ok, 1 diagnostics (errors or
-warnings), a problem in a .ruby-templates.toml, or files that would change, 2 usage or I/O error, a formatter bug,
+Both read .lamina.toml files, from the file's folder up. Exit codes: 0 ok, 1 diagnostics (errors or
+warnings), a problem in a .lamina.toml, or files that would change, 2 usage or I/O error, a formatter bug,
 or (for check) a named file that isn't a template.
 ";
 
@@ -82,7 +82,7 @@ pub fn run(args: &[String]) -> i32 {
             OK
         }
         Some((flag, _)) if flag == "--version" || flag == "-V" => {
-            println!("ruby-templates {}", env!("CARGO_PKG_VERSION"));
+            println!("lamina {}", env!("CARGO_PKG_VERSION"));
             OK
         }
         _ => usage("expected a command"),
@@ -103,7 +103,7 @@ fn is_help(arg: &str) -> bool {
 }
 
 fn usage(message: &str) -> i32 {
-    eprintln!("ruby-templates: {message}\n\n{HELP}");
+    eprintln!("lamina: {message}\n\n{HELP}");
     USAGE
 }
 
@@ -312,7 +312,7 @@ impl Rendered {
 
 struct Checked {
     rendered: Rendered,
-    /// The problems of each `.ruby-templates.toml` the file uses; the printer shows a file's once, with its first template.
+    /// The problems of each `.lamina.toml` the file uses; the printer shows a file's once, with its first template.
     config: Vec<(PathBuf, Rendered)>,
     stderr: String,
     /// The Rails-looking app the file is in when it has no `Gemfile.lock`, and its name for the note; the printer notes each app once.
@@ -513,7 +513,7 @@ fn format_text(
             if let Some(by) = rules.excluded_by() {
                 format::skip(SkipKind::NotHandled, format!("excluded by {}", by.display()))
             } else if !rules.format_enabled() {
-                format::skip(SkipKind::NotHandled, "formatting is turned off in .ruby-templates.toml")
+                format::skip(SkipKind::NotHandled, "formatting is turned off in .lamina.toml")
             } else {
                 format::format_in(&uri, lang, false, text, &settings, rules.extra_engines(), projects)
             }
@@ -618,7 +618,7 @@ mod tests {
 
     #[test]
     fn paths_are_shown_from_the_real_working_folder() {
-        let root = crate::util::canonicalize(&std::env::temp_dir()).unwrap().join(format!("rt-cli-relative-{}", std::process::id()));
+        let root = crate::util::canonicalize(&std::env::temp_dir()).unwrap().join(format!("lamina-cli-relative-{}", std::process::id()));
         std::fs::create_dir_all(root.join("app")).unwrap();
         std::fs::write(root.join("app/a.erb"), "").unwrap();
         let cwd = Some(root.as_path());
@@ -638,7 +638,7 @@ mod tests {
 
     #[test]
     fn walks_folders_for_templates_only() {
-        let root = std::env::temp_dir().join(format!("rt-cli-walk-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-cli-walk-{}", std::process::id()));
         let files = [
             "app/views/users/show.html.erb",
             "app/views/users/a.rb",
@@ -671,7 +671,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn walks_a_symlinked_views_folder() {
-        let root = std::env::temp_dir().join(format!("rt-cli-walk-link-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-cli-walk-link-{}", std::process::id()));
         let shared = root.join("shared/public");
         std::fs::create_dir_all(&shared).unwrap();
         std::fs::write(shared.join("a.html.erb"), "").unwrap();

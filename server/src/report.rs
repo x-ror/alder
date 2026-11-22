@@ -1,4 +1,4 @@
-//! The machine-readable output of `ruby-templates check`: GitHub workflow commands, JSON lines and SARIF.
+//! The machine-readable output of `lamina check`: GitHub workflow commands, JSON lines and SARIF.
 
 use crate::rules;
 use crate::util;
@@ -7,10 +7,10 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use tower_lsp_server::ls_types::{DiagnosticSeverity, Position, Range};
 
-/// The rule id of a problem in a `.ruby-templates.toml`, which no diagnostic code covers.
+/// The rule id of a problem in a `.lamina.toml`, which no diagnostic code covers.
 pub const CONFIG_PROBLEM: &str = "Config/Invalid";
 const BYTE_ORDER_MARK: char = '\u{feff}';
-const SITE: &str = "https://x-ror.github.io/vscode-ruby-templates/";
+const SITE: &str = "https://x-ror.github.io/lamina/";
 const SARIF_SCHEMA: &str = "https://json.schemastore.org/sarif-2.1.0.json";
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -150,7 +150,7 @@ pub fn github_line(finding: &Finding) -> String {
 
 /// The annotation for a file `format --check` would change.
 pub fn github_unformatted(path: &Path) -> String {
-    let message = "needs formatting; run `ruby-templates format --write`";
+    let message = "needs formatting; run `lamina format --write`";
     format!("::warning file={},title=Format::{}", escape(&util::slash_path(path), true), escape(message, false))
 }
 
@@ -179,7 +179,7 @@ pub fn sarif(findings: &[Finding]) -> String {
         "runs": [{
             "columnKind": "unicodeCodePoints",
             "tool": { "driver": {
-                "name": "ruby-templates",
+                "name": "lamina",
                 "version": env!("CARGO_PKG_VERSION"),
                 "informationUri": SITE,
                 "rules": descriptors,
@@ -193,7 +193,7 @@ pub fn sarif(findings: &[Finding]) -> String {
 fn rule_descriptor(id: &str) -> Value {
     let mut descriptor = json!({ "id": id });
     if id == CONFIG_PROBLEM {
-        descriptor["shortDescription"] = json!({ "text": "A problem in a .ruby-templates.toml." });
+        descriptor["shortDescription"] = json!({ "text": "A problem in a .lamina.toml." });
         descriptor["helpUri"] = json!(format!("{SITE}reference/rules/#configuration"));
     } else if let Some(rule) = rules::by_name(id) {
         let anchor = rule.name.to_lowercase().replace('/', "-");

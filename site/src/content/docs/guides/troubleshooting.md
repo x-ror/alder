@@ -22,13 +22,13 @@ Choose this extension's formatter per language:
 
 ```json
 {
-  "[erb]": { "editor.defaultFormatter": "x-ror.ruby-templates" },
-  "[haml]": { "editor.defaultFormatter": "x-ror.ruby-templates" },
-  "[slim]": { "editor.defaultFormatter": "x-ror.ruby-templates" }
+  "[erb]": { "editor.defaultFormatter": "x-ror.lamina" },
+  "[haml]": { "editor.defaultFormatter": "x-ror.lamina" },
+  "[slim]": { "editor.defaultFormatter": "x-ror.lamina" }
 }
 ```
 
-To keep the other one, set it as `editor.defaultFormatter` for the language. `rubyTemplates.<erb|haml|slim|pug>.format.enabled` set to `false` (or `format.enabled = false` in a `.ruby-templates.toml`) makes this extension return no edits, but it stays in the list VS Code asks from.
+To keep the other one, set it as `editor.defaultFormatter` for the language. `lamina.<erb|haml|slim|pug>.format.enabled` set to `false` (or `format.enabled = false` in a `.lamina.toml`) makes this extension return no edits, but it stays in the list VS Code asks from.
 
 ### Grammar
 
@@ -42,7 +42,7 @@ VS Code uses one grammar per language id, so only one extension's grammar applie
 
 ### Diagnostics and completion
 
-Turn off the duplicates in the other extension's settings. This extension's are `rubyTemplates.<erb|haml|slim>.diagnostics.enabled` and `rubyTemplates.<erb|haml|slim|jbuilder>.disabledDiagnostics`; see [Errors as you type](/vscode-ruby-templates/guides/checks/#turning-checks-off).
+Turn off the duplicates in the other extension's settings. This extension's are `lamina.<erb|haml|slim>.diagnostics.enabled` and `lamina.<erb|haml|slim|jbuilder>.disabledDiagnostics`; see [Errors as you type](/lamina/guides/checks/#turning-checks-off).
 
 ## Check what is active
 
@@ -56,10 +56,10 @@ Run _Developer: Inspect Editor Tokens and Scopes_ on a token. Scopes ending in `
 
 ### Language server
 
-- The _Ruby Templates_ channel in the Output panel logs the language server, including why a format was skipped.
-- _Ruby Templates: Restart Language Server_ restarts it.
+- The _Lamina_ channel in the Output panel logs the language server, including why a format was skipped.
+- _Lamina: Restart Language Server_ restarts it.
 - _Developer: Show Running Extensions_ lists every extension active for the window.
 
 ## Report a problem
 
-Found a bug or missing a Rails feature? [Open an issue on GitHub](https://github.com/x-ror/vscode-ruby-templates/issues).
+Found a bug or missing a Rails feature? [Open an issue on GitHub](https://github.com/x-ror/lamina/issues).

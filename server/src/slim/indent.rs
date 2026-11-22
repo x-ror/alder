@@ -10,7 +10,7 @@ use regex::Regex;
 use std::sync::LazyLock;
 use tower_lsp_server::ls_types::Diagnostic;
 
-/// Stable diagnostic codes; `rubyTemplates.slim.disabledDiagnostics` refers to these.
+/// Stable diagnostic codes; `lamina.slim.disabledDiagnostics` refers to these.
 pub mod code {
     pub const BAD_DEDENT: &str = "Syntax/BadDedent";
     pub const DOCTYPE_CHILDREN: &str = "Syntax/DoctypeChildren";

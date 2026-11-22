@@ -343,7 +343,7 @@ end
 
     #[test]
     fn included_modules_are_found_by_name_across_lines_and_roots() {
-        let root = std::env::temp_dir().join(format!("rt-ivars-includes-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("lamina-ivars-includes-{}", std::process::id()));
         let changes = "module Themeable\n  included { prepend_view_path \"x\" }\nend\n";
         crate::util::write_files(
             &root,

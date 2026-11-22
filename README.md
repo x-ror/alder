@@ -1,12 +1,12 @@
-<p align="center"><img src="images/icon.png" alt="Ruby Templates" width="128"></p>
+<p align="center"><img src="images/icon.png" alt="Lamina" width="128"></p>
 
-# Ruby Templates: ERB, Haml, Slim, Pug, Liquid
+# Lamina: Ruby Templates (ERB, Haml, Slim, Pug, Liquid)
 
-[![VS Marketplace](https://vsmarketplacebadges.dev/version-short/x-ror.ruby-templates.svg)](https://marketplace.visualstudio.com/items?itemName=x-ror.ruby-templates)
-[![Open VSX](https://img.shields.io/open-vsx/v/x-ror/ruby-templates?label=Open%20VSX)](https://open-vsx.org/extension/x-ror/ruby-templates)
-[![npm](https://img.shields.io/npm/v/@x-ror/ruby-templates?label=npm%20CLI)](https://www.npmjs.com/package/@x-ror/ruby-templates)
-[![Socket](https://socket.dev/api/badge/npm/package/@x-ror/ruby-templates)](https://socket.dev/npm/package/@x-ror/ruby-templates)
-[![build](https://github.com/x-ror/vscode-ruby-templates/actions/workflows/build.yml/badge.svg)](https://github.com/x-ror/vscode-ruby-templates/actions/workflows/build.yml)
+[![VS Marketplace](https://vsmarketplacebadges.dev/version-short/x-ror.lamina.svg)](https://marketplace.visualstudio.com/items?itemName=x-ror.lamina)
+[![Open VSX](https://img.shields.io/open-vsx/v/x-ror/lamina?label=Open%20VSX)](https://open-vsx.org/extension/x-ror/lamina)
+[![npm](https://img.shields.io/npm/v/@x-ror/lamina?label=npm%20CLI)](https://www.npmjs.com/package/@x-ror/lamina)
+[![Socket](https://socket.dev/api/badge/npm/package/@x-ror/lamina)](https://socket.dev/npm/package/@x-ror/lamina)
+[![build](https://github.com/x-ror/lamina/actions/workflows/build.yml/badge.svg)](https://github.com/x-ror/lamina/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **Rails view tooling for VS Code: one extension for ERB, Haml and Slim.** It highlights your templates, finds errors as you type, formats them, and understands your Rails app: partials, components, helpers, routes, instance variables, translations and Stimulus controllers. Pug and Liquid templates get a smaller share, without the Rails features.
@@ -21,7 +21,7 @@ Built for Rails developers who work in `app/views` every day, and for teams that
 
 ## Getting started
 
-1. Install **Ruby Templates** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=x-ror.ruby-templates) or [Open VSX](https://open-vsx.org/extension/x-ror/ruby-templates).
+1. Install **Lamina** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=x-ror.lamina) or [Open VSX](https://open-vsx.org/extension/x-ror/lamina).
 2. Open a Rails project and any view. That's it: highlighting, checks, navigation and formatting work immediately.
 3. Optional: turn on format on save, e.g. `"[erb]": { "editor.formatOnSave": true }` (also `[haml]`, `[slim]`, and `[jade]` for Pug).
 
@@ -29,15 +29,15 @@ Requires VS Code 1.100 or newer, on Linux (x64, arm64), macOS (Apple silicon, In
 
 ## Documentation
 
-The full documentation is at [x-ror.github.io/vscode-ruby-templates](https://x-ror.github.io/vscode-ruby-templates/):
+The full documentation is at [x-ror.github.io/lamina](https://x-ror.github.io/lamina/):
 
-- [Getting started](https://x-ror.github.io/vscode-ruby-templates/getting-started/)
-- Guides: [errors as you type](https://x-ror.github.io/vscode-ruby-templates/guides/checks/), [Rails navigation and completion](https://x-ror.github.io/vscode-ruby-templates/guides/rails-navigation/), [file types](https://x-ror.github.io/vscode-ruby-templates/guides/file-types/), [formatting](https://x-ror.github.io/vscode-ruby-templates/guides/formatting/), [commands](https://x-ror.github.io/vscode-ruby-templates/guides/commands/), [command line for CI](https://x-ror.github.io/vscode-ruby-templates/guides/command-line/), [settings](https://x-ror.github.io/vscode-ruby-templates/guides/settings/), [supported syntax](https://x-ror.github.io/vscode-ruby-templates/guides/syntax/), [compatibility](https://x-ror.github.io/vscode-ruby-templates/guides/compatibility/) and [troubleshooting](https://x-ror.github.io/vscode-ruby-templates/guides/troubleshooting/)
-- [Diagnostics reference](https://x-ror.github.io/vscode-ruby-templates/reference/diagnostics/): every check, with its code
-- [Rules and `.ruby-templates.toml`](https://x-ror.github.io/vscode-ruby-templates/reference/rules/#configuration): turn checks off per project, folder or file; it wins over the VS Code settings
-- [Changelog](https://x-ror.github.io/vscode-ruby-templates/changelog/)
+- [Getting started](https://x-ror.github.io/lamina/getting-started/)
+- Guides: [errors as you type](https://x-ror.github.io/lamina/guides/checks/), [Rails navigation and completion](https://x-ror.github.io/lamina/guides/rails-navigation/), [file types](https://x-ror.github.io/lamina/guides/file-types/), [formatting](https://x-ror.github.io/lamina/guides/formatting/), [commands](https://x-ror.github.io/lamina/guides/commands/), [command line for CI](https://x-ror.github.io/lamina/guides/command-line/), [settings](https://x-ror.github.io/lamina/guides/settings/), [supported syntax](https://x-ror.github.io/lamina/guides/syntax/), [compatibility](https://x-ror.github.io/lamina/guides/compatibility/) and [troubleshooting](https://x-ror.github.io/lamina/guides/troubleshooting/)
+- [Diagnostics reference](https://x-ror.github.io/lamina/reference/diagnostics/): every check, with its code
+- [Rules and `.lamina.toml`](https://x-ror.github.io/lamina/reference/rules/#configuration): turn checks off per project, folder or file; it wins over the VS Code settings
+- [Changelog](https://x-ror.github.io/lamina/changelog/)
 
-[Contributing](CONTRIBUTING.md) covers building, testing and the project layout. Found a bug or missing a Rails feature? [Open an issue](https://github.com/x-ror/vscode-ruby-templates/issues).
+[Contributing](CONTRIBUTING.md) covers building, testing and the project layout. Found a bug or missing a Rails feature? [Open an issue](https://github.com/x-ror/lamina/issues).
 
 ## License
 
