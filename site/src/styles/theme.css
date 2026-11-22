@@ -217,7 +217,8 @@ h1#_top {
 }
 
 @media (min-width: 50rem) {
-  :root[data-focus] {
+  /* Outranks Starlight's scoped `[data-astro-cid-…][data-has-sidebar]`, which sets the sidebar offset and comes later. */
+  :root[data-focus][data-has-sidebar] {
     --sl-content-inline-start: 0rem;
   }
 
