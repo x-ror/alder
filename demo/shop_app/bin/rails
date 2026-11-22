@@ -19,4 +19,4 @@ routes = [
   route("product", "GET", "/products/:id", "products#show", 4),
   route("about", "GET", "/about", "pages#index", 5)
 ]
-puts "", "__LAMINA_ROUTES__", JSON.generate(routes)
+puts "", "__ALDER_ROUTES__", JSON.generate(routes)

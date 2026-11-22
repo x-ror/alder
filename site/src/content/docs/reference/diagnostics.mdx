@@ -1,18 +1,18 @@
 ---
 title: Diagnostics
-description: Every diagnostic code the Lamina language server reports, with a template that triggers it, the exact message and how to turn it off.
+description: Every diagnostic code the Alder language server reports, with a template that triggers it, the exact message and how to turn it off.
 tableOfContents: false
 ---
 
 import DiagnosticRoster from "../../../components/DiagnosticRoster.astro";
 
-Every check the language server runs reports its problems under a stable code, which is the name of its rule: `Html/ImgAlt`, `Syntax/Ruby`. In VS Code the code appears next to the message in the Problems panel and in the hover over the underlined text, with `lamina` as the source. The `lamina check` command prints the same messages as `file:line:column: severity: message [Code]`, and exits with 1 when it finds an error or a warning (not for information, such as `Rails/InstanceVariableInPartial`), or a problem in a `.lamina.toml`.
+Every check the language server runs reports its problems under a stable code, which is the name of its rule: `Html/ImgAlt`, `Syntax/Ruby`. In VS Code the code appears next to the message in the Problems panel and in the hover over the underlined text, with `alder` as the source. The `alder check` command prints the same messages as `file:line:column: severity: message [Code]`, and exits with 1 when it finds an error or a warning (not for information, such as `Rails/InstanceVariableInPartial`), or a problem in a `.alder.toml`.
 
-The messages are those of Erubi, Rails, Haml 7, Slim 5, Pug 3 and Prism, or quote the section of the HTML standard that is broken. Each entry below shows a template that triggers the code and the message `lamina check` prints for it, at the same line and column.
+The messages are those of Erubi, Rails, Haml 7, Slim 5, Pug 3 and Prism, or quote the section of the HTML standard that is broken. Each entry below shows a template that triggers the code and the message `alder check` prints for it, at the same line and column.
 
 ## Turning diagnostics off
 
-Turn a check off in the `.lamina.toml` of the project, by the rule's name (the code):
+Turn a check off in the `.alder.toml` of the project, by the rule's name (the code):
 
 ```toml
 [Html.ImgAlt]
@@ -25,17 +25,17 @@ exclude = ["app/views/legacy/**"]
 exclude = ["**/*.haml"]
 ```
 
-The file is read by the editor and by `lamina check`, and it beats the settings below: a rule the file switches with `enabled` stays as the file says. The [rules reference](/lamina/reference/rules/#configuration) describes the file.
+The file is read by the editor and by `alder check`, and it beats the settings below: a rule the file switches with `enabled` stays as the file says. The [rules reference](/alder/reference/rules/#configuration) describes the file.
 
 Or list the codes to turn off for a language in your `settings.json`:
 
 ```json
-"lamina.erb.disabledDiagnostics": ["Html/ImgAlt", "Html/DuplicateId"],
-"lamina.haml.disabledDiagnostics": ["Rails/MissingPartial"]
+"alder.erb.disabledDiagnostics": ["Html/ImgAlt", "Html/DuplicateId"],
+"alder.haml.disabledDiagnostics": ["Rails/MissingPartial"]
 ```
 
-`lamina.slim.disabledDiagnostics` also applies to Skim templates, and `lamina.jbuilder.disabledDiagnostics` to Jbuilder and Builder views; `lamina.liquid.disabledDiagnostics` and `lamina.pug.disabledDiagnostics` turn off the Liquid and Pug ones. To silence a whole language, set `lamina.erb.diagnostics.enabled`, `lamina.haml.diagnostics.enabled`, `lamina.slim.diagnostics.enabled` or `lamina.pug.diagnostics.enabled` to `false` (in a `.lamina.toml`: `diagnostics.enabled = false` under `[erb]`, `[haml]`, `[slim]` or `[pug]`). Thor templates (`*.tt`) get no diagnostics.
+`alder.slim.disabledDiagnostics` also applies to Skim templates, and `alder.jbuilder.disabledDiagnostics` to Jbuilder and Builder views; `alder.liquid.disabledDiagnostics` and `alder.pug.disabledDiagnostics` turn off the Liquid and Pug ones. To silence a whole language, set `alder.erb.diagnostics.enabled`, `alder.haml.diagnostics.enabled`, `alder.slim.diagnostics.enabled` or `alder.pug.diagnostics.enabled` to `false` (in a `.alder.toml`: `diagnostics.enabled = false` under `[erb]`, `[haml]`, `[slim]` or `[pug]`). Thor templates (`*.tt`) get no diagnostics.
 
-The [rules reference](/lamina/reference/rules/) lists the formatter rules next to the ones that report these codes.
+The [rules reference](/alder/reference/rules/) lists the formatter rules next to the ones that report these codes.
 
 <DiagnosticRoster />

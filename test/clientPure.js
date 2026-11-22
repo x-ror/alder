@@ -281,13 +281,11 @@ assert.strictEqual(actionLine(ordersController, "edit"), -1);
 
 // routesFromOutput
 assert.deepStrictEqual(
-  routesFromOutput(
-    'Booting\r\n\r\n__LAMINA_ROUTES__\r\n[{"name":"users"}]\r\n',
-  ),
+  routesFromOutput('Booting\r\n\r\n__ALDER_ROUTES__\r\n[{"name":"users"}]\r\n'),
   [{ name: "users" }],
 );
 assert.strictEqual(routesFromOutput("Puma starting\n"), undefined);
-assert.throws(() => routesFromOutput("__LAMINA_ROUTES__\n{oops"));
+assert.throws(() => routesFromOutput("__ALDER_ROUTES__\n{oops"));
 
 // previewPartners
 const previews = (dir) => [
@@ -317,13 +315,13 @@ for (const file of [
 }
 
 // routesFromRun
-const routesOut = '__LAMINA_ROUTES__\n[{"name":"users"}]\n';
+const routesOut = '__ALDER_ROUTES__\n[{"name":"users"}]\n';
 assert.deepStrictEqual(routesFromRun({ code: 0, stdout: routesOut }), [
   { name: "users" },
 ]);
 assert.strictEqual(routesFromRun({ code: 1, stdout: routesOut }), undefined);
 assert.strictEqual(
-  routesFromRun({ code: 0, stdout: "__LAMINA_ROUTES__\n{oops" }),
+  routesFromRun({ code: 0, stdout: "__ALDER_ROUTES__\n{oops" }),
   undefined,
 );
 
@@ -427,7 +425,7 @@ assert.ok(errorPage("T", "d", "<hint>").includes("&lt;hint&gt;"));
   const { contributes } = JSON.parse(
     fs.readFileSync(path.join(import.meta.dirname, "../package.json"), "utf8"),
   );
-  const slimCommands = ["lamina.toggleSlimTag", "lamina.wrapInSlim"];
+  const slimCommands = ["alder.toggleSlimTag", "alder.wrapInSlim"];
   const entries = [
     ...contributes.keybindings,
     ...Object.values(contributes.menus).flat(),

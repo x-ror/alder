@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn liquid_render_is_not_a_partial_reference() {
-        let root = std::env::temp_dir().join(format!("lamina-liquid-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-liquid-{}", std::process::id()));
         let views = root.join("app/views/pages");
         std::fs::create_dir_all(&views).unwrap();
         std::fs::write(views.join("_card.html.slim"), "").unwrap();

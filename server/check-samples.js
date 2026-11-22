@@ -4,9 +4,9 @@ import { spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
 
-const name = process.platform === "win32" ? "lamina.exe" : "lamina";
+const name = process.platform === "win32" ? "alder.exe" : "alder";
 const bin =
-  process.env.LAMINA ??
+  process.env.ALDER ??
   path.join(import.meta.dirname, "target", "release", name);
 const testDir = path.join(import.meta.dirname, "..", "test");
 const samples = fs

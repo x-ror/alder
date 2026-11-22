@@ -742,7 +742,7 @@ export default class extends Controller {
 
     #[test]
     fn registered_controllers_come_from_files_and_loaders_anywhere_in_app_javascript() {
-        let root = std::env::temp_dir().join(format!("lamina-stimulus-registered-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-stimulus-registered-{}", std::process::id()));
         let javascript = root.join("app/javascript");
         let view = root.join("app/views/users/index.html.erb");
         let names = || scan_registered(&view).map(|found| found.names);
@@ -792,7 +792,7 @@ export default class extends Controller {
             assert!(may_register(source), "{source}");
         }
         assert!(!may_register("export function f(a) { return a.registered(1) }"));
-        let root = std::env::temp_dir().join(format!("lamina-stimulus-prefilter-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-stimulus-prefilter-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         crate::util::write_files(
             &root,
@@ -810,7 +810,7 @@ export default class extends Controller {
     #[cfg(unix)]
     #[test]
     fn a_symlinked_script_outside_app_javascript_registers_controllers() {
-        let root = std::env::temp_dir().join(format!("lamina-stimulus-symlink-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-stimulus-symlink-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         crate::util::write_files(
             &root,
@@ -824,7 +824,7 @@ export default class extends Controller {
 
     #[test]
     fn engine_namespaces_are_unknown_to_the_app_with_stimulus_loading() {
-        let root = std::env::temp_dir().join(format!("lamina-stimulus-engines-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-stimulus-engines-{}", std::process::id()));
         let view = root.join("app/views/users/index.html.erb");
         std::fs::create_dir_all(root.join("app/javascript/controllers/admin")).unwrap();
         std::fs::write(root.join("app/javascript/controllers/index.js"), "eagerLoadControllersFrom(\"controllers\", application)").unwrap();
@@ -839,7 +839,7 @@ export default class extends Controller {
 
     #[test]
     fn resolves_controller_files() {
-        let root = std::env::temp_dir().join(format!("lamina-stimulus-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-stimulus-{}", std::process::id()));
         let controllers = root.join("app/javascript/controllers");
         std::fs::create_dir_all(controllers.join("admin")).unwrap();
         std::fs::create_dir_all(root.join("app/views/users")).unwrap();

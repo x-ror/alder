@@ -3,25 +3,25 @@
 .listing {
   margin: 0;
   min-width: 0;
-  background: var(--lamina-code-bg);
-  border: 1px solid var(--lamina-hairline);
+  background: var(--alder-code-bg);
+  border: 1px solid var(--alder-hairline);
   border-radius: 6px;
   overflow: hidden;
 }
 
 .listing__file {
   padding: 0.5rem 1rem;
-  font-family: var(--lamina-font-mono);
+  font-family: var(--alder-font-mono);
   font-size: 0.8125rem;
-  color: var(--lamina-ink-muted);
-  border-bottom: 1px solid var(--lamina-hairline);
+  color: var(--alder-ink-muted);
+  border-bottom: 1px solid var(--alder-hairline);
 }
 
 .listing__code {
   margin: 0;
   padding: 0.75rem 0;
   overflow-x: auto;
-  font-family: var(--lamina-font-mono);
+  font-family: var(--alder-font-mono);
   font-size: 0.875rem;
   line-height: 1.75;
   tab-size: 2;
@@ -40,17 +40,17 @@
 }
 
 .listing__line--fault {
-  background: color-mix(in srgb, var(--lamina-fault) 9%, transparent);
+  background: color-mix(in srgb, var(--alder-fault) 9%, transparent);
 }
 
 .listing__line:target {
-  background: color-mix(in srgb, var(--lamina-focus) 16%, transparent);
+  background: color-mix(in srgb, var(--alder-focus) 16%, transparent);
 }
 
 .listing__number {
   padding-right: 0.75rem;
   text-align: right;
-  color: var(--lamina-ink-muted);
+  color: var(--alder-ink-muted);
   user-select: none;
   font-variant-numeric: tabular-nums;
 }
@@ -87,8 +87,8 @@
   place-items: center;
   width: 1.5rem;
   height: 1.5rem;
-  color: var(--lamina-card);
-  font-family: var(--lamina-font);
+  color: var(--alder-card);
+  font-family: var(--alder-font);
   font-size: 0.6875rem;
   font-weight: 800;
   line-height: 1;
@@ -103,7 +103,7 @@
   height: 1.0625rem;
   margin: auto;
   rotate: 45deg;
-  background: var(--lamina-fault);
+  background: var(--alder-fault);
   border-radius: 3px;
 }
 
@@ -128,7 +128,7 @@
 
   .listing--notes-beside .fault-list {
     border-top: 0;
-    border-left: 1px solid var(--lamina-hairline);
+    border-left: 1px solid var(--alder-hairline);
   }
 }
 
@@ -137,8 +137,8 @@
   margin: 0;
   padding: 0.375rem 0;
   list-style: none;
-  border-top: 1px solid var(--lamina-hairline);
-  background: var(--lamina-card);
+  border-top: 1px solid var(--alder-hairline);
+  background: var(--alder-card);
 }
 
 .fault-list__item {
@@ -151,7 +151,7 @@
 }
 
 .fault-list__item:target {
-  background: color-mix(in srgb, var(--lamina-focus) 12%, transparent);
+  background: color-mix(in srgb, var(--alder-focus) 12%, transparent);
 }
 
 .fault-list__item > .fault-mark {
@@ -161,12 +161,12 @@
 .fault-list__message {
   font-size: 0.9375rem;
   line-height: 1.5rem;
-  color: var(--lamina-ink);
+  color: var(--alder-ink);
   text-wrap: pretty;
 }
 
 .fault-list__message code {
-  font-family: var(--lamina-font-mono);
+  font-family: var(--alder-font-mono);
   font-size: 0.875em;
 }
 
@@ -174,13 +174,13 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0 0.75rem;
-  font-family: var(--lamina-font-mono);
+  font-family: var(--alder-font-mono);
   font-size: 0.8125rem;
-  color: var(--lamina-ink-muted);
+  color: var(--alder-ink-muted);
 }
 
 .fault-list__location {
-  color: var(--lamina-link);
+  color: var(--alder-link);
   font-variant-numeric: tabular-nums;
   text-underline-offset: 0.2em;
 }

@@ -1,6 +1,6 @@
 {
-  "name": "lamina",
-  "displayName": "Lamina: Ruby Templates (ERB, Haml, Slim)",
+  "name": "alder",
+  "displayName": "Alder: Ruby Templates (ERB, Haml, Slim)",
   "description": "Rails view tooling for ERB, Haml and Slim: highlighting, errors as you type, safe formatting, and Rails-aware go to partial, completion and hover for components, routes, ivars and i18n.",
   "version": "1.1.1",
   "publisher": "x-ror",
@@ -436,117 +436,117 @@
     ],
     "commands": [
       {
-        "command": "lamina.switchRelated",
-        "title": "Lamina: Switch to Related File (other format, component class/template)"
+        "command": "alder.switchRelated",
+        "title": "Alder: Switch to Related File (other format, component class/template)"
       },
       {
-        "command": "lamina.toggleErbTag",
-        "title": "Lamina: Toggle ERB Tag (<% / <%= / <%#)"
+        "command": "alder.toggleErbTag",
+        "title": "Alder: Toggle ERB Tag (<% / <%= / <%#)"
       },
       {
-        "command": "lamina.wrapInErb",
-        "title": "Lamina: Wrap Selection in ERB Output Tag"
+        "command": "alder.wrapInErb",
+        "title": "Alder: Wrap Selection in ERB Output Tag"
       },
       {
-        "command": "lamina.toggleSlimTag",
-        "title": "Lamina: Toggle Slim Line (- / = / == / /)"
+        "command": "alder.toggleSlimTag",
+        "title": "Alder: Toggle Slim Line (- / = / == / /)"
       },
       {
-        "command": "lamina.wrapInSlim",
-        "title": "Lamina: Wrap Selection in Slim Output (= / #{})"
+        "command": "alder.wrapInSlim",
+        "title": "Alder: Wrap Selection in Slim Output (= / #{})"
       },
       {
-        "command": "lamina.togglePugLine",
-        "title": "Lamina: Toggle Pug Line (- / = / != / //-)"
+        "command": "alder.togglePugLine",
+        "title": "Alder: Toggle Pug Line (- / = / != / //-)"
       },
       {
-        "command": "lamina.wrapInPug",
-        "title": "Lamina: Wrap Selection in Pug Output (= / #{})"
+        "command": "alder.wrapInPug",
+        "title": "Alder: Wrap Selection in Pug Output (= / #{})"
       },
       {
-        "command": "lamina.preview",
-        "title": "Lamina: Preview Rendered HTML"
+        "command": "alder.preview",
+        "title": "Alder: Preview Rendered HTML"
       },
       {
-        "command": "lamina.convertToHaml",
-        "title": "Lamina: Convert ERB/HTML → Haml"
+        "command": "alder.convertToHaml",
+        "title": "Alder: Convert ERB/HTML → Haml"
       },
       {
-        "command": "lamina.convertToErb",
-        "title": "Lamina: Convert Haml/Slim → ERB"
+        "command": "alder.convertToErb",
+        "title": "Alder: Convert Haml/Slim → ERB"
       },
       {
-        "command": "lamina.extractPartial",
-        "title": "Lamina: Extract Selection to Partial"
+        "command": "alder.extractPartial",
+        "title": "Alder: Extract Selection to Partial"
       },
       {
-        "command": "lamina.toggleHamlPrefix",
-        "title": "Lamina: Toggle Haml Line Prefix (- / = / -#)"
+        "command": "alder.toggleHamlPrefix",
+        "title": "Alder: Toggle Haml Line Prefix (- / = / -#)"
       },
       {
-        "command": "lamina.convertToSlim",
-        "title": "Lamina: Convert ERB/Haml → Slim"
+        "command": "alder.convertToSlim",
+        "title": "Alder: Convert ERB/Haml → Slim"
       },
       {
-        "command": "lamina.showRenderedSource",
-        "title": "Lamina: Show Compiled Ruby Source"
+        "command": "alder.showRenderedSource",
+        "title": "Alder: Show Compiled Ruby Source"
       },
       {
-        "command": "lamina.restartServer",
-        "title": "Lamina: Restart Language Server"
+        "command": "alder.restartServer",
+        "title": "Alder: Restart Language Server"
       }
     ],
     "keybindings": [
       {
-        "command": "lamina.toggleErbLineComment",
+        "command": "alder.toggleErbLineComment",
         "key": "ctrl+/",
         "mac": "cmd+/",
         "when": "editorTextFocus && !editorReadonly && editorLangId =~ /^erb/"
       },
       {
-        "command": "lamina.toggleErbTag",
+        "command": "alder.toggleErbTag",
         "key": "ctrl+alt+e",
         "mac": "cmd+alt+e",
         "when": "editorTextFocus && !editorReadonly && editorLangId =~ /^erb/"
       },
       {
-        "command": "lamina.toggleHamlPrefix",
+        "command": "alder.toggleHamlPrefix",
         "key": "ctrl+alt+e",
         "mac": "cmd+alt+e",
         "when": "editorTextFocus && !editorReadonly && editorLangId == haml"
       },
       {
-        "command": "lamina.toggleSlimTag",
+        "command": "alder.toggleSlimTag",
         "key": "ctrl+alt+e",
         "mac": "cmd+alt+e",
         "when": "editorTextFocus && !editorReadonly && editorLangId =~ /^(slim|skim)$/"
       },
       {
-        "command": "lamina.togglePugLine",
+        "command": "alder.togglePugLine",
         "key": "ctrl+alt+e",
         "mac": "cmd+alt+e",
         "when": "editorTextFocus && !editorReadonly && editorLangId == jade"
       },
       {
-        "command": "lamina.wrapInErb",
+        "command": "alder.wrapInErb",
         "key": "ctrl+alt+w",
         "mac": "cmd+alt+w",
         "when": "editorTextFocus && !editorReadonly && editorLangId =~ /^erb/"
       },
       {
-        "command": "lamina.wrapInSlim",
+        "command": "alder.wrapInSlim",
         "key": "ctrl+alt+w",
         "mac": "cmd+alt+w",
         "when": "editorTextFocus && !editorReadonly && editorLangId =~ /^(slim|skim)$/"
       },
       {
-        "command": "lamina.wrapInPug",
+        "command": "alder.wrapInPug",
         "key": "ctrl+alt+w",
         "mac": "cmd+alt+w",
         "when": "editorTextFocus && !editorReadonly && editorLangId == jade"
       },
       {
-        "command": "lamina.preview",
+        "command": "alder.preview",
         "key": "ctrl+alt+p",
         "mac": "cmd+alt+p",
         "when": "editorTextFocus && (editorLangId =~ /^erb/ || editorLangId == haml || editorLangId == slim)"
@@ -555,176 +555,176 @@
     "menus": {
       "editor/context": [
         {
-          "command": "lamina.toggleErbTag",
+          "command": "alder.toggleErbTag",
           "when": "editorLangId =~ /^erb/",
-          "group": "lamina@1"
+          "group": "alder@1"
         },
         {
-          "command": "lamina.wrapInErb",
+          "command": "alder.wrapInErb",
           "when": "editorLangId =~ /^erb/ && editorHasSelection",
-          "group": "lamina@2"
+          "group": "alder@2"
         },
         {
-          "command": "lamina.toggleSlimTag",
+          "command": "alder.toggleSlimTag",
           "when": "editorLangId =~ /^(slim|skim)$/",
-          "group": "lamina@1"
+          "group": "alder@1"
         },
         {
-          "command": "lamina.wrapInSlim",
+          "command": "alder.wrapInSlim",
           "when": "editorLangId =~ /^(slim|skim)$/ && editorHasSelection",
-          "group": "lamina@2"
+          "group": "alder@2"
         },
         {
-          "command": "lamina.togglePugLine",
+          "command": "alder.togglePugLine",
           "when": "editorLangId == jade",
-          "group": "lamina@1"
+          "group": "alder@1"
         },
         {
-          "command": "lamina.wrapInPug",
+          "command": "alder.wrapInPug",
           "when": "editorLangId == jade && editorHasSelection",
-          "group": "lamina@2"
+          "group": "alder@2"
         },
         {
-          "command": "lamina.preview",
+          "command": "alder.preview",
           "when": "editorLangId =~ /^erb/ || editorLangId == haml || editorLangId == slim",
-          "group": "lamina@3"
+          "group": "alder@3"
         },
         {
-          "command": "lamina.toggleHamlPrefix",
+          "command": "alder.toggleHamlPrefix",
           "when": "editorLangId == haml",
-          "group": "lamina@1"
+          "group": "alder@1"
         },
         {
-          "command": "lamina.extractPartial",
+          "command": "alder.extractPartial",
           "when": "(editorLangId =~ /^erb/ || editorLangId =~ /^(haml|slim|jade)$/) && editorHasSelection && resourceScheme == file",
-          "group": "lamina@2"
+          "group": "alder@2"
         },
         {
-          "command": "lamina.convertToHaml",
+          "command": "alder.convertToHaml",
           "when": "editorLangId == erb || editorLangId == html",
-          "group": "lamina@4"
+          "group": "alder@4"
         },
         {
-          "command": "lamina.convertToSlim",
+          "command": "alder.convertToSlim",
           "when": "editorLangId == erb || editorLangId == haml",
-          "group": "lamina@5"
+          "group": "alder@5"
         },
         {
-          "command": "lamina.convertToErb",
+          "command": "alder.convertToErb",
           "when": "editorLangId == haml || editorLangId == slim",
-          "group": "lamina@5"
+          "group": "alder@5"
         }
       ],
       "commandPalette": [
         {
-          "command": "lamina.switchRelated",
+          "command": "alder.switchRelated",
           "when": "resourceScheme == file && (editorLangId =~ /^erb/ || editorLangId =~ /^(haml|slim|skim|ruby)$/)"
         },
         {
-          "command": "lamina.toggleErbTag",
+          "command": "alder.toggleErbTag",
           "when": "editorLangId =~ /^erb/"
         },
         {
-          "command": "lamina.wrapInErb",
+          "command": "alder.wrapInErb",
           "when": "editorLangId =~ /^erb/"
         },
         {
-          "command": "lamina.toggleSlimTag",
+          "command": "alder.toggleSlimTag",
           "when": "editorLangId =~ /^(slim|skim)$/"
         },
         {
-          "command": "lamina.wrapInSlim",
+          "command": "alder.wrapInSlim",
           "when": "editorLangId =~ /^(slim|skim)$/"
         },
         {
-          "command": "lamina.togglePugLine",
+          "command": "alder.togglePugLine",
           "when": "editorLangId == jade"
         },
         {
-          "command": "lamina.wrapInPug",
+          "command": "alder.wrapInPug",
           "when": "editorLangId == jade"
         },
         {
-          "command": "lamina.convertToHaml",
+          "command": "alder.convertToHaml",
           "when": "editorLangId == erb || editorLangId == html"
         },
         {
-          "command": "lamina.convertToSlim",
+          "command": "alder.convertToSlim",
           "when": "editorLangId == erb || editorLangId == haml"
         },
         {
-          "command": "lamina.convertToErb",
+          "command": "alder.convertToErb",
           "when": "editorLangId == haml || editorLangId == slim"
         },
         {
-          "command": "lamina.extractPartial",
+          "command": "alder.extractPartial",
           "when": "(editorLangId =~ /^erb/ || editorLangId =~ /^(haml|slim|jade)$/) && resourceScheme == file"
         },
         {
-          "command": "lamina.toggleHamlPrefix",
+          "command": "alder.toggleHamlPrefix",
           "when": "editorLangId == haml"
         }
       ]
     },
     "configuration": {
-      "title": "Lamina",
+      "title": "Alder",
       "properties": {
-        "lamina.commands.slimrb": {
+        "alder.commands.slimrb": {
           "type": "string",
           "default": "slimrb",
           "description": "Executable used to render Slim (gem install slim)."
         },
-        "lamina.slim.compileForRails": {
+        "alder.slim.compileForRails": {
           "type": "boolean",
           "default": false,
           "description": "Show Compiled Ruby Source for Slim runs `slimrb --rails`: ActionView output buffer and no capture, as Rails compiles it."
         },
-        "lamina.commands.haml": {
+        "alder.commands.haml": {
           "type": "string",
           "default": "haml",
           "description": "Executable used to render Haml (gem install haml)."
         },
-        "lamina.commands.html2haml": {
+        "alder.commands.html2haml": {
           "type": "string",
           "default": "html2haml",
           "description": "Executable for ERB → Haml (gem install html2haml)."
         },
-        "lamina.commands.haml2slim": {
+        "alder.commands.haml2slim": {
           "type": "string",
           "default": "haml2slim",
           "description": "Executable for Haml → Slim (gem install haml2slim)."
         },
-        "lamina.commands.erb2slim": {
+        "alder.commands.erb2slim": {
           "type": "string",
           "default": "erb2slim",
           "description": "Executable for ERB → Slim (gem install html2slim)."
         },
-        "lamina.commands.ruby": {
+        "alder.commands.ruby": {
           "type": "string",
           "default": "ruby",
           "description": "Ruby used to preview and compile ERB through Erubi (gem install erubi; stdlib ERB without it) and for Haml → ERB through the haml_to_erb library (gem install haml_to_erb)."
         },
-        "lamina.erb.autoCloseTags": {
+        "alder.erb.autoCloseTags": {
           "type": "boolean",
           "default": true,
           "description": "Typing the `>` of an HTML start tag in ERB inserts its end tag after the cursor (like html.autoClosingTags for plain HTML)."
         },
-        "lamina.preview.refreshOnSave": {
+        "alder.preview.refreshOnSave": {
           "type": "boolean",
           "default": true,
           "description": "Re-render the HTML preview whenever the template is saved."
         },
-        "lamina.preview.useBundler": {
+        "alder.preview.useBundler": {
           "type": "boolean",
           "default": false,
           "description": "Prefix render commands with `bundle exec` when a Gemfile exists in the workspace."
         },
-        "lamina.preview.useRails": {
+        "alder.preview.useRails": {
           "type": "boolean",
           "default": false,
           "description": "Render the preview through the app's `bin/rails runner` (`ApplicationController.render(inline:, type:)`) when the file is inside a Rails app, so helpers, routes and partials work. Boots the app on every refresh and gives up after 60 seconds."
         },
-        "lamina.slim.extraEngines": {
+        "alder.slim.extraEngines": {
           "type": "array",
           "items": {
             "type": "string"
@@ -732,7 +732,7 @@
           "default": [],
           "description": "Embedded engine names registered by your app (e.g. `mjml`) that the unknown-engine check should accept."
         },
-        "lamina.erb.disabledDiagnostics": {
+        "alder.erb.disabledDiagnostics": {
           "type": "array",
           "items": {
             "type": "string",
@@ -771,9 +771,9 @@
           },
           "default": [],
           "uniqueItems": true,
-          "description": "Built-in ERB diagnostics to turn off, by rule name (`Department/Name`). A rule a `.lamina.toml` switches with `enabled` follows the file."
+          "description": "Built-in ERB diagnostics to turn off, by rule name (`Department/Name`). A rule a `.alder.toml` switches with `enabled` follows the file."
         },
-        "lamina.haml.disabledDiagnostics": {
+        "alder.haml.disabledDiagnostics": {
           "type": "array",
           "items": {
             "type": "string",
@@ -818,9 +818,9 @@
           },
           "default": [],
           "uniqueItems": true,
-          "description": "Built-in Haml diagnostics to turn off, by rule name (`Department/Name`). A rule a `.lamina.toml` switches with `enabled` follows the file."
+          "description": "Built-in Haml diagnostics to turn off, by rule name (`Department/Name`). A rule a `.alder.toml` switches with `enabled` follows the file."
         },
-        "lamina.jbuilder.disabledDiagnostics": {
+        "alder.jbuilder.disabledDiagnostics": {
           "type": "array",
           "items": {
             "type": "string",
@@ -832,9 +832,9 @@
           },
           "default": [],
           "uniqueItems": true,
-          "description": "Built-in diagnostics to turn off in Jbuilder and Builder views, by rule name (`Department/Name`). A rule a `.lamina.toml` switches with `enabled` follows the file."
+          "description": "Built-in diagnostics to turn off in Jbuilder and Builder views, by rule name (`Department/Name`). A rule a `.alder.toml` switches with `enabled` follows the file."
         },
-        "lamina.liquid.disabledDiagnostics": {
+        "alder.liquid.disabledDiagnostics": {
           "type": "array",
           "items": {
             "type": "string",
@@ -847,9 +847,9 @@
           },
           "default": [],
           "uniqueItems": true,
-          "description": "Built-in Liquid diagnostics to turn off, by rule name (`Department/Name`). A rule a `.lamina.toml` switches with `enabled` follows the file."
+          "description": "Built-in Liquid diagnostics to turn off, by rule name (`Department/Name`). A rule a `.alder.toml` switches with `enabled` follows the file."
         },
-        "lamina.pug.disabledDiagnostics": {
+        "alder.pug.disabledDiagnostics": {
           "type": "array",
           "items": {
             "type": "string",
@@ -877,9 +877,9 @@
           },
           "default": [],
           "uniqueItems": true,
-          "description": "Built-in Pug diagnostics to turn off, by rule name (`Department/Name`). A rule a `.lamina.toml` switches with `enabled` follows the file."
+          "description": "Built-in Pug diagnostics to turn off, by rule name (`Department/Name`). A rule a `.alder.toml` switches with `enabled` follows the file."
         },
-        "lamina.slim.disabledDiagnostics": {
+        "alder.slim.disabledDiagnostics": {
           "type": "array",
           "items": {
             "type": "string",
@@ -919,67 +919,67 @@
           },
           "default": [],
           "uniqueItems": true,
-          "description": "Built-in Slim diagnostics to turn off, by rule name (`Department/Name`). A rule a `.lamina.toml` switches with `enabled` follows the file."
+          "description": "Built-in Slim diagnostics to turn off, by rule name (`Department/Name`). A rule a `.alder.toml` switches with `enabled` follows the file."
         },
-        "lamina.erb.diagnostics.enabled": {
+        "alder.erb.diagnostics.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Show the language server's diagnostics in ERB files. Turn off to silence them all."
         },
-        "lamina.haml.diagnostics.enabled": {
+        "alder.haml.diagnostics.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Show the language server's diagnostics in Haml files. Turn off to silence them all."
         },
-        "lamina.slim.diagnostics.enabled": {
+        "alder.slim.diagnostics.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Show the language server's diagnostics in Slim and Skim files. Turn off to silence them all."
         },
-        "lamina.pug.diagnostics.enabled": {
+        "alder.pug.diagnostics.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Show the language server's diagnostics in Pug files. Turn off to silence them all."
         },
-        "lamina.erb.format.enabled": {
+        "alder.erb.format.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Let the language server format ERB files (Format Document and Format Selection with the built-in formatter). Turn off for no edits. A `.lamina.toml` overrides it."
+          "description": "Let the language server format ERB files (Format Document and Format Selection with the built-in formatter). Turn off for no edits. A `.alder.toml` overrides it."
         },
-        "lamina.erb.format.alignComments": {
+        "alder.erb.format.alignComments": {
           "type": "boolean",
           "default": false,
           "description": "Move the lines inside an ERB template's HTML comments (`<!-- … -->`) and multi-line `<%# … %>` comments with the line the comment opens on, keeping their relative indentation. Off: those lines keep their bytes."
         },
-        "lamina.haml.format.enabled": {
+        "alder.haml.format.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Let the language server format Haml files (Format Document and Format Selection). Turn off for no edits. A `.lamina.toml` overrides it."
+          "description": "Let the language server format Haml files (Format Document and Format Selection). Turn off for no edits. A `.alder.toml` overrides it."
         },
-        "lamina.slim.format.enabled": {
+        "alder.slim.format.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Let the language server format Slim and Skim files (Format Document and Format Selection). Turn off for no edits. A `.lamina.toml` overrides it."
+          "description": "Let the language server format Slim and Skim files (Format Document and Format Selection). Turn off for no edits. A `.alder.toml` overrides it."
         },
-        "lamina.pug.format.enabled": {
+        "alder.pug.format.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Let the language server format Pug files (Format Document: indentation, trailing whitespace, final newline). Turn off for no edits. A `.lamina.toml` overrides it."
+          "description": "Let the language server format Pug files (Format Document: indentation, trailing whitespace, final newline). Turn off for no edits. A `.alder.toml` overrides it."
         },
-        "lamina.routes.enabled": {
+        "alder.routes.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Read the app's routes with `bin/rails runner` (boots the app once, and again when config/routes.rb or config/routes/*.rb changes) for completion, hover and go to definition of `*_path` / `*_url` helpers in views."
         },
-        "lamina.server.enabled": {
+        "alder.server.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Run the Rust language server (diagnostics, go to partial, completions, hover, and the built-in ERB, Haml, Slim and Pug formatting)."
         },
-        "lamina.server.path": {
+        "alder.server.path": {
           "type": "string",
           "default": "",
-          "description": "Path to the lamina-ls binary. Leave empty to use the bundled one."
+          "description": "Path to the alder-ls binary. Leave empty to use the bundled one."
         }
       }
     },
@@ -1037,13 +1037,13 @@
     "vscode-oniguruma": "^2.0.1",
     "vscode-textmate": "^9.3.2"
   },
-  "homepage": "https://x-ror.github.io/lamina/",
+  "homepage": "https://x-ror.github.io/alder/",
   "bugs": {
-    "url": "https://github.com/x-ror/lamina/issues"
+    "url": "https://github.com/x-ror/alder/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/x-ror/lamina"
+    "url": "https://github.com/x-ror/alder"
   },
   "dependencies": {
     "vscode-languageclient": "^11.0.0"

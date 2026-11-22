@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Runs the `lamina` binary from the package built for this platform (`<name>-<platform>-<arch>`), which npm
+// Runs the `alder` binary from the package built for this platform (`<name>-<platform>-<arch>`), which npm
 // installs through optionalDependencies.
 import { spawnSync } from "child_process";
 import fs from "fs";
@@ -10,10 +10,10 @@ const require = createRequire(import.meta.url);
 const { name, optionalDependencies } = JSON.parse(
   fs.readFileSync(path.join(import.meta.dirname, "..", "package.json"), "utf8"),
 );
-const exe = process.platform === "win32" ? "lamina.exe" : "lamina";
+const exe = process.platform === "win32" ? "alder.exe" : "alder";
 
 function binary() {
-  if (process.env.LAMINA_BINARY) return process.env.LAMINA_BINARY;
+  if (process.env.ALDER_BINARY) return process.env.ALDER_BINARY;
   const platformPackage = `${name}-${process.platform}-${process.arch}`;
   try {
     const manifest = require.resolve(`${platformPackage}/package.json`);
@@ -23,7 +23,7 @@ function binary() {
       platformPackage in optionalDependencies
         ? `${platformPackage} is not installed; reinstall without --omit=optional`
         : `no prebuilt binary is published for ${process.platform}-${process.arch}`;
-    console.error(`lamina: ${why}, or set LAMINA_BINARY.`);
+    console.error(`alder: ${why}, or set ALDER_BINARY.`);
     process.exit(2);
   }
 }
@@ -32,7 +32,7 @@ const { status, signal, error } = spawnSync(binary(), process.argv.slice(2), {
   stdio: "inherit",
 });
 if (error) {
-  console.error(`lamina: ${error.message}`);
+  console.error(`alder: ${error.message}`);
   process.exit(2);
 }
 if (signal) process.kill(process.pid, signal);

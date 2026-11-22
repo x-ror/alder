@@ -447,7 +447,7 @@ mod tests {
     fn app(files: &[(&str, &str)]) -> PathBuf {
         static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let root = std::env::temp_dir().join(format!(
-            "lamina-stimulus-edit-{}-{}",
+            "alder-stimulus-edit-{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));

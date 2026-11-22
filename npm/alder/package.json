@@ -1,11 +1,11 @@
 {
-  "name": "@x-ror/lamina",
+  "name": "@x-ror/alder",
   "version": "0.0.0",
   "description": "Checks and a safe, whitespace-only formatter for ERB, Haml and Slim templates, for CI and editors",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/x-ror/lamina.git"
+    "url": "git+https://github.com/x-ror/alder.git"
   },
   "keywords": [
     "erb",
@@ -17,13 +17,13 @@
     "ci",
     "views"
   ],
-  "homepage": "https://x-ror.github.io/lamina/",
+  "homepage": "https://x-ror.github.io/alder/",
   "bugs": {
-    "url": "https://github.com/x-ror/lamina/issues"
+    "url": "https://github.com/x-ror/alder/issues"
   },
   "type": "module",
   "bin": {
-    "lamina": "bin/lamina.js"
+    "alder": "bin/alder.js"
   },
   "files": [
     "bin"

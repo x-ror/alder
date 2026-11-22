@@ -354,7 +354,7 @@ mod tests {
 
     #[test]
     fn roots_are_searched_to_a_depth_and_skip_app_insides_and_dependencies() {
-        let root = std::env::temp_dir().join(format!("lamina-view-roots-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-view-roots-{}", std::process::id()));
         std::fs::remove_dir_all(&root).ok();
         let files = [
             "app/views/a.erb",
@@ -394,7 +394,7 @@ mod tests {
 
     #[test]
     fn git_gems_are_found_beside_the_gems_folder() {
-        let root = std::env::temp_dir().join(format!("lamina-view-roots-git-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-view-roots-git-{}", std::process::id()));
         std::fs::remove_dir_all(&root).ok();
         write_files(&root, &[("app/views/a.erb", ""), ("vendor/bundle/ruby/3.3.0/bundler/gems/devise-0123abcdef01/app/views/x.erb", "")]);
         std::fs::create_dir_all(root.join("vendor/bundle/ruby/3.3.0/gems")).unwrap();
@@ -406,7 +406,7 @@ mod tests {
 
     #[test]
     fn gems_are_found_in_an_absolute_bundle_path_and_a_scan_survives_symlink_loops() {
-        let base = std::env::temp_dir().join(format!("lamina-view-roots-abs-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("alder-view-roots-abs-{}", std::process::id()));
         std::fs::remove_dir_all(&base).ok();
         let (root, bundle) = (base.join("app"), base.join("shared"));
         write_files(&root, &[("app/views/a.erb", "")]);
@@ -423,7 +423,7 @@ mod tests {
 
     #[test]
     fn a_root_folder_named_like_a_skipped_one_is_still_searched() {
-        let base = std::env::temp_dir().join(format!("lamina-view-roots-named-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("alder-view-roots-named-{}", std::process::id()));
         std::fs::remove_dir_all(&base).ok();
         let root = base.join("public");
         write_files(&root, &[("app/views/a.erb", ""), ("storage/app/views/b.erb", ""), ("vendor/bundle/app/views/c.erb", "")]);
@@ -434,7 +434,7 @@ mod tests {
 
     #[test]
     fn relative_bundle_paths_resolve_against_the_app_root() {
-        let root = std::env::temp_dir().join(format!("lamina-view-roots-rel-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-view-roots-rel-{}", std::process::id()));
         std::fs::remove_dir_all(&root).ok();
         write_files(&root, &[("shared/ruby/3.3.0/gems/x-1.0/app/views/a.erb", ""), ("app/views/a.erb", "")]);
         let env = GemEnv { bundle_path: Some("shared".into()), ..GemEnv::default() };
@@ -445,7 +445,7 @@ mod tests {
 
     #[test]
     fn gem_files_are_told_by_path_under_the_gem_homes() {
-        let base = std::env::temp_dir().join(format!("lamina-view-roots-gemfile-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("alder-view-roots-gemfile-{}", std::process::id()));
         let (root, home) = (base.join("app"), base.join("rubygems"));
         let env = GemEnv { gem_home: Some(home.clone()), ..GemEnv::default() };
         std::fs::create_dir_all(root.join("vendor/bundle/ruby/3.3.0/gems")).unwrap();
@@ -461,7 +461,7 @@ mod tests {
 
     #[test]
     fn rbenv_gems_are_told_by_the_specifications_folder_beside_them() {
-        let base = std::env::temp_dir().join(format!("lamina-view-roots-rbenv-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("alder-view-roots-rbenv-{}", std::process::id()));
         let home = base.join("versions/3.3.0/lib/ruby/gems/3.3.0");
         let env = GemEnv::default();
         std::fs::create_dir_all(home.join("specifications")).unwrap();
@@ -473,7 +473,7 @@ mod tests {
 
     #[test]
     fn only_gems_defining_an_engine_are_rendered_from_and_the_cache_refreshes_when_cleared() {
-        let root = std::env::temp_dir().join(format!("lamina-view-roots-engines-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-view-roots-engines-{}", std::process::id()));
         std::fs::remove_dir_all(&root).ok();
         let gems = "vendor/bundle/ruby/3.3.0/gems";
         write_files(

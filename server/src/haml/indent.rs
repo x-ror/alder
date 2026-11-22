@@ -5,7 +5,7 @@ use crate::haml::parser::{is_haml_multiline, is_ruby_multiline, strip_output_pre
 use crate::util::{balanced_across_lines, closing_bracket, coded, error, find_balanced, leading_ws, span_range, warning};
 use tower_lsp_server::ls_types::Diagnostic;
 
-/// Stable diagnostic codes; `lamina.haml.disabledDiagnostics` refers to these.
+/// Stable diagnostic codes; `alder.haml.disabledDiagnostics` refers to these.
 pub mod code {
     pub const INCONSISTENT_INDENT: &str = "Syntax/InconsistentIndent";
     pub const TOP_LEVEL_INDENT: &str = "Syntax/TopLevelIndent";

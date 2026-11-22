@@ -1,5 +1,5 @@
 [package]
-name = "lamina-ls"
+name = "alder-ls"
 version = "1.1.1"
 edition = "2021"
 rust-version = "1.85"
@@ -7,16 +7,16 @@ description = "Language server for ERB, Haml and Slim templates"
 license = "MIT"
 
 [lib]
-name = "lamina"
+name = "alder"
 path = "src/lib.rs"
 
 [[bin]]
-name = "lamina-ls"
+name = "alder-ls"
 path = "src/main.rs"
 
 [[bin]]
-name = "lamina"
-path = "src/bin/lamina.rs"
+name = "alder"
+path = "src/bin/alder.rs"
 
 [dependencies]
 tower-lsp-server = "0.23"

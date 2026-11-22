@@ -37,7 +37,7 @@ The sections below go through each one.
 - Inside `render "…"`, completion offers your partial names.
 - Find all references on a partial lists every `render` of it.
 
-A `dir/name` render missing from `app/views` is also looked up in the app's engines, packs and components, then in installed gems' views; [Compatibility](/lamina/guides/compatibility/#partials-and-formats) has the details. Jbuilder and Builder views get partial navigation too.
+A `dir/name` render missing from `app/views` is also looked up in the app's engines, packs and components, then in installed gems' views; [Compatibility](/alder/guides/compatibility/#partials-and-formats) has the details. Jbuilder and Builder views get partial navigation too.
 
 ### Rename or move a partial
 
@@ -60,7 +60,7 @@ Renaming `user` here also renames the `user:` key in `render "users/card", user:
 <%= render ButtonComponent.new(label: "Save") %>
 ```
 
-Completion offers your ViewComponents. Go to definition opens the component class or its template, and `with_*` slots are completed. _Switch to Related File_ moves between a component's class, template and preview; see [Commands](/lamina/guides/commands/).
+Completion offers your ViewComponents. Go to definition opens the component class or its template, and `with_*` slots are completed. _Switch to Related File_ moves between a component's class, template and preview; see [Commands](/alder/guides/commands/).
 
 ## Instance variables
 
@@ -80,7 +80,7 @@ Views in a folder without a controller (`shared/`, `layouts/`) get the instance 
 = link_to "Edit", edit_user_path(@user)
 ```
 
-Routes are read with `bin/rails runner`, in trusted workspaces only. Turn this off with [`lamina.routes.enabled`](/lamina/guides/settings/#rails).
+Routes are read with `bin/rails runner`, in trusted workspaces only. Turn this off with [`alder.routes.enabled`](/alder/guides/settings/#rails).
 
 ## Translations
 
@@ -146,4 +146,4 @@ This works when the controller makes the record plain to see, for example `@repo
 
 Every template has an outline and breadcrumbs.
 
-In Pug, which has no Rails calls, the outline lists tags with an id, a class or a landmark name, `block`s and `mixin` definitions; see [File types](/lamina/guides/file-types/#outline). Go to Definition, links, hover and completion work on the paths of `include` and `extends` instead; see [Include and extends](/lamina/guides/file-types/#include-and-extends).
+In Pug, which has no Rails calls, the outline lists tags with an id, a class or a landmark name, `block`s and `mixin` definitions; see [File types](/alder/guides/file-types/#outline). Go to Definition, links, hover and completion work on the paths of `include` and `extends` instead; see [Include and extends](/alder/guides/file-types/#include-and-extends).

@@ -22,7 +22,7 @@
 | `rails_app/app/views/playground/preview`                                 | Шаблони без Rails-хелперів для Preview / Show Compiled Ruby Source                                                                                                                                                           |
 | `rails_app/app/views/playground/stimulus`                                | Атрибути Stimulus-контролерів елемента (`search_controller.js`) в ERB, Haml і Slim                                                                                                                                           |
 | `rails_app/app/views/playground/rules`                                   | Правила 0.11–0.14 (Rails, Turbo, Stimulus, Html, A11y): у ERB, Haml і Slim, у кожному файлі спершу рядки, що попереджають, потім ті, що ні (розділ 9)                                                                        |
-| `rails_app/app/views/playground/rules/format`                            | Правила форматування, вимкнені за замовчуванням, і lint-и `Style/ErbTrimMode`, `Layout/LineLength`; власний `.lamina.toml` вмикає їх усі (розділ 9)                                                                          |
+| `rails_app/app/views/playground/rules/format`                            | Правила форматування, вимкнені за замовчуванням, і lint-и `Style/ErbTrimMode`, `Layout/LineLength`; власний `.alder.toml` вмикає їх усі (розділ 9)                                                                           |
 | `rails_app/bin/rails`                                                    | Заглушка: відповідає лише на запит маршрутів, щоб `*_path` працювали без встановленого Rails                                                                                                                                 |
 | `no_rails/`                                                              | Шаблони без `Gemfile.lock`: Rails-перевірки тут вимкнені                                                                                                                                                                     |
 
@@ -38,12 +38,12 @@
 
    Скрипт збирає сервер (`bun run build:server`) і клієнт (`bun run build`) і відкриває вікно _Extension Development Host_. Розширення з цієї папки має пріоритет над встановленим з Marketplace (у тебе зараз стоїть 0.3.2).
 
-   Інший варіант, ближчий до того, що отримають користувачі: `bun run package` і `code --install-extension lamina-*.vsix`.
+   Інший варіант, ближчий до того, що отримають користувачі: `bun run package` і `code --install-extension alder-*.vsix`.
 
    У вікні з двома папками діють лише налаштування з `demo.code-workspace` (там продубльовано `files.associations` для `erb-percent` і Liquid); решта з `rails_app/.vscode/settings.json` ні.
 
 2. На запит _Do you trust the authors?_ натисни **Trust**: маршрути читаються лише в довіреній папці.
-3. Логи: _View → Output_, канал **Lamina**. Сервер перезапускає _Lamina: Restart Language Server_.
+3. Логи: _View → Output_, канал **Alder**. Сервер перезапускає _Alder: Restart Language Server_.
 4. Тести змінюють демо-файли (rename, форматування, quick fix). Повернути все як було:
 
    ```sh
@@ -73,7 +73,7 @@
 - [ ] **E-04** `Ctrl+/` у рядку з HTML дає `<!-- -->`, у рядку `<% %>` дає ERB-коментар. Те саме в Haml (`-#`) і Slim (`/`).
 - [ ] **E-05** `Ctrl+Alt+E` на `<% user.name %>` (рядок 2): `<%` → `<%=` → `<%#` → `<%`.
 - [ ] **E-06** Виділи `user.email` (рядок 3) і натисни `Ctrl+Alt+W`, має вийти `<%= user.email %>`.
-- [ ] **E-07** Виділи блок `<div class="box">…</div>`, _Lamina: Extract Selection to Partial_, ім'я `box`. З'являється `playground/editing/_box.html.erb`, на місці виділення стоїть `render`.
+- [ ] **E-07** Виділи блок `<div class="box">…</div>`, _Alder: Extract Selection to Partial_, ім'я `box`. З'являється `playground/editing/_box.html.erb`, на місці виділення стоїть `render`.
 - [ ] **E-08** `haml.html.haml`: `Ctrl+Alt+E` у рядку 2 перемикає `-` → `=` → `-#`. Extract Selection to Partial на двох `%p` створює `_name.html.haml` без зайвого відступу.
 - [ ] **E-09** `slim.html.slim`: `Ctrl+Alt+E` у рядку 2 перемикає `-` → `=` → `==` → `/`. `Ctrl+Alt+W` на рядку 3 цілком дає `= user.email`, на виділеному `user.name` у рядку 4 дає `#{user.name}`.
 - [ ] **E-10** `slim.html.slim`: виділи два `p` у `section`, _Extract Selection to Slim Partial_, ім'я `shared/lines`. Файл з'являється в `app/views/shared/_lines.html.slim`, у `section` лишається `= render "shared/lines"`.
@@ -126,7 +126,7 @@
 - [ ] **D-30** `engine_render.html.erb` (партіали engine `blog`): рядок 1 «missing local: :post for app/views/blog/_post.html.erb» (сигнатура береться з engine). Рядок 2 (`blog/summary`, якого немає) не підкреслюється: `blog` це гем із `Gemfile.lock`, а гем може мати власні в'ю. Без блоку `PATH` у `Gemfile.lock` (див. D-28) з'являється й «Missing partial blog/_summary». Власні в'ю engine (`engines/blog/app/views/…`) render-перевірок не мають.
 - [ ] **D-31** `$B check demo/shop_app` (див. розділ 7) дає єдине попередження: `pages/index.html.erb:2`, `render "banner"` → «Missing partial pages/_banner, application/_banner». `products/index.html.erb:3`, `render "badge"` без попередження: `ProductsController` робить `include Themeable`, а `lib/themeable.rb` викликає `prepend_view_path`, тож Rails шукає ще й у `themes/` (там `products/_badge.html.erb`). `PagesController` нічого не підключає, тому там перевірка працює.
 - [ ] **D-32** Без файлу: `Ctrl+N`, мова _ERB_, встав `<img src="x">`, `<div>` і `<%= render "users/card" %>` окремими рядками. З'являються «`<img>` without `alt`» і «`<div>` is never closed» (HTML-перевірки діють і в безіменному документі). Hover і F12 на `"users/card"` нічого не дають, а Output без помилок.
-- [ ] **D-33** `bad.html.liquid`: три помилки (error), по одній на проблему. Рядок 1 `{% endunless %}` «has no open `unless` tag to close» (`Syntax/LiquidStrayEndTag`); рядок 4 `{% endfor %}` «doesn't close the open `if` tag; Liquid expects `endif`» (`Syntax/LiquidMismatchedEndTag`), `if` з рядка 2 окремо не підкреслюється; рядок 5 `{{` «is never closed» (`Syntax/LiquidUnclosedTag`), бо `}}` далі немає. Видали `{% endfor %}`: з'являється «`if` is never closed; add `endif`» на рядку 2 (`Syntax/LiquidUnclosedBlock`). `"lamina.liquid.disabledDiagnostics": ["Syntax/LiquidStrayEndTag"]` ховає перше. Вміст `{% comment %}` і `{% raw %}` не перевіряється.
+- [ ] **D-33** `bad.html.liquid`: три помилки (error), по одній на проблему. Рядок 1 `{% endunless %}` «has no open `unless` tag to close» (`Syntax/LiquidStrayEndTag`); рядок 4 `{% endfor %}` «doesn't close the open `if` tag; Liquid expects `endif`» (`Syntax/LiquidMismatchedEndTag`), `if` з рядка 2 окремо не підкреслюється; рядок 5 `{{` «is never closed» (`Syntax/LiquidUnclosedTag`), бо `}}` далі немає. Видали `{% endfor %}`: з'являється «`if` is never closed; add `endif`» на рядку 2 (`Syntax/LiquidUnclosedBlock`). `"alder.liquid.disabledDiagnostics": ["Syntax/LiquidStrayEndTag"]` ховає перше. Вміст `{% comment %}` і `{% raw %}` не перевіряється.
 
 ## 4. Rails-навігація (`rails_app`)
 
@@ -168,7 +168,7 @@
 - [ ] **N-21** Hover на `edit_user_path` (рядок 12) → `/users/:id/edit`, **GET** → `users#edit`. Hover на `users_path` у `shared/_nav.html.haml` показує GET і POST.
 - [ ] **N-22** F12 на `new_user_path` (рядок 22) → `config/routes.rb:4`.
 - [ ] **N-23** Зміни `config/routes.rb` і збережи: в Output має з'явитися новий запуск `bin/rails runner`. Якщо маршрути не працюють, причина теж буде там (`[routes] …`).
-- [ ] **N-24** `lamina.routes.enabled: false` вимикає маршрути. У недовіреному вікні (_Workspaces: Manage Workspace Trust_) `bin/rails` не запускається.
+- [ ] **N-24** `alder.routes.enabled: false` вимикає маршрути. У недовіреному вікні (_Workspaces: Manage Workspace Trust_) `bin/rails` не запускається.
 
 **i18n, хелпери, форми, Stimulus**
 
@@ -216,12 +216,12 @@ _Format Document_ (`Shift+Alt+F`). Після кожного файлу відк
 - [ ] **F-06** _Format Selection_ в ERB і Haml форматує лише виділене.
 - [ ] **F-07** Format on save: `"[erb]": { "editor.formatOnSave": true }` (і `[haml]`, `[slim]`) у `.vscode/settings.json`.
 - [ ] **F-08** `"editor.codeActionsOnSave": { "source.erbSpacing": "explicit" }`: при збереженні `broken/html_attrs.html.erb` тег `<%=@user.name%>` стає `<%= @user.name %>`.
-- [ ] **F-09** `lamina.erb.format.alignComments: true`: рядки всередині багаторядкового `<%# … %>` рухаються разом із його першим рядком.
-- [ ] **F-10** `lamina.<erb|haml|slim>.format.enabled: false`: Format Document більше нічого не робить (або пропонує інший форматер).
+- [ ] **F-09** `alder.erb.format.alignComments: true`: рядки всередині багаторядкового `<%# … %>` рухаються разом із його першим рядком.
+- [ ] **F-10** `alder.<erb|haml|slim>.format.enabled: false`: Format Document більше нічого не робить (або пропонує інший форматер).
 - [ ] **F-11** `.js.erb`, `.text.erb`, `.json.erb`, `*.jbuilder`, `.liquid` не форматуються ніколи (`highlight/sample.js.erb`, `highlight/sample.html.liquid`).
 - [ ] **F-12** `heredoc.html.erb`: рядки з початком тегів `<%= <<~HTML.html_safe` (2) і `<% summary = <<~TEXT` (6) та `<p>` (10) отримують один рівень відступу. Тіла heredoc, їхні кінцівки (`HTML`, `TEXT`) і рядки `%>` (3–5, 7–9) лишаються байт у байт. `$B check` на цьому файлі дає одне попередження `html_safe` (Rails/UnsafeOutput, рядок 2): heredoc із `.html_safe` і є предметом перевірки.
 - [ ] **F-13** Глоби `.editorconfig`. У VS Code ширину задає розмір табуляції редактора (F-05), тому дивись через командний рядок (розділ 7): у `playground/editorconfig` `plain.html.erb` дає відступ 4 (секція `[app/views/playground/editorconfig/**/*.html.erb]`: `/**/` збігається і з однією `/`), `page2.html.erb` 3 (`[page{1..3}.html.erb]`: без `/` секція діє в будь-якій папці), `page02.html.erb` знову 4 (діапазон не збігається з нулем попереду), `{brace.html.erb` 6 (секція `[{brace.html.erb]` з незакритою дужкою читається буквально).
-- [ ] **F-14** Порожні рядки. Додай у `rails_app/.lamina.toml` `[Layout.EmptyLines]` з `enabled = true` і `max = 1` (потім прибери). Format Document у `messy.html.erb` лишає один порожній рядок там, де після `<% end %>` було три; порожні рядки в `<pre>` і `<script>` не змінюються. Те саме командою `$B format demo/rails_app/app/views/playground/format/messy.html.erb`. `[Layout.TrailingEmptyLines] enabled = false` лишає кінець файлу як є, а за замовчуванням файл Haml і Slim закінчується одним переведенням рядка (ERB рендериться байт у байт, тому там правило вимкнене; `enabled = true` вмикає його).
+- [ ] **F-14** Порожні рядки. Додай у `rails_app/.alder.toml` `[Layout.EmptyLines]` з `enabled = true` і `max = 1` (потім прибери). Format Document у `messy.html.erb` лишає один порожній рядок там, де після `<% end %>` було три; порожні рядки в `<pre>` і `<script>` не змінюються. Те саме командою `$B format demo/rails_app/app/views/playground/format/messy.html.erb`. `[Layout.TrailingEmptyLines] enabled = false` лишає кінець файлу як є, а за замовчуванням файл Haml і Slim закінчується одним переведенням рядка (ERB рендериться байт у байт, тому там правило вимкнене; `enabled = true` вмикає його).
 
 ## 6. Команди, яким потрібен Ruby (`playground/preview`)
 
@@ -230,15 +230,15 @@ _Format Document_ (`Shift+Alt+F`). Після кожного файлу відк
 - [ ] **P-01** `Ctrl+Alt+P` у `plain.html.erb`, `.haml`, `.slim` → HTML у боковій панелі, оновлюється при збереженні.
 - [ ] **P-02** _Show Compiled Ruby Source_ на тих самих файлах.
 - [ ] **P-03** _Convert ERB/HTML → Haml_, _Convert ERB/Haml → Slim_, _Convert Haml/Slim → ERB_ на `plain.*`.
-- [ ] **P-04** Прев'ю в'ю з Rails-хелперами (`users/index.html.erb`) без Rails показує помилку `link_to`/`render`. Це очікувано. `lamina.preview.useRails` потребує справжнього застосунку (`rails new`), бо заглушка `bin/rails` відповідає лише на маршрути.
+- [ ] **P-04** Прев'ю в'ю з Rails-хелперами (`users/index.html.erb`) без Rails показує помилку `link_to`/`render`. Це очікувано. `alder.preview.useRails` потребує справжнього застосунку (`rails new`), бо заглушка `bin/rails` відповідає лише на маршрути.
 - [ ] **P-05** `lib/reports/summary.erb` (мова `erb-percent`): `Ctrl+Alt+P` показує текст `Users: 2`, `  - Ann`, `  - Bob`, `Done.`, `% not a Ruby line` (stdlib ERB з `trim_mode: "%-"`: рядки `%` це Ruby, `%%` це літерал). _Show Compiled Ruby Source_ показує рядки `%` як код.
 
 ## 7. Командний рядок
 
-Бінарник після `bun run build:server`: `server/target/release/lamina`. Запускати з кореня репозиторію.
+Бінарник після `bun run build:server`: `server/target/release/alder`. Запускати з кореня репозиторію.
 
 ```sh
-B=server/target/release/lamina
+B=server/target/release/alder
 $B check demo/rails_app/app/views                               # exit 1: playground/broken, format/heredoc (html_safe, F-12), format/unsafe.*, rules/*, shared/_nav (R-04), users/new
 $B check demo/rails_app/app/views/users                         # exit 1, рівно 3 попередження з new.html.erb
 $B check demo/rails_app/app/views/playground/preview            # exit 0, нічого
@@ -262,25 +262,25 @@ $B format --write demo/rails_app/app/views/playground/format    # перепис
 - [ ] **C-01** Вивід і коди виходу збігаються з коментарями вище.
 - [ ] **C-02** Повторний `format --check` після `--write` дає exit 0 (форматування стабільне).
 - [ ] **C-03** `$B check demo/rails_app/app/views | head -1` не панікує (stderr порожній).
-- [ ] **C-04** `$B check demo/rails_app/app/views/playground/rules/img.html.erb`: exit 0, нічого. `rails_app/.lamina.toml` вимикає `Html/ImgAlt` для `playground/rules/**`; `$B check demo/rails_app/app/views/playground/broken/html_attrs.html.erb` те саме попередження про `alt` показує.
+- [ ] **C-04** `$B check demo/rails_app/app/views/playground/rules/img.html.erb`: exit 0, нічого. `rails_app/.alder.toml` вимикає `Html/ImgAlt` для `playground/rules/**`; `$B check demo/rails_app/app/views/playground/broken/html_attrs.html.erb` те саме попередження про `alt` показує.
 - [ ] **C-05** `$B check demo/rails_app/app/views/playground/rules`: exit 1 і рівно 83 рядки (`| wc -l`). По файлах: `silent.*` 5+5+5, `loops.*` 3+3+3, `_ivar.*` і `_unused_local.*` по 1 на файл, `output.html.erb` 5, `output.html.haml` і `.slim` по 4, `control_flow.html.erb` 1, `i18n.*` 1+1+1, `turbo_stimulus.*` 4+4+4, `html.html.erb` 8, `html.html.haml` 6, `html.html.slim` 5, `format/` 5. `routes.*` не дають нічого: маршрути читає лише редактор.
-- [ ] **C-06** `$B format --check demo/rails_app/app/views/playground/rules`: exit 1 і 14 файлів, усі з `rules/format`. Після `--write` цієї теки (потім `git checkout`) повторний `--check` дає exit 0. Без `rules/format/.lamina.toml` ті самі файли форматер лишає як є (окрім хвостових пробілів).
+- [ ] **C-06** `$B format --check demo/rails_app/app/views/playground/rules`: exit 1 і 14 файлів, усі з `rules/format`. Після `--write` цієї теки (потім `git checkout`) повторний `--check` дає exit 0. Без `rules/format/.alder.toml` ті самі файли форматер лишає як є (окрім хвостових пробілів).
 
 ## 8. Налаштування (`rails_app/.vscode/settings.json`)
 
-- [ ] **S-01** `"lamina.erb.disabledDiagnostics": ["Html/ImgAlt"]`: попередження про `alt` зникають, решта лишається. Старий код `img-missing-alt` працює так само. Те саме з кодом з Problems для Haml, Slim і `lamina.jbuilder.disabledDiagnostics`.
-- [ ] **S-02** `"lamina.slim.diagnostics.enabled": false`: жодної діагностики в `.slim` і `.skim`.
-- [ ] **S-03** `"lamina.erb.autoCloseTags": false`: E-02 більше не додає закривальний тег.
-- [ ] **S-04** `lamina.slim.extraEngines` містить `mjml`: у Slim `mjml:` не є помилкою «unknown engine» і є в автодоповненні.
-- [ ] **S-05** `"lamina.server.enabled": false`: підсвітка й сніпети працюють, діагностики, навігації та форматування немає.
+- [ ] **S-01** `"alder.erb.disabledDiagnostics": ["Html/ImgAlt"]`: попередження про `alt` зникають, решта лишається. Старий код `img-missing-alt` працює так само. Те саме з кодом з Problems для Haml, Slim і `alder.jbuilder.disabledDiagnostics`.
+- [ ] **S-02** `"alder.slim.diagnostics.enabled": false`: жодної діагностики в `.slim` і `.skim`.
+- [ ] **S-03** `"alder.erb.autoCloseTags": false`: E-02 більше не додає закривальний тег.
+- [ ] **S-04** `alder.slim.extraEngines` містить `mjml`: у Slim `mjml:` не є помилкою «unknown engine» і є в автодоповненні.
+- [ ] **S-05** `"alder.server.enabled": false`: підсвітка й сніпети працюють, діагностики, навігації та форматування немає.
 - [ ] **S-06** `"files.associations": { "**/lib/reports/*.erb": "erb-percent" }`: `lib/reports/summary.erb` має мову _Text (ERB, % lines)_. Без запису файл відкривається як звичайний ERB: рядки `%` це текст, а діагностика дає «unexpected 'else'» (D-27).
 - [ ] **S-07** `"files.associations": { "**/playground/liquid/_includes/*.html": "liquid" }`: `_includes/header.html` має мову _Liquid_. Без запису це звичайний HTML.
-- [ ] **S-08** `rails_app/.lamina.toml` сильніший за налаштування VS Code: `playground/rules/img.html.erb` без попередження про `alt` навіть з `"lamina.erb.disabledDiagnostics": []`. Заміни `exclude` на `["x"]` і збережи: попередження з'являється одразу. Помилка в ключі (`exclude` → `exclud`) дає попередження на самому `.lamina.toml` у Problems і в Output.
+- [ ] **S-08** `rails_app/.alder.toml` сильніший за налаштування VS Code: `playground/rules/img.html.erb` без попередження про `alt` навіть з `"alder.erb.disabledDiagnostics": []`. Заміни `exclude` на `["x"]` і збережи: попередження з'являється одразу. Помилка в ключі (`exclude` → `exclud`) дає попередження на самому `.alder.toml` у Problems і в Output.
 - [ ] **S-09** Той самий файл має верхній `exclude = ["app/views/playground/highlight/**"]`: у `highlight/sample.*` немає діагностик і форматування (це копії `test/sample.*` для підсвітки, вони навмисно містять `<a>` без `href`, `<%==`, невикористані locals). Прибери рядок `exclude` і збережи: у Problems з'являються попередження цих файлів.
 
 ## 9. Правила (`playground/rules`)
 
-Файли лежать у `rails_app/app/views/playground/rules`. У кожному першому рядку написано, які рядки попереджають; після коментаря `no warning` ідуть варіанти, на які правило мовчить. Номери рядків і колонок (`2:4`) такі, як у `lamina check`; Problems показує код правила в дужках (`Rails/SilentRender`). Усі ці правила увімкнені за замовчуванням, окрім двох lint-ів у `format/` (R-27). Rails-правила діють лише в застосунку з `Gemfile.lock`: ті самі файли без нього дають лише Html/A11y (так само в `no_rails/`, D-21). Вимкнути правило чи департамент: `[Rails.SilentRender] enabled = false` або `[Rails] enabled = false` в `rails_app/.lamina.toml`; у файлі `control_flow.html.erb` при вимкненому `[Rails]` з'являються Ruby-помилки, які Rails/OutputControlFlow приховує (R-08).
+Файли лежать у `rails_app/app/views/playground/rules`. У кожному першому рядку написано, які рядки попереджають; після коментаря `no warning` ідуть варіанти, на які правило мовчить. Номери рядків і колонок (`2:4`) такі, як у `alder check`; Problems показує код правила в дужках (`Rails/SilentRender`). Усі ці правила увімкнені за замовчуванням, окрім двох lint-ів у `format/` (R-27). Rails-правила діють лише в застосунку з `Gemfile.lock`: ті самі файли без нього дають лише Html/A11y (так само в `no_rails/`, D-21). Вимкнути правило чи департамент: `[Rails.SilentRender] enabled = false` або `[Rails] enabled = false` в `rails_app/.alder.toml`; у файлі `control_flow.html.erb` при вимкненому `[Rails]` з'являються Ruby-помилки, які Rails/OutputControlFlow приховує (R-08).
 
 Quick fix: `Ctrl+.` на попередженні.
 
@@ -296,7 +296,7 @@ Quick fix: `Ctrl+.` на попередженні.
 - [ ] **R-08** `control_flow.html.erb` 2:3: «`if` in an output tag `<%=`: use `<% if … %>`». Це єдине повідомлення: Ruby-помилки, які викликає `=`, приховано. Quick fix _Use a code tag `<%`_ прибирає `=`. Лише ERB (Haml і Slim приймають `= if` з вкладеним блоком). Без попередження: `<%= if @user then "a" else "b" end %>`, `<%= @user.name if @user %>`, `<%= form_with … do |f| %>`. `$B format` на цьому файлі: «left unchanged: line 2: expected `then` or `;` or '\n'» (форматер не чіпає файл із Ruby-помилкою).
 - [ ] **R-09** `output.html.erb` (Rails/UnsafeOutput), «… without escaping; use `sanitize` if it holds user HTML»: 2:5 `raw` (`@user.bio`), 3:15 `html_safe`, 4:1 `<%==`, 5:14 `raw` (`@user.website`, у значенні атрибута), 6:20 `raw` (`@user.bio.to_json`) з іншим кінцем: «`to_json` doesn't escape quotes for an attribute; output it without `raw`». `output.html.haml` і `.slim`: рядки 2–5 (Haml `!=` 2:1, `raw` 3:3, `html_safe` 4:13, `raw` у `href` 5:10; Slim `==` 2:1, 3:3, 4:13, 5:8). Без попередження: `raw "<br>"`, `"&nbsp;".html_safe`, `sanitize …`, `raw sanitize(…)`, `t("greeting_html")`, `<%== render … %>`.
 - [ ] **R-10** `i18n.html.erb` 3:11 (Haml і Slim 3:8): «Translation `playground.rules.i18n.titel` is missing in the `en` locale; did you mean `.title`?». Без попередження: `t(".title")` і `t(".empty")` (є в `config/locales/en.yml` і `uk.yml`), `t("users.index.title")` (абсолютні ключі не перевіряються), `t(".unknown", default: "Fallback")`. Видали `title` з `playground.rules.i18n` в `en.yml` і збережи: попередження з'являється й на `t(".title")` (рядок 2, без «did you mean»); без `config/application.rb` правило мовчить. Quick fix на `.titel`: _Use `.title`_ підставляє найближчий ключ; _Add `playground.rules.i18n.titel` to config/locales/en.yml_ дописує `titel: ""` в кінець групи `playground.rules.i18n` того файла, де ця група є (відступи, лапки й коментарі лишаються як були); коли групи немає ніде, ключ іде в `config/locales/en.yml`, який за потреби створюється.
-- [ ] **R-11** Лише в редакторі, у довіреній папці (N-23): `routes.html.erb` 2:21: «`edit_usr_path` is not a route helper of this app; did you mean `edit_user_path`?» і 3:22: «`usrs_path` is not a route helper of this app; did you mean `users_path`?» (Haml і Slim 2:19 і 3:20). Без попередження: `users_path`, `edit_user_path`, `main_app.usrs_path`, `asset_path`, `somewhere_else_path` (поряд немає жодного маршруту). У `$B check` цього файла нічого немає. `lamina.routes.enabled: false` прибирає правило. Quick fix _Replace with `edit_user_path`_ (і _Replace with `users_path`_) міняє ім'я хелпера.
+- [ ] **R-11** Лише в редакторі, у довіреній папці (N-23): `routes.html.erb` 2:21: «`edit_usr_path` is not a route helper of this app; did you mean `edit_user_path`?» і 3:22: «`usrs_path` is not a route helper of this app; did you mean `users_path`?» (Haml і Slim 2:19 і 3:20). Без попередження: `users_path`, `edit_user_path`, `main_app.usrs_path`, `asset_path`, `somewhere_else_path` (поряд немає жодного маршруту). У `$B check` цього файла нічого немає. `alder.routes.enabled: false` прибирає правило. Quick fix _Replace with `edit_user_path`_ (і _Replace with `users_path`_) міняє ім'я хелпера.
 
 **Turbo і Stimulus**
 
@@ -314,7 +314,7 @@ Quick fix: `Ctrl+.` на попередженні.
 
 **Форматування (`playground/rules/format`)**
 
-У цій теці лежить власний `.lamina.toml` (найближчий файл виграє, `root` не потрібен). Він вмикає правила, вимкнені за замовчуванням: `Layout/EmptyLines`, `EmptyLinesAroundBlockBody`, `EmptyLinesAroundElementBody`, `EmptyLinesAroundBranches`, `SpaceInsideErbTag`, `SpaceAfterScriptMarker`, `SpaceInHtmlTag`, `Style/ErbCommentSyntax`, `AttributeQuotes`, `BooleanAttributes`, `VoidTagClosing`, `TagNameCase`, `ImplicitDiv`, `ClassesBeforeIds`, `HashAttributes`, `Layout/ElementContentOnOwnLine`, `AttributesPerLine`, `Turbo/PreferTurboAttributes`, і lint-и `Style/ErbTrimMode` та `Layout/LineLength`. В решті `rails_app` ці правила не діють. _Format Document_ (`Shift+Alt+F`) у кожному файлі; повторний _Format Document_ нічого не міняє.
+У цій теці лежить власний `.alder.toml` (найближчий файл виграє, `root` не потрібен). Він вмикає правила, вимкнені за замовчуванням: `Layout/EmptyLines`, `EmptyLinesAroundBlockBody`, `EmptyLinesAroundElementBody`, `EmptyLinesAroundBranches`, `SpaceInsideErbTag`, `SpaceAfterScriptMarker`, `SpaceInHtmlTag`, `Style/ErbCommentSyntax`, `AttributeQuotes`, `BooleanAttributes`, `VoidTagClosing`, `TagNameCase`, `ImplicitDiv`, `ClassesBeforeIds`, `HashAttributes`, `Layout/ElementContentOnOwnLine`, `AttributesPerLine`, `Turbo/PreferTurboAttributes`, і lint-и `Style/ErbTrimMode` та `Layout/LineLength`. В решті `rails_app` ці правила не діють. _Format Document_ (`Shift+Alt+F`) у кожному файлі; повторний _Format Document_ нічого не міняє.
 
 - [ ] **R-20** `spacing.html.erb`: `<%=@user.name%>` → `<%= @user.name %>`, `<%if …%>` → `<% if … %>`, `<%end%>` → `<% end %>`, `<div  class="card"   id="user_<%= @user.id %>" >` → `<div class="card" id="user_<%= @user.id %>">`, `<img src = "…"  alt="">` → `<img src="…" alt="">`, `</div  >` → `</div>`, `<% # TODO: show the avatar %>` → `<%# TODO: show the avatar %>`. `<%# already a comment %>` і `<%- code = 1 %>` лишаються.
 - [ ] **R-21** `markup.html.erb`: `<DIV class='card' data-controller='hello'>` → `<div class="card" data-controller="hello">`, `checked="checked" disabled="disabled"/>` → `checked disabled>`, `<BR/>` → `<br>`, `<img … alt=""/>` → `<img … alt="">`, `</DIV>` → `</div>`, `<lineargradient>` у `<svg>` → `<linearGradient>`.
@@ -324,16 +324,16 @@ Quick fix: `Ctrl+.` на попередженні.
 - [ ] **R-25** `style.html.haml`: `=render …` → `= render …`, `-if @user` → `- if @user`, `%div.card` → `.card`, `%section#profile.wide` → `%section.wide#profile`, `%a.btn{href: "/users", target: "_blank"}` → `%a.btn(href="/users" target="_blank")` (`HashAttributes`, `style = "html"`), `%div{class: "plain"} stays` → `%div(class="plain")` з `stays` нижче. `style.html.slim`: `=render` → `= render`, `-if` → `- if`, `div.card` → `.card`, `DIV#profile` → `#profile`, `SPAN Hi` → `span Hi`, `div class="plain" stays` → `div class="plain"` і `| stays` нижче.
 - [ ] **R-26** `turbo.html.erb`, `.haml`, `.slim`: `data: { confirm: …, method: :delete }` → `{ turbo_confirm: …, turbo_method: :delete }`, `disable_with:` → `turbo_submits_with:`, `<a href="/u/1" data-method="delete">` → `data-turbo-method="delete"`, `data-method` → `data-turbo-method` і `data-confirm` → `data-turbo-confirm` у Slim-тезі. `<a href="/u/1" data-confirm="Sure?">` (confirm без method) лишається.
 - [ ] **R-27** Дві перевірки, що нічого не переписують. `trim_mode.html.erb` 2:26: «`-%>` here, but most closers in this template are `%>`» (Style/ErbTrimMode) і 5:81: «line is 107 characters long; the limit is 80» (Layout/LineLength). `line_length.html.haml` і `.slim` 3:81: «line is 91 characters long; the limit is 80». `attributes_per_line.html.erb` 2:81 «line is 105 characters long; the limit is 80» зникає після форматування (R-23). Format Document `trim_mode.*` і `line_length.*` не міняє.
-- [ ] **R-28** Опції в `format/.lamina.toml` (після кожної зміни збережи й форматуй файл заново; поверни значення після перевірки): `[Layout.EmptyLines] max = 2` лишає в `blank_lines.html.erb` два порожніх рядки після `<h1>`; `[Layout.EmptyLinesAroundBranches] style = "no_empty_lines"` прибирає порожні рядки навколо `<% else %>`; `tags = ["div", "section", "p", "span"]` у `[Layout.ElementContentOnOwnLine]` виносить вміст `<span class="badge">` у `content_on_own_line.html.erb` на окремий рядок; `max_line_length = 120` у `[Layout.AttributesPerLine]` лишає довгий `<input>` в `attributes_per_line.html.erb` в одному рядку; `style = "ruby_hash"` у `[Style.HashAttributes]` дає в `style.html.haml` `%a.btn{href: "/users", target: "_blank"}` і `%div{class: "plain"}`; `max = 100` у `[Layout.LineLength]` прибирає попередження про довжину в `line_length.*`. Помилка в ключі чи значенні (`max = "x"`) дає попередження на самому `.lamina.toml` у Problems (для `max = "x"`: «`max` must be a whole number, 0 or more», S-08).
-- [ ] **R-29** Без файла: видали `format/.lamina.toml` (потім `git checkout`): Format Document у `spacing.html.erb` більше нічого не міняє, `trim_mode.html.erb` і `line_length.*` без попереджень. `$B format --check demo/rails_app/app/views/playground/rules` тоді дає exit 0.
+- [ ] **R-28** Опції в `format/.alder.toml` (після кожної зміни збережи й форматуй файл заново; поверни значення після перевірки): `[Layout.EmptyLines] max = 2` лишає в `blank_lines.html.erb` два порожніх рядки після `<h1>`; `[Layout.EmptyLinesAroundBranches] style = "no_empty_lines"` прибирає порожні рядки навколо `<% else %>`; `tags = ["div", "section", "p", "span"]` у `[Layout.ElementContentOnOwnLine]` виносить вміст `<span class="badge">` у `content_on_own_line.html.erb` на окремий рядок; `max_line_length = 120` у `[Layout.AttributesPerLine]` лишає довгий `<input>` в `attributes_per_line.html.erb` в одному рядку; `style = "ruby_hash"` у `[Style.HashAttributes]` дає в `style.html.haml` `%a.btn{href: "/users", target: "_blank"}` і `%div{class: "plain"}`; `max = 100` у `[Layout.LineLength]` прибирає попередження про довжину в `line_length.*`. Помилка в ключі чи значенні (`max = "x"`) дає попередження на самому `.alder.toml` у Problems (для `max = "x"`: «`max` must be a whole number, 0 or more», S-08).
+- [ ] **R-29** Без файла: видали `format/.alder.toml` (потім `git checkout`): Format Document у `spacing.html.erb` більше нічого не міняє, `trim_mode.html.erb` і `line_length.*` без попереджень. `$B format --check demo/rails_app/app/views/playground/rules` тоді дає exit 0.
 
 ## Відомі проблеми
 
-Відкритих issue, через які перевірки падають, зараз немає. Раніше відкриті виправлено, і для кожного є перевірка: [#69](https://github.com/x-ror/lamina/issues/69) (зайвий `<% end %>`) D-26, [#70](https://github.com/x-ror/lamina/issues/70) (батьківський контролер без модуля) N-19, [#71](https://github.com/x-ror/lamina/issues/71) (F12 на змінній блоку) N-40, [#72](https://github.com/x-ror/lamina/issues/72) (колонки моделі) N-42, [#73](https://github.com/x-ror/lamina/issues/73) (хелпер у заповненому виклику) N-31, [#74](https://github.com/x-ror/lamina/issues/74) (ivar-и в `shared/` і `layouts/`) N-41, [#75](https://github.com/x-ror/lamina/issues/75) (hover на хелперах застосунку) N-43. Якщо одна з них знову падає, це регресія, її варто репортити.
+Відкритих issue, через які перевірки падають, зараз немає. Раніше відкриті виправлено, і для кожного є перевірка: [#69](https://github.com/x-ror/alder/issues/69) (зайвий `<% end %>`) D-26, [#70](https://github.com/x-ror/alder/issues/70) (батьківський контролер без модуля) N-19, [#71](https://github.com/x-ror/alder/issues/71) (F12 на змінній блоку) N-40, [#72](https://github.com/x-ror/alder/issues/72) (колонки моделі) N-42, [#73](https://github.com/x-ror/alder/issues/73) (хелпер у заповненому виклику) N-31, [#74](https://github.com/x-ror/alder/issues/74) (ivar-и в `shared/` і `layouts/`) N-41, [#75](https://github.com/x-ror/alder/issues/75) (hover на хелперах застосунку) N-43. Якщо одна з них знову падає, це регресія, її варто репортити.
 
 ## Баг-репорт
 
-[Issues](https://github.com/x-ror/lamina/issues). Шаблон:
+[Issues](https://github.com/x-ror/alder/issues). Шаблон:
 
 ````markdown
 **Check**: N-21 (або «поза чеклістом»)
@@ -353,8 +353,8 @@ Quick fix: `Ctrl+.` на попередженні.
 …
 ```
 
-**Logs**: Output → Lamina (the lines around the problem)
-**CLI** (for diagnostics and formatting): `lamina check <file>` / `lamina format --verbose <file>` output
+**Logs**: Output → Alder (the lines around the problem)
+**CLI** (for diagnostics and formatting): `alder check <file>` / `alder format --verbose <file>` output
 ````
 
 Перед тим як відправити:

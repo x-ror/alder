@@ -126,7 +126,7 @@ mod tests {
 
     #[test]
     fn resolves_asset_helper_paths() {
-        let root = std::env::temp_dir().join(format!("lamina-assets-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-assets-{}", std::process::id()));
         for f in [
             "app/assets/images/logo.png",
             "app/assets/stylesheets/application.scss",

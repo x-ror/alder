@@ -1,4 +1,4 @@
-// The `lamina` command line on a temp folder: check, format to stdout, --check, --write, stdin, exit codes.
+// The `alder` command line on a temp folder: check, format to stdout, --check, --write, stdin, exit codes.
 import assert from "assert";
 import { spawnSync } from "child_process";
 import fs from "fs";
@@ -8,15 +8,15 @@ import { pathToFileURL } from "url";
 
 const exe = process.platform === "win32" ? ".exe" : "";
 // CI builds per target and passes the binary in, relative to the repo; cases run from other folders.
-const bin = process.env.LAMINA
-  ? path.resolve(process.env.LAMINA)
+const bin = process.env.ALDER
+  ? path.resolve(process.env.ALDER)
   : path.join(
       import.meta.dirname,
       "..",
       "server",
       "target",
       "release",
-      `lamina${exe}`,
+      `alder${exe}`,
     );
 const run = (args, input, cwd) => {
   const r = spawnSync(bin, args, { encoding: "utf8", input, cwd });
@@ -26,7 +26,7 @@ const run = (args, input, cwd) => {
 
 // The native call expands Windows short names (RUNNER~1) as the binary's canonical paths do.
 const root = fs.realpathSync.native(
-  fs.mkdtempSync(path.join(os.tmpdir(), "lamina-cli-")),
+  fs.mkdtempSync(path.join(os.tmpdir(), "alder-cli-")),
 );
 const views = path.join(root, "app", "views", "users");
 fs.mkdirSync(views, { recursive: true });
@@ -297,7 +297,7 @@ try {
 
   const version = run(["--version"]);
   assert.strictEqual(version.status, 0);
-  assert.match(version.stdout, /^lamina \d+\.\d+\.\d+\S*\n$/);
+  assert.match(version.stdout, /^alder \d+\.\d+\.\d+\S*\n$/);
   assert.strictEqual(run(["-V"]).stdout, version.stdout);
   for (const args of [
     ["--help"],
@@ -315,10 +315,10 @@ try {
     2,
     "-h is the value of --format",
   );
-  const lsBin = path.join(path.dirname(bin), `lamina-ls${exe}`);
+  const lsBin = path.join(path.dirname(bin), `alder-ls${exe}`);
   if (fs.existsSync(lsBin)) {
     const ls = spawnSync(lsBin, ["--version"], { encoding: "utf8" });
-    assert.match(ls.stdout, /^lamina-ls \d+\.\d+\.\d+\S*\n$/);
+    assert.match(ls.stdout, /^alder-ls \d+\.\d+\.\d+\S*\n$/);
   }
 
   for (const args of [
@@ -443,11 +443,11 @@ try {
     assert.ok(r.stdout.includes(message), `${message}: ${r.stdout}`);
   }
 
-  // .lamina.toml: rules, switches, nesting, exclusions and its own problems.
+  // .alder.toml: rules, switches, nesting, exclusions and its own problems.
   const project = path.join(root, "toml");
   fs.mkdirSync(path.join(project, "vendor"), { recursive: true });
   fs.mkdirSync(path.join(project, "sub"));
-  const toml = path.join(project, ".lamina.toml");
+  const toml = path.join(project, ".alder.toml");
   const write = (name, text) => {
     const p = path.join(project, name);
     fs.writeFileSync(p, text);
@@ -462,14 +462,14 @@ try {
   r = run(["check", noAlt]);
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
   assert.strictEqual(r.stdout, "", "a rule turned off in the file");
-  write("sub/.lamina.toml", "[Html.ImgAlt]\nenabled = true\n");
+  write("sub/.alder.toml", "[Html.ImgAlt]\nenabled = true\n");
   assert.match(run(["check", inner]).stdout, /without `alt`/, "nested file");
   assert.strictEqual(run(["check", noAlt]).stdout, "");
   fs.writeFileSync(toml, 'exclude = ["vendor/**"]\n');
   assert.strictEqual(run(["check", vendored]).stdout, "", "global exclude");
   assert.match(run(["check", noAlt]).stdout, /without `alt`/);
   r = run(["format", vendored]);
-  assert.match(r.stderr, /left unchanged: excluded by .*\.lamina\.toml/);
+  assert.match(r.stderr, /left unchanged: excluded by .*\.alder\.toml/);
   fs.writeFileSync(toml, "[erb]\nformat.align_comments = true\n");
   const comments = write(
     "comment.html.erb",
@@ -488,28 +488,28 @@ try {
   fs.writeFileSync(toml, "[Html.ImgAltt]\nenabled = false\n");
   r = run(["check", noAlt, inner]);
   assert.strictEqual(r.status, 1);
-  const problem = /\.lamina\.toml:1:7: warning: unknown rule `Html\/ImgAltt`/g;
+  const problem = /\.alder\.toml:1:7: warning: unknown rule `Html\/ImgAltt`/g;
   assert.strictEqual(r.stdout.match(problem)?.length, 1, "printed once");
   fs.writeFileSync(toml, '[erb]\ndisabled_diagnostics = ["Html/ImgAlt"]\n');
   r = run(["check", noAlt, inner]);
   assert.strictEqual(r.status, 1, "the removed key is a finding");
   assert.match(
     r.stdout,
-    /\.lamina\.toml:2:1: warning: `disabled_diagnostics` is removed; switch a rule off with `\[Html\.ImgAlt\] enabled = false`.* \[Config\/Invalid\]\n/,
+    /\.alder\.toml:2:1: warning: `disabled_diagnostics` is removed; switch a rule off with `\[Html\.ImgAlt\] enabled = false`.* \[Config\/Invalid\]\n/,
   );
   fs.writeFileSync(toml, "[Html.ImgAlt\n");
   r = run(["check", clean, path.join(project, "messy.html.erb")]);
   assert.strictEqual(r.status, 1, "invalid TOML is a finding");
-  assert.match(r.stdout, /\.lamina\.toml:\d+:\d+: warning: invalid TOML/);
+  assert.match(r.stdout, /\.alder\.toml:\d+:\d+: warning: invalid TOML/);
   fs.writeFileSync(toml, "[Html.ImgAltt]\nenabled = false\n");
   r = run(["format", "--verbose", messyErb]);
-  assert.match(r.stderr, /read .*\.lamina\.toml/);
-  assert.match(r.stderr, /\.lamina\.toml:1:7: warning: unknown rule/);
+  assert.match(r.stderr, /read .*\.alder\.toml/);
+  assert.match(r.stderr, /\.alder\.toml:1:7: warning: unknown rule/);
 
   // Layout/EmptyLines and Layout/TrailingEmptyLines: switched in the file, for all three languages.
   const blank = path.join(root, "blank");
   fs.mkdirSync(blank);
-  const blankToml = path.join(blank, ".lamina.toml");
+  const blankToml = path.join(blank, ".alder.toml");
   const format = (name, text) =>
     run(["format", "--stdin-filepath", path.join(blank, name)], text).stdout;
   const gappy = {
@@ -590,7 +590,7 @@ try {
   );
   const aroundFormat = (style, name, text) => {
     fs.writeFileSync(
-      path.join(around, ".lamina.toml"),
+      path.join(around, ".alder.toml"),
       [
         "Layout.EmptyLinesAroundBlockBody",
         "Layout.EmptyLinesAroundElementBody",
@@ -633,7 +633,7 @@ try {
     );
   }
   fs.writeFileSync(
-    path.join(around, ".lamina.toml"),
+    path.join(around, ".alder.toml"),
     '[Layout.EmptyLinesAroundBranches]\nstyle = "keep"\n',
   );
   r = run(
@@ -653,7 +653,7 @@ try {
   // The in-line rules: spaces in ERB tags, `<% #` comments and the space after Haml and Slim script markers.
   const inline = path.join(root, "inline");
   fs.mkdirSync(inline);
-  const inlineToml = path.join(inline, ".lamina.toml");
+  const inlineToml = path.join(inline, ".alder.toml");
   fs.writeFileSync(
     path.join(inline, ".editorconfig"),
     "root = true\n[*]\nindent_size = 2\n",
@@ -713,14 +713,14 @@ try {
   const tagStyleFormat = (name, text) =>
     run(["format", "--stdin-filepath", path.join(tagStyle, name)], text).stdout;
   const loud = "<DIV class='a' id=b><INPUT checked=\"checked\" /><BR/></DIV>\n";
-  fs.writeFileSync(path.join(tagStyle, ".lamina.toml"), "");
+  fs.writeFileSync(path.join(tagStyle, ".alder.toml"), "");
   assert.strictEqual(
     tagStyleFormat("a.html.erb", loud),
     loud,
     "off by default",
   );
   fs.writeFileSync(
-    path.join(tagStyle, ".lamina.toml"),
+    path.join(tagStyle, ".alder.toml"),
     [
       '[Style.AttributeQuotes]\nenabled = true\nstyle = "single_quotes"',
       "[Style.BooleanAttributes]\nenabled = true",
@@ -743,7 +743,7 @@ try {
 
   // The Haml and Slim tag rules, with `style` picking the attribute syntax.
   fs.writeFileSync(
-    path.join(tagStyle, ".lamina.toml"),
+    path.join(tagStyle, ".alder.toml"),
     '[Style.ImplicitDiv]\nenabled = true\n[Style.ClassesBeforeIds]\nenabled = true\n[Style.HashAttributes]\nenabled = true\nstyle = "html"\n',
   );
   assert.strictEqual(
@@ -754,7 +754,7 @@ try {
 
   // Layout/ElementContentOnOwnLine moves the content of the listed tags; Layout/LineLength only reports.
   fs.writeFileSync(
-    path.join(tagStyle, ".lamina.toml"),
+    path.join(tagStyle, ".alder.toml"),
     '[Layout.ElementContentOnOwnLine]\nenabled = true\ntags = ["Div", "li"]\n[Layout.LineLength]\nenabled = true\nmax = 20\n',
   );
   const content = "<div><li>y</li></div>\n";
@@ -778,18 +778,18 @@ try {
     /long\.html\.erb:2:21: warning: line is 26 characters long; the limit is 20/,
   );
   fs.writeFileSync(
-    path.join(tagStyle, ".lamina.toml"),
+    path.join(tagStyle, ".alder.toml"),
     '[Layout.ElementContentOnOwnLine]\ntags = ["<p>"]\n',
   );
   r = run(["check", longLine]);
   assert.match(
     r.stdout,
-    /\.lamina\.toml:2:9: warning: `<p>` is not an element name/,
+    /\.alder\.toml:2:9: warning: `<p>` is not an element name/,
   );
 
   // Layout/AttributesPerLine splits the start tags over max_line_length and leaves the others.
   fs.writeFileSync(
-    path.join(tagStyle, ".lamina.toml"),
+    path.join(tagStyle, ".alder.toml"),
     "[Layout.AttributesPerLine]\nenabled = true\nmax_line_length = 40\n",
   );
   const perLine =
@@ -806,7 +806,7 @@ try {
   // Layout/IndentationStyle (ERB tabs, from the file or .editorconfig) and Layout/TrailingWhitespace.
   const layout = path.join(root, "layout");
   fs.mkdirSync(layout);
-  const layoutToml = path.join(layout, ".lamina.toml");
+  const layoutToml = path.join(layout, ".alder.toml");
   fs.writeFileSync(
     path.join(layout, ".editorconfig"),
     "root = true\n[*]\nindent_size = 2\n",
@@ -883,7 +883,7 @@ try {
     path.join(ci, "app", "views", "a b.html.erb"),
     '<p>😀д</p><img src="a">\n',
   );
-  fs.writeFileSync(path.join(ci, ".lamina.toml"), "[Html.ImgAlt\n");
+  fs.writeFileSync(path.join(ci, ".alder.toml"), "[Html.ImgAlt\n");
   const checkCi = (format) =>
     run(["check", "app", "--format", format], undefined, ci);
   const imgAlt =
@@ -893,7 +893,7 @@ try {
   assert.strictEqual(r.status, 1);
   assert.strictEqual(
     r.stdout,
-    `.lamina.toml:1:13: warning: ${tomlProblem} [Config/Invalid]\n` +
+    `.alder.toml:1:13: warning: ${tomlProblem} [Config/Invalid]\n` +
       `${path.join("app", "views", "a b.html.erb")}:1:10: warning: ${imgAlt} [Html/ImgAlt]\n`,
     "text names the rule, counts characters like the other formats, and keeps the platform's separators",
   );
@@ -901,14 +901,14 @@ try {
   assert.strictEqual(r.status, 1);
   assert.strictEqual(
     r.stdout,
-    `::warning file=.lamina.toml,line=1,col=13,endLine=1,endColumn=13,title=Config/Invalid::${tomlProblem}\n` +
+    `::warning file=.alder.toml,line=1,col=13,endLine=1,endColumn=13,title=Config/Invalid::${tomlProblem}\n` +
       `::warning file=app/views/a b.html.erb,line=1,col=10,endLine=1,endColumn=14,title=Html/ImgAlt::${imgAlt}\n`,
   );
   r = checkCi("json");
   assert.strictEqual(r.status, 1);
   assert.deepStrictEqual(r.stdout.trim().split("\n").map(JSON.parse), [
     {
-      file: ".lamina.toml",
+      file: ".alder.toml",
       line: 1,
       column: 13,
       endLine: 1,
@@ -933,13 +933,13 @@ try {
   const sarif = JSON.parse(r.stdout);
   const [sarifRun] = sarif.runs;
   assert.strictEqual(sarif.version, "2.1.0");
-  assert.strictEqual(sarifRun.tool.driver.name, "lamina");
+  assert.strictEqual(sarifRun.tool.driver.name, "alder");
   assert.strictEqual(sarifRun.columnKind, "unicodeCodePoints");
-  const site = "https://x-ror.github.io/lamina/reference/";
+  const site = "https://x-ror.github.io/alder/reference/";
   assert.deepStrictEqual(sarifRun.tool.driver.rules, [
     {
       id: "Config/Invalid",
-      shortDescription: { text: "A problem in a .lamina.toml." },
+      shortDescription: { text: "A problem in a .alder.toml." },
       helpUri: `${site}rules/#configuration`,
     },
     {
@@ -974,7 +974,7 @@ try {
   for (let i = 0; i < 5; i++) {
     const lines = checkCi("github").stdout.trim().split("\n");
     assert.strictEqual(lines.length, 2, lines.join("\n"));
-    assert.match(lines[0], /^::warning file=\.lamina\.toml,/);
+    assert.match(lines[0], /^::warning file=\.alder\.toml,/);
   }
   fs.writeFileSync(
     path.join(ci, "app", "bom.html.erb"),
@@ -1018,12 +1018,12 @@ try {
 
   fs.mkdirSync(path.join(ci, "fmt"));
   fs.writeFileSync(path.join(ci, "fmt", "m,n.html.slim"), "div\n p  \n");
-  fs.writeFileSync(path.join(ci, ".lamina.toml"), "");
+  fs.writeFileSync(path.join(ci, ".alder.toml"), "");
   r = run(["format", "--check", "--format", "github", "fmt"], undefined, ci);
   assert.strictEqual(r.status, 1);
   assert.strictEqual(
     r.stdout,
-    "::warning file=fmt/m%2Cn.html.slim,title=Format::needs formatting; run `lamina format --write`\n",
+    "::warning file=fmt/m%2Cn.html.slim,title=Format::needs formatting; run `alder format --write`\n",
   );
   assert.strictEqual(
     run(["format", "--format", "github", "fmt"], undefined, ci).status,
@@ -1035,7 +1035,7 @@ try {
   const broken_config = path.join(root, "config");
   fs.mkdirSync(broken_config);
   fs.writeFileSync(
-    path.join(broken_config, ".lamina.toml"),
+    path.join(broken_config, ".alder.toml"),
     "root = true\n[UnknownDept]\n",
   );
   const configured = path.join(broken_config, "a.html.erb");
@@ -1044,7 +1044,7 @@ try {
   assert.strictEqual(r.status, 1, "--check fails on a config problem");
   assert.match(
     r.stderr,
-    /\.lamina\.toml:2:2: warning: unknown department `UnknownDept`/,
+    /\.alder\.toml:2:2: warning: unknown department `UnknownDept`/,
   );
   r = run(
     ["format", "--check", "--format", "github", configured],
@@ -1052,10 +1052,7 @@ try {
     broken_config,
   );
   assert.strictEqual(r.status, 1);
-  assert.match(
-    r.stdout,
-    /^::warning file=\.lamina\.toml,line=2,col=2,.*title=/,
-  );
+  assert.match(r.stdout, /^::warning file=\.alder\.toml,line=2,col=2,.*title=/);
   r = run(["format", configured]);
   assert.strictEqual(r.status, 0, "stdout output keeps exit 0");
   assert.strictEqual(r.stdout, "<p>hi</p>\n");

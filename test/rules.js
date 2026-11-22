@@ -1,5 +1,5 @@
 // The examples on the site's rules page are tests: for every available autofix rule, format each `before` with the
-// rule switched on in a .lamina.toml and expect `after`. For every available warning, `check` prints, for `before`, a line
+// rule switched on in a .alder.toml and expect `after`. For every available warning, `check` prints, for `before`, a line
 // with each fault's message that is missing with the rule switched off, and the same output for `after` either way. An example with a note is skipped, unless it lists the project `files` it needs. A partial rule's examples show what it will do.
 import assert from "assert";
 import { spawnSync } from "child_process";
@@ -10,14 +10,14 @@ import path from "path";
 const exe = process.platform === "win32" ? ".exe" : "";
 // Resolved before the chdir: CI passes a path relative to the repository.
 const bin = path.resolve(
-  process.env.LAMINA ??
+  process.env.ALDER ??
     path.join(
       import.meta.dirname,
       "..",
       "server",
       "target",
       "release",
-      `lamina${exe}`,
+      `alder${exe}`,
     ),
 );
 
@@ -26,7 +26,7 @@ process.chdir(path.join(import.meta.dirname, "..", "site"));
 const { rules } = await import("../site/src/data/rules.ts");
 
 const root = fs.realpathSync(
-  fs.mkdtempSync(path.join(os.tmpdir(), "lamina-rules-")),
+  fs.mkdtempSync(path.join(os.tmpdir(), "alder-rules-")),
 );
 let checked = 0;
 try {
@@ -37,7 +37,7 @@ try {
     const config = rule.config ?? `[${table}]\nenabled = true\n`;
     const dir = path.join(root, rule.name.replace("/", "-"));
     fs.mkdirSync(dir);
-    fs.writeFileSync(path.join(dir, ".lamina.toml"), `root = true\n${config}`);
+    fs.writeFileSync(path.join(dir, ".alder.toml"), `root = true\n${config}`);
     for (const example of rule.examples) {
       const file = path.join(dir, example.file);
       const run = spawnSync(bin, ["format", "--stdin-filepath", file], {
@@ -52,12 +52,12 @@ try {
   }
   assert.ok(checked >= 9, `only ${checked} examples were run`);
 
-  // `check` doesn't print codes, so the rule shows as the difference a .lamina.toml switching it off makes.
+  // `check` doesn't print codes, so the rule shows as the difference a .alder.toml switching it off makes.
   const folder = (rule, enabled) => {
     const dir = path.join(root, `${rule.name.replace("/", "-")}-${enabled}`);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(
-      path.join(dir, ".lamina.toml"),
+      path.join(dir, ".alder.toml"),
       `root = true\n[${rule.name.replace("/", ".")}]\nenabled = ${enabled}\n`,
     );
     // Rails-only rules look for the framework here.

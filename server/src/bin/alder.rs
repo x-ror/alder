@@ -1,4 +1,4 @@
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    std::process::exit(lamina::cli::run(&args));
+    std::process::exit(alder::cli::run(&args));
 }

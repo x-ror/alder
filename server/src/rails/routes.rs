@@ -1,5 +1,5 @@
 //! Route helpers (`users_path`, `edit_user_url`) from the app's routes, which the client reads with
-//! `bin/rails runner` and sends in a `lamina/routes` notification.
+//! `bin/rails runner` and sends in a `alder/routes` notification.
 
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -19,7 +19,7 @@ pub struct Route {
 
 const SUFFIXES: [&str; 2] = ["_path", "_url"];
 
-/// Routes of a `lamina/routes` payload; `root` resolves relative source locations.
+/// Routes of a `alder/routes` payload; `root` resolves relative source locations.
 pub fn parse(root: &Path, routes: &Value) -> Vec<Route> {
     let text = |v: &Value, key: &str| v.get(key).and_then(Value::as_str).unwrap_or_default().to_string();
     let source = |v: &Value| {

@@ -6,7 +6,7 @@ import path from "path";
 import { runTests } from "@vscode/test-electron";
 
 const root = path.join(import.meta.dirname, "..", "..");
-const app = fs.mkdtempSync(path.join(os.tmpdir(), "lamina-vscode-"));
+const app = fs.mkdtempSync(path.join(os.tmpdir(), "alder-vscode-"));
 const write = (rel, text) => {
   const file = path.join(app, rel);
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -23,7 +23,7 @@ write("app/views/orders/show.html.erb", "<p>Order</p>\n");
 // Stands in for `bin/rails runner routes.rb`: the client only needs its marker and JSON.
 write(
   "bin/rails",
-  'puts "booted", "__LAMINA_ROUTES__", \'[{"name":"users","verb":"GET","path":"/users(.:format)","action":"users#index","source":"config/routes.rb:2"}]\'\n',
+  'puts "booted", "__ALDER_ROUTES__", \'[{"name":"users","verb":"GET","path":"/users(.:format)","action":"users#index","source":"config/routes.rb:2"}]\'\n',
 );
 write(
   "config/routes.rb",
@@ -99,7 +99,7 @@ try {
     extensionDevelopmentPath: root,
     extensionTestsPath: path.join(import.meta.dirname, "suite.js"),
     launchArgs: [app, "--disable-extensions", "--disable-workspace-trust"],
-    extensionTestsEnv: { LAMINA_APP: app },
+    extensionTestsEnv: { ALDER_APP: app },
   });
 } catch (e) {
   console.error(e.message ?? e);

@@ -333,7 +333,7 @@ mod tests {
     use super::*;
 
     fn members_of(source: &str) -> Option<(Vec<String>, Vec<String>)> {
-        let dir = std::env::temp_dir().join(format!("lamina-stimulus-members-{}-{:?}", std::process::id(), std::thread::current().id()));
+        let dir = std::env::temp_dir().join(format!("alder-stimulus-members-{}-{:?}", std::process::id(), std::thread::current().id()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("search_controller.js");
         std::fs::write(&file, source).unwrap();
@@ -445,7 +445,7 @@ export default class extends Controller {
 
     #[test]
     fn a_controller_inherits_from_the_base_controller_it_imports() {
-        let root = std::env::temp_dir().join(format!("lamina-stimulus-inherit-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-stimulus-inherit-{}", std::process::id()));
         let controllers = root.join("app/javascript/controllers");
         let view = root.join("app/views/users/index.html.erb");
         std::fs::create_dir_all(controllers.join("admin")).unwrap();
@@ -476,7 +476,7 @@ export default class extends Controller {
         write("two_controller.ts", &format!("{stimulus}export default class extends Controller {{}}"));
         assert!(controller(&view, "two").is_none(), "two files register one name");
         std::fs::remove_dir_all(&root).unwrap();
-        let hidden = std::env::temp_dir().join(format!("lamina-stimulus-hidden-{}", std::process::id()));
+        let hidden = std::env::temp_dir().join(format!("alder-stimulus-hidden-{}", std::process::id()));
         std::fs::create_dir_all(hidden.join("app/javascript/controllers")).unwrap();
         std::fs::write(
             hidden.join("app/javascript/controllers/search_controller.js"),

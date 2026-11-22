@@ -1,6 +1,6 @@
 // Pure part of the template converters (no vscode dependency).
 
-// `command` is both the lamina.commands.* setting name and its default executable.
+// `command` is both the alder.commands.* setting name and its default executable.
 const CONVERTERS = {
   "erb>haml": { command: "html2haml", args: ["--erb"], gem: "html2haml" },
   "html>haml": { command: "html2haml", args: ["--no-erb"], gem: "html2haml" },

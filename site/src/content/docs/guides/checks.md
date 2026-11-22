@@ -5,9 +5,9 @@ sidebar:
   order: 2
 ---
 
-The language server checks every template as you type and reports problems in the editor and the _Problems_ panel. The checks follow Erubi, Rails, Haml 7, Slim 5 and Pug 3, and Haml, Slim, Pug and Rails errors use those projects' own messages. No gems or npm packages are needed. Liquid's tag checks are described under [File types](/lamina/guides/file-types/#liquid).
+The language server checks every template as you type and reports problems in the editor and the _Problems_ panel. The checks follow Erubi, Rails, Haml 7, Slim 5 and Pug 3, and Haml, Slim, Pug and Rails errors use those projects' own messages. No gems or npm packages are needed. Liquid's tag checks are described under [File types](/alder/guides/file-types/#liquid).
 
-Every check has a code. The [diagnostics reference](/lamina/reference/diagnostics/) lists each code with what it means.
+Every check has a code. The [diagnostics reference](/alder/reference/diagnostics/) lists each code with what it means.
 
 ## ERB
 
@@ -29,7 +29,7 @@ In this view the block has no `<% end %>` and the image has no `alt`:
 
 Both are reported: the first as an error from Prism (`unexpected end-of-input, assuming it is closing the parent top level context`), the second as a warning (`` `<img>` without `alt`: the alt attribute must be specified (HTML 4.8.4.4.1) ``).
 
-The HTML checks (tags, `alt`, duplicate `id`) apply only to ERB files with an HTML host, such as `.html.erb`. `.js.erb`, `.yml.erb` and the other host types get the ERB and Ruby checks; see [File types](/lamina/guides/file-types/). At most 20 tag diagnostics are reported per file.
+The HTML checks (tags, `alt`, duplicate `id`) apply only to ERB files with an HTML host, such as `.html.erb`. `.js.erb`, `.yml.erb` and the other host types get the ERB and Ruby checks; see [File types](/alder/guides/file-types/). At most 20 tag diagnostics are reported per file.
 
 ## Haml and Slim
 
@@ -51,11 +51,11 @@ Ruby syntax errors in code lines, attribute hashes and `#{}` are reported too.
 
 The third line is reported with Haml's own message: `Inconsistent indentation: 5 spaces used for indentation, but the rest of the document was indented using 2 spaces.`
 
-Slim engines your app registers itself (for example `mjml:`) can be accepted with [`lamina.slim.extraEngines`](/lamina/guides/settings/#slim).
+Slim engines your app registers itself (for example `mjml:`) can be accepted with [`alder.slim.extraEngines`](/alder/guides/settings/#slim).
 
 ## Pug
 
-Pug templates get the first error Pug raises, the checks on what they include and extend, and the HTML rules that need no Ruby (`alt`, duplicate ids, links, nested interactive content, iframe titles, link text, content in a void element). Their code is JavaScript, so none of the Rails checks run on them; see [File types](/lamina/guides/file-types/#pug).
+Pug templates get the first error Pug raises, the checks on what they include and extend, and the HTML rules that need no Ruby (`alt`, duplicate ids, links, nested interactive content, iframe titles, link text, content in a void element). Their code is JavaScript, so none of the Rails checks run on them; see [File types](/alder/guides/file-types/#pug).
 
 ## Rails checks
 
@@ -75,13 +75,13 @@ Two Rails checks run in ERB, Haml and Slim views, and in Jbuilder and Builder vi
 
 Here the `render` passes the `user:` the partial declares. A `render` of `users/card` that passes something else, or a partial name with no file behind it, is reported.
 
-How partials are looked up in engines, packs, components and gems, and when the missing-partial check stays off, is described in [Compatibility](/lamina/guides/compatibility/#partials-and-formats).
+How partials are looked up in engines, packs, components and gems, and when the missing-partial check stays off, is described in [Compatibility](/alder/guides/compatibility/#partials-and-formats).
 
-The [rules reference](/lamina/reference/rules/) lists every check, such as a `render` in a tag that outputs nothing, and unsafe output.
+The [rules reference](/alder/reference/rules/) lists every check, such as a `render` in a tag that outputs nothing, and unsafe output.
 
 ## Turning checks off
 
-Turn single checks off in a `.lamina.toml` at the project root, by rule name. The editor and `lamina check` read it, and it wins over the settings:
+Turn single checks off in a `.alder.toml` at the project root, by rule name. The editor and `alder check` read it, and it wins over the settings:
 
 ```toml
 [Html.ImgAlt]
@@ -95,23 +95,23 @@ Or by code, per language, in your user or workspace settings:
 
 ```json
 {
-  "lamina.erb.disabledDiagnostics": ["Html/ImgAlt", "Html/DuplicateId"],
-  "lamina.haml.disabledDiagnostics": ["Syntax/UnknownFilter"],
-  "lamina.slim.disabledDiagnostics": ["Syntax/UnknownEngine"],
-  "lamina.jbuilder.disabledDiagnostics": ["Rails/MissingPartial"]
+  "alder.erb.disabledDiagnostics": ["Html/ImgAlt", "Html/DuplicateId"],
+  "alder.haml.disabledDiagnostics": ["Syntax/UnknownFilter"],
+  "alder.slim.disabledDiagnostics": ["Syntax/UnknownEngine"],
+  "alder.jbuilder.disabledDiagnostics": ["Rails/MissingPartial"]
 }
 ```
 
-`lamina.jbuilder.disabledDiagnostics` covers Jbuilder and Builder views.
+`alder.jbuilder.disabledDiagnostics` covers Jbuilder and Builder views.
 
 Turn a whole language's diagnostics off:
 
 ```json
 {
-  "lamina.haml.diagnostics.enabled": false
+  "alder.haml.diagnostics.enabled": false
 }
 ```
 
-`lamina.slim.diagnostics.enabled` also covers Skim files. All settings are listed in [Settings](/lamina/guides/settings/).
+`alder.slim.diagnostics.enabled` also covers Skim files. All settings are listed in [Settings](/alder/guides/settings/).
 
-The same checks run outside the editor with [the command line](/lamina/guides/command-line/).
+The same checks run outside the editor with [the command line](/alder/guides/command-line/).

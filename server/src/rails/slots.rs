@@ -87,7 +87,7 @@ mod tests {
 
     #[test]
     fn template_classes() {
-        let root = std::env::temp_dir().join(format!("lamina-slots-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-slots-{}", std::process::id()));
         let components = root.join("app/components");
         std::fs::create_dir_all(components.join("card_component")).unwrap();
         for f in ["card_component.rb", "card_component/card_component.html.erb", "list_component.rb", "list_component.html.slim"] {

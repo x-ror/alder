@@ -5,5 +5,5 @@
     "**/playground/highlight/sample.percent.erb": "erb-percent",
     "**/playground/liquid/_includes/*.html": "liquid"
   },
-  "lamina.slim.extraEngines": ["mjml"]
+  "alder.slim.extraEngines": ["mjml"]
 }

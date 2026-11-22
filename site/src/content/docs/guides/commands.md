@@ -1,11 +1,11 @@
 ---
 title: Commands
-description: The Lamina commands, their keyboard shortcuts, and which ones need Ruby gems.
+description: The Alder commands, their keyboard shortcuts, and which ones need Ruby gems.
 sidebar:
   order: 7
 ---
 
-Run any command from the Command Palette (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>, or <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> on macOS); they are listed under _Lamina_.
+Run any command from the Command Palette (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>, or <kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> on macOS); they are listed under _Alder_.
 
 ## Editing commands
 
@@ -16,7 +16,7 @@ Run any command from the Command Palette (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>
 | Extract Selection to Partial                        | none                                        | none                                       | Moves the selection into `_name.html.erb` (or Haml, Slim) and leaves a `render`; in Pug, a file and an `include` |
 | Switch to Related File                              | none                                        | none                                       | View ↔ other formats ↔ controller action; ViewComponent class ↔ template ↔ preview                               |
 
-In ERB, <kbd>Ctrl</kbd>+<kbd>/</kbd> (<kbd>Cmd</kbd>+<kbd>/</kbd> on macOS) is bound to the extension's line comment toggle, which follows the file's host language; see [Comment toggling](/lamina/guides/file-types/#comment-toggling).
+In ERB, <kbd>Ctrl</kbd>+<kbd>/</kbd> (<kbd>Cmd</kbd>+<kbd>/</kbd> on macOS) is bound to the extension's line comment toggle, which follows the file's host language; see [Comment toggling](/alder/guides/file-types/#comment-toggling).
 
 ### Toggle a tag
 
@@ -51,11 +51,11 @@ The three editing commands work on Pug (`.pug`, `.jade`, `.jst.pug`) as they do 
 
 The preview is controlled by three settings:
 
-- `lamina.preview.useRails` renders through the app's `bin/rails runner` when the file is inside a Rails app, so helpers, routes and partials work. It boots the app on every refresh and gives up after 60 seconds.
-- `lamina.preview.useBundler` prefixes render commands with `bundle exec` when a Gemfile exists in the workspace.
-- `lamina.preview.refreshOnSave` re-renders the preview whenever the template is saved.
+- `alder.preview.useRails` renders through the app's `bin/rails runner` when the file is inside a Rails app, so helpers, routes and partials work. It boots the app on every refresh and gives up after 60 seconds.
+- `alder.preview.useBundler` prefixes render commands with `bundle exec` when a Gemfile exists in the workspace.
+- `alder.preview.refreshOnSave` re-renders the preview whenever the template is saved.
 
-`lamina.slim.compileForRails` makes _Show Compiled Ruby Source_ for Slim run `slimrb --rails`, as Rails compiles it.
+`alder.slim.compileForRails` makes _Show Compiled Ruby Source_ for Slim run `slimrb --rails`, as Rails compiles it.
 
 ## Converters
 
@@ -67,20 +67,20 @@ The preview is controlled by three settings:
 
 ## Language server
 
-_Restart Language Server_ restarts the language server. Its log is the _Lamina_ channel in the Output panel.
+_Restart Language Server_ restarts the language server. Its log is the _Alder_ channel in the Output panel.
 
 ## Ruby gems
 
 Preview and the converters call Ruby gems, installed only if you use them:
 
-| Gem           | Used for                                                           | Setting for the executable  |
-| ------------- | ------------------------------------------------------------------ | --------------------------- |
-| `slim`        | Rendering Slim                                                     | `lamina.commands.slimrb`    |
-| `haml`        | Rendering Haml                                                     | `lamina.commands.haml`      |
-| `erubi`       | Previewing and compiling ERB through Erubi (stdlib ERB without it) | `lamina.commands.ruby`      |
-| `haml_to_erb` | Haml → ERB                                                         | `lamina.commands.ruby`      |
-| `html2haml`   | ERB → Haml                                                         | `lamina.commands.html2haml` |
-| `html2slim`   | ERB → Slim                                                         | `lamina.commands.erb2slim`  |
-| `haml2slim`   | Haml → Slim                                                        | `lamina.commands.haml2slim` |
+| Gem           | Used for                                                           | Setting for the executable |
+| ------------- | ------------------------------------------------------------------ | -------------------------- |
+| `slim`        | Rendering Slim                                                     | `alder.commands.slimrb`    |
+| `haml`        | Rendering Haml                                                     | `alder.commands.haml`      |
+| `erubi`       | Previewing and compiling ERB through Erubi (stdlib ERB without it) | `alder.commands.ruby`      |
+| `haml_to_erb` | Haml → ERB                                                         | `alder.commands.ruby`      |
+| `html2haml`   | ERB → Haml                                                         | `alder.commands.html2haml` |
+| `html2slim`   | ERB → Slim                                                         | `alder.commands.erb2slim`  |
+| `haml2slim`   | Haml → Slim                                                        | `alder.commands.haml2slim` |
 
 Everything else works without Ruby.

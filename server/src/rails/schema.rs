@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn schema_columns() {
-        let root = std::env::temp_dir().join(format!("lamina-schema-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("alder-schema-{}", std::process::id()));
         std::fs::create_dir_all(root.join("db")).unwrap();
         std::fs::create_dir_all(root.join("app/views/users")).unwrap();
         let schema = concat!(

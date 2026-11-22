@@ -7,20 +7,20 @@ import { fileURLToPath, pathToFileURL } from "url";
 import { isDeepStrictEqual } from "util";
 // CI builds per target (`server/target/<triple>/release`) and passes the binary in.
 const bin =
-  process.env.LAMINA_LS ??
+  process.env.ALDER_LS ??
   path.join(
     import.meta.dirname,
     "..",
     "server",
     "target",
     "release",
-    "lamina-ls",
+    "alder-ls",
   );
 // Node escapes `~` (8.3 names such as RUNNER~1 on CI); the server, like VS Code, leaves it as is.
 const fileUri = (p) => pathToFileURL(p).href.replaceAll("%7E", "~");
 // macOS puts tmpdir under the /var symlink; one spelling of each path keeps built and returned URIs equal.
 const root = fs.realpathSync(
-  fs.mkdtempSync(path.join(os.tmpdir(), "lamina-e2e-")),
+  fs.mkdtempSync(path.join(os.tmpdir(), "alder-e2e-")),
 );
 const views = path.join(root, "app", "views");
 fs.writeFileSync(
@@ -1320,7 +1320,7 @@ const check = (label, actual, expected) => {
         ?.params.diagnostics.map((d) => d.source),
     ),
   ];
-  check("diagnostics source", sources(uri), ["lamina"]);
+  check("diagnostics source", sources(uri), ["alder"]);
 
   const strictUri = fileUri(path.join(views, "strict", "show.html.erb"));
   await send(
@@ -1727,7 +1727,7 @@ const check = (label, actual, expected) => {
     },
     true,
   );
-  check("haml diagnostics source", sources(hamlUri), ["lamina"]);
+  check("haml diagnostics source", sources(hamlUri), ["alder"]);
 
   await new Promise((r) => setTimeout(r, 200));
   const slimDiag = notes.find(
@@ -1751,7 +1751,7 @@ const check = (label, actual, expected) => {
       "8:1 Syntax/Ruby",
     ],
   );
-  check("slim diagnostics source", sources(slimUri), ["lamina"]);
+  check("slim diagnostics source", sources(slimUri), ["alder"]);
 
   // Haml's Ruby is checked once Haml accepts the template: an error in code, and a `rescue` inside an `if`.
   const hamlRubyUri = fileUri(path.join(views, "users", "ruby.html.haml"));
@@ -2411,7 +2411,7 @@ const check = (label, actual, expected) => {
     ],
   );
   await send(
-    "lamina/routes",
+    "alder/routes",
     {
       root,
       routes: [
@@ -2472,7 +2472,7 @@ const check = (label, actual, expected) => {
       await waitForCodes(unknownRouteUri, ["0:Rails/UnknownRoute"]),
       await (async () => {
         const sendRoutes = (routes) =>
-          send("lamina/routes", { root, routes }, true);
+          send("alder/routes", { root, routes }, true);
         const users = { name: "users", verb: "GET", path: "/users(.:format)" };
         await sendRoutes([users, { name: "usrs", verb: "GET", path: "/usrs" }]);
         const codes = await waitForCodes(unknownRouteUri, []);
@@ -2977,7 +2977,7 @@ const check = (label, actual, expected) => {
     "/app/views/users/outline.html.slim 2:18 tile",
     "/app/views/users/show.html.haml 1:16 tile",
   ]);
-  // Each Slim file read for a rename uses the extra_engines of its own folder's .lamina.toml, else the setting (mjml).
+  // Each Slim file read for a rename uses the extra_engines of its own folder's .alder.toml, else the setting (mjml).
   const engineViews = path.join(root, "slimapp", "app", "views");
   const engineBody = 'mjml:\n  = render "users/tile"\n';
   for (const dir of ["users", "mjml", "plain"]) {
@@ -2987,7 +2987,7 @@ const check = (label, actual, expected) => {
   fs.writeFileSync(path.join(engineViews, "plain", "a.html.slim"), engineBody);
   fs.writeFileSync(path.join(engineViews, "mjml", "a.html.slim"), engineBody);
   fs.writeFileSync(
-    path.join(engineViews, "plain", ".lamina.toml"),
+    path.join(engineViews, "plain", ".alder.toml"),
     "[slim]\nextra_engines = []\n",
   );
   const tile = path.join(engineViews, "users", "_tile.html.slim");
@@ -3069,7 +3069,7 @@ const check = (label, actual, expected) => {
   );
   // Two apps in one workspace: every lookup resolves against the app the file belongs to.
   const multiRoot = fs.realpathSync(
-    fs.mkdtempSync(path.join(os.tmpdir(), "lamina-multi-")),
+    fs.mkdtempSync(path.join(os.tmpdir(), "alder-multi-")),
   );
   const multi = startServer();
   const apps = ["a", "b"].map((name) => {
@@ -3114,7 +3114,7 @@ const check = (label, actual, expected) => {
         source: "config/routes.rb:2",
       },
     ];
-    await multi.send("lamina/routes", { root: dir, routes }, true);
+    await multi.send("alder/routes", { root: dir, routes }, true);
     await multi.send(
       "textDocument/didOpen",
       { textDocument: { uri: page, languageId: "erb", version: 1, text } },
@@ -3290,7 +3290,7 @@ const check = (label, actual, expected) => {
   const blankDir = path.join(views, "blank");
   fs.mkdirSync(blankDir);
   fs.writeFileSync(
-    path.join(blankDir, ".lamina.toml"),
+    path.join(blankDir, ".alder.toml"),
     "[Layout.EmptyLines]\nenabled = true\nmax = 0\n",
   );
   const blankUri = fileUri(path.join(blankDir, "a.html.erb"));
@@ -3339,7 +3339,7 @@ const check = (label, actual, expected) => {
   const contentDir = path.join(views, "content");
   fs.mkdirSync(contentDir);
   fs.writeFileSync(
-    path.join(contentDir, ".lamina.toml"),
+    path.join(contentDir, ".alder.toml"),
     "[Layout.ElementContentOnOwnLine]\nenabled = true\n",
   );
   const contentUri = fileUri(path.join(contentDir, "a.html.erb"));
@@ -3384,7 +3384,7 @@ const check = (label, actual, expected) => {
   const perLineDir = path.join(views, "perline");
   fs.mkdirSync(perLineDir);
   fs.writeFileSync(
-    path.join(perLineDir, ".lamina.toml"),
+    path.join(perLineDir, ".alder.toml"),
     "[Layout.AttributesPerLine]\nenabled = true\nmax_line_length = 30\n",
   );
   const perLineUri = fileUri(path.join(perLineDir, "a.html.erb"));
@@ -3429,7 +3429,7 @@ const check = (label, actual, expected) => {
   const inlineDir = path.join(views, "inline");
   fs.mkdirSync(inlineDir);
   fs.writeFileSync(
-    path.join(inlineDir, ".lamina.toml"),
+    path.join(inlineDir, ".alder.toml"),
     [
       "Layout.SpaceInsideErbTag",
       "Layout.SpaceInHtmlTag",
@@ -3481,7 +3481,7 @@ const check = (label, actual, expected) => {
   // The rules around bodies and branches add and remove lines: not in Format Selection.
   const aroundDir = path.join(views, "around");
   fs.mkdirSync(aroundDir);
-  const aroundToml = path.join(aroundDir, ".lamina.toml");
+  const aroundToml = path.join(aroundDir, ".alder.toml");
   const aroundOpen = async (name, text) => {
     const uri = fileUri(path.join(aroundDir, name));
     await aligned.send(
@@ -3544,17 +3544,17 @@ const check = (label, actual, expected) => {
     }
   }
 
-  // .lamina.toml: rules and switches per folder, and its own problems.
+  // .alder.toml: rules and switches per folder, and its own problems.
   const rulesRoot = fs.realpathSync(
-    fs.mkdtempSync(path.join(os.tmpdir(), "lamina-rules-")),
+    fs.mkdtempSync(path.join(os.tmpdir(), "alder-rules-")),
   );
   fs.mkdirSync(path.join(rulesRoot, "sub"));
-  const rulesToml = path.join(rulesRoot, ".lamina.toml");
+  const rulesToml = path.join(rulesRoot, ".alder.toml");
   const quiet =
     "[Html.UnclosedElement]\nenabled = false\n[erb]\nformat.enabled = false\n";
   fs.writeFileSync(rulesToml, quiet);
   fs.writeFileSync(
-    path.join(rulesRoot, "sub", ".lamina.toml"),
+    path.join(rulesRoot, "sub", ".alder.toml"),
     "[Html.UnclosedElement]\nenabled = true\n[erb]\nformat.enabled = true\n",
   );
   const unclosed = "<div>\n<%= x %>\n";
@@ -3653,7 +3653,7 @@ const check = (label, actual, expected) => {
   check(
     "toml: problems have the tool as source",
     rulesPublished(tomlUri)?.map((d) => d.source),
-    ["lamina"],
+    ["alder"],
   );
   check(
     "toml: problems are logged",
@@ -3712,7 +3712,7 @@ const check = (label, actual, expected) => {
   );
   // Quick fixes of the rules that know the answer, from the diagnostics the server publishes: their `data` comes back.
   const fixRoot = fs.realpathSync(
-    fs.mkdtempSync(path.join(os.tmpdir(), "lamina-fixes-")),
+    fs.mkdtempSync(path.join(os.tmpdir(), "alder-fixes-")),
   );
   const helloController =
     'import { Controller } from "@hotwired/stimulus"\n\nexport default class extends Controller {\n  static targets = ["name"]\n\n  greet() {\n  }\n}\n';
@@ -3765,7 +3765,7 @@ const check = (label, actual, expected) => {
       verb: "GET",
       path: `/${name}`,
     }));
-    await srv.send("lamina/routes", { root: fixRoot, routes }, true);
+    await srv.send("alder/routes", { root: fixRoot, routes }, true);
     const text = fixViewText;
     const didOpen = {
       textDocument: { uri: fixViewUri, languageId: "erb", version: 1, text },

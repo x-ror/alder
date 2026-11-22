@@ -42,9 +42,9 @@ function railsRenderScript(dir, lang) {
 
 function missingToolMessage(bin, lang) {
   if (isErb(lang))
-    return `"${bin}" was not found. Install Ruby (and gem install erubi) — or point lamina.commands.ruby at it.`;
+    return `"${bin}" was not found. Install Ruby (and gem install erubi) — or point alder.commands.ruby at it.`;
   const gem = { slim: "slim", haml: "haml" }[engineOf(lang)] || bin;
-  return `"${bin}" was not found. Install it with: gem install ${gem} — or point lamina.commands.* at the executable.`;
+  return `"${bin}" was not found. Install it with: gem install ${gem} — or point alder.commands.* at the executable.`;
 }
 
 const escapeHtml = (s) =>
