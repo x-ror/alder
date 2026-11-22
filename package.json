@@ -1,5 +1,5 @@
 {
-  "name": "lamina",
+  "name": "lamina-templates",
   "displayName": "Lamina: Ruby Templates (ERB, Haml, Slim)",
   "description": "Rails view tooling for ERB, Haml and Slim: highlighting, errors as you type, safe formatting, and Rails-aware go to partial, completion and hover for components, routes, ivars and i18n.",
   "version": "1.1.1",

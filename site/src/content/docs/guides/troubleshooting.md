@@ -22,9 +22,9 @@ Choose this extension's formatter per language:
 
 ```json
 {
-  "[erb]": { "editor.defaultFormatter": "x-ror.lamina" },
-  "[haml]": { "editor.defaultFormatter": "x-ror.lamina" },
-  "[slim]": { "editor.defaultFormatter": "x-ror.lamina" }
+  "[erb]": { "editor.defaultFormatter": "x-ror.lamina-templates" },
+  "[haml]": { "editor.defaultFormatter": "x-ror.lamina-templates" },
+  "[slim]": { "editor.defaultFormatter": "x-ror.lamina-templates" }
 }
 ```
 

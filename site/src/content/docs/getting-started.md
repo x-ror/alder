@@ -9,7 +9,7 @@ Lamina is one VS Code extension for Rails views in ERB, Haml and Slim. It highli
 
 ## Install
 
-Install **Lamina** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=x-ror.lamina) or from [Open VSX](https://open-vsx.org/extension/x-ror/lamina).
+Install **Lamina** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=x-ror.lamina-templates) or from [Open VSX](https://open-vsx.org/extension/x-ror/lamina-templates).
 
 There are no gems to install. The checks and the formatter are a language server written in Rust and bundled with the extension.
 

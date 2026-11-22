@@ -303,7 +303,7 @@ Turn on format on save per language:
 }
 ```
 
-If another extension also formats these languages, pick this one with `"[erb]": { "editor.defaultFormatter": "x-ror.lamina" }` (also `[haml]`, `[slim]`, `[jade]` for Pug). To let the other one format instead, set `lamina.<erb|haml|slim|pug>.format.enabled` to `false`. See [Troubleshooting](/lamina/guides/troubleshooting/).
+If another extension also formats these languages, pick this one with `"[erb]": { "editor.defaultFormatter": "x-ror.lamina-templates" }` (also `[haml]`, `[slim]`, `[jade]` for Pug). To let the other one format instead, set `lamina.<erb|haml|slim|pug>.format.enabled` to `false`. See [Troubleshooting](/lamina/guides/troubleshooting/).
 
 The formatter also runs in CI with `npx lamina format --check`; see [Command line for CI](/lamina/guides/command-line/).
 

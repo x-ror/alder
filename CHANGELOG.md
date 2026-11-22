@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Breaking:** the VS Code extension ID is now `x-ror.lamina-templates` (Marketplace and Open VSX): `lamina` is taken on the Marketplace. Set `"editor.defaultFormatter": "x-ror.lamina-templates"` where you pick the formatter.
+
 ## 1.1.1
 
 The project is now called Lamina; the first release under that name.

@@ -2,8 +2,8 @@
 
 # Lamina: Ruby Templates (ERB, Haml, Slim, Pug, Liquid)
 
-[![VS Marketplace](https://vsmarketplacebadges.dev/version-short/x-ror.lamina.svg)](https://marketplace.visualstudio.com/items?itemName=x-ror.lamina)
-[![Open VSX](https://img.shields.io/open-vsx/v/x-ror/lamina?label=Open%20VSX)](https://open-vsx.org/extension/x-ror/lamina)
+[![VS Marketplace](https://vsmarketplacebadges.dev/version-short/x-ror.lamina-templates.svg)](https://marketplace.visualstudio.com/items?itemName=x-ror.lamina-templates)
+[![Open VSX](https://img.shields.io/open-vsx/v/x-ror/lamina-templates?label=Open%20VSX)](https://open-vsx.org/extension/x-ror/lamina-templates)
 [![npm](https://img.shields.io/npm/v/@x-ror/lamina?label=npm%20CLI)](https://www.npmjs.com/package/@x-ror/lamina)
 [![Socket](https://socket.dev/api/badge/npm/package/@x-ror/lamina)](https://socket.dev/npm/package/@x-ror/lamina)
 [![build](https://github.com/x-ror/lamina/actions/workflows/build.yml/badge.svg)](https://github.com/x-ror/lamina/actions/workflows/build.yml)
@@ -21,7 +21,7 @@ Built for Rails developers who work in `app/views` every day, and for teams that
 
 ## Getting started
 
-1. Install **Lamina** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=x-ror.lamina) or [Open VSX](https://open-vsx.org/extension/x-ror/lamina).
+1. Install **Lamina** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=x-ror.lamina-templates) or [Open VSX](https://open-vsx.org/extension/x-ror/lamina-templates).
 2. Open a Rails project and any view. That's it: highlighting, checks, navigation and formatting work immediately.
 3. Optional: turn on format on save, e.g. `"[erb]": { "editor.formatOnSave": true }` (also `[haml]`, `[slim]`, and `[jade]` for Pug).
 

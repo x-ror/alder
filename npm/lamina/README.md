@@ -1,6 +1,6 @@
 # lamina
 
-Checks and a safe formatter for Rails views in **ERB, Haml and Slim**, for CI, pre-commit hooks and editors. It is the command line of the [Lamina](https://marketplace.visualstudio.com/items?itemName=x-ror.lamina) VS Code extension, so the editor and CI report the same errors and format the same way.
+Checks and a safe formatter for Rails views in **ERB, Haml and Slim**, for CI, pre-commit hooks and editors. It is the command line of the [Lamina](https://marketplace.visualstudio.com/items?itemName=x-ror.lamina-templates) VS Code extension, so the editor and CI report the same errors and format the same way.
 
 - **No Ruby needed.** A single prebuilt binary (written in Rust): no gems, no Bundler, fast on large `app/views`.
 - **Errors the real engines would raise**: Ruby syntax inside ERB, Haml and Slim (checked with Prism), unclosed `<%` and blocks, mismatched HTML tags, missing `alt`, Haml and Slim indentation and nesting errors, unresolved `render` partials and strict locals mismatches, with Erubi's, Rails', Haml's and Slim's own messages.
