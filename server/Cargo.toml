@@ -1,6 +1,6 @@
 [package]
 name = "lamina-ls"
-version = "1.1.0"
+version = "1.1.1"
 edition = "2021"
 rust-version = "1.85"
 description = "Language server for ERB, Haml and Slim templates"
