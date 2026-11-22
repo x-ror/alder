@@ -1,9 +1,9 @@
 GEM
   remote: https://rubygems.org/
   specs:
-    actionview (8.0.5.1)
-    rails (8.0.5.1)
-    railties (8.0.5.1)
+    actionview (8.0.5.2)
+    rails (8.0.5.2)
+    railties (8.0.5.2)
 
 PLATFORMS
   x86_64-linux
