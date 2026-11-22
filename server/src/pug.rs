@@ -59,8 +59,8 @@ fn too_deep(line: usize, column: usize) -> Error {
 
 /// Pug's first error, with Pug's message, filed under the code of the construct it is about; without one, the content in a
 /// void element that Pug refuses to compile and, for a file on disk, the problems with what it includes and extends. Only
-/// the codes `reports` takes are looked for, and only the first error in text with a lone `\r`. `parsed` is what
-/// `parser::parse` gives for `text`, and `index` its lines.
+/// the codes `reports` takes are looked for. `parsed` is what `parser::parse` gives for `text`, and `index` its lines,
+/// `LineIndex::with_lone_cr` as Pug counts them.
 pub fn diagnostics(
     text: &str,
     index: &LineIndex,
@@ -69,7 +69,6 @@ pub fn diagnostics(
     reports: impl Fn(&str) -> bool,
 ) -> Vec<Diagnostic> {
     match parsed {
-        Ok(_) if has_lone_cr(text) => vec![],
         Ok(tree) => {
             let mut found: Vec<Diagnostic> = Vec::new();
             if reports(code::VOID_CHILDREN) {
@@ -88,8 +87,8 @@ pub fn diagnostics(
     }
 }
 
-/// Whether `text` has a `\r` not followed by `\n`, a line break for Pug and the editor that `LineIndex` doesn't count, so
-/// the positions of what follows it would be off.
+/// Whether `text` has a `\r` not followed by `\n`, a line break for Pug and the editor that `LineIndex::new` doesn't count,
+/// so the positions it gives for what follows would be off.
 pub fn has_lone_cr(text: &str) -> bool {
     text.match_indices('\r').any(|(at, _)| !text[at + 1..].starts_with('\n'))
 }
@@ -117,15 +116,15 @@ fn normalize_block(block: &mut Block) {
 }
 
 fn normalize_node(node: &mut Node) {
-    (node.line, node.column) = (0, 0);
+    (node.line, node.column, node.span) = (0, 0, 0..0);
     let trim = |js: &mut String| js.truncate(js.trim_end_matches(lexer::is_js_whitespace).len());
     match &mut node.kind {
         NodeKind::Tag(tag) | NodeKind::MixinCall { tag, .. } => {
             for attr in &mut tag.attrs {
-                (attr.line, attr.column) = (0, 0);
+                (attr.line, attr.column, attr.span) = (0, 0, 0..0);
             }
             for block in &mut tag.attribute_blocks {
-                (block.line, block.column) = (0, 0);
+                (block.line, block.column, block.span) = (0, 0, 0..0);
             }
             normalize_block(&mut tag.block);
         }
@@ -165,23 +164,23 @@ fn normalize_node(node: &mut Node) {
         NodeKind::MixinDefinition { block, .. } | NodeKind::NamedBlock { block, .. } | NodeKind::BlockComment { block, .. } => {
             normalize_block(block)
         }
-        NodeKind::Extends { file } => (file.line, file.column) = (0, 0),
+        NodeKind::Extends { file } => (file.line, file.column, file.span) = (0, 0, 0..0),
         NodeKind::Include { file, block } => {
-            (file.line, file.column) = (0, 0);
+            (file.line, file.column, file.span) = (0, 0, 0..0);
             normalize_block(block);
         }
         NodeKind::RawInclude { file, filters } => {
-            (file.line, file.column) = (0, 0);
+            (file.line, file.column, file.span) = (0, 0, 0..0);
             for filter in filters {
-                (filter.line, filter.column) = (0, 0);
+                (filter.line, filter.column, filter.span) = (0, 0, 0..0);
                 for attr in &mut filter.attrs {
-                    (attr.line, attr.column) = (0, 0);
+                    (attr.line, attr.column, attr.span) = (0, 0, 0..0);
                 }
             }
         }
         NodeKind::Filter { attrs, block, .. } => {
             for attr in attrs {
-                (attr.line, attr.column) = (0, 0);
+                (attr.line, attr.column, attr.span) = (0, 0, 0..0);
             }
             normalize_block(block);
         }
@@ -270,14 +269,6 @@ pub(crate) fn parsable(text: &str) -> Option<(Vec<lexer::Token>, Block)> {
     read(&text[..before]).ok()
 }
 
-/// The byte offset of Pug's 1-based line and UTF-16 column, which don't count the byte order mark.
-pub fn offset(index: &LineIndex, line: usize, column: usize) -> usize {
-    let line = line.saturating_sub(1).min(index.line_of(usize::MAX));
-    let raw = index.line(line);
-    let bom = if line == 0 && raw.starts_with(BOM) { BOM.len_utf8() } else { 0 };
-    index.line_start(line) + bom + lexer::unit_offset(&raw[bom..], column.saturating_sub(1))
-}
-
 fn code_of(pug_code: &str) -> &'static str {
     match pug_code {
         "PUG:INCONSISTENT_INDENTATION" | "PUG:INVALID_INDENTATION" => code::INCONSISTENT_INDENT,
@@ -320,7 +311,7 @@ mod tests {
 
     /// (line, start, end, code, message) of the diagnostic for `text`, 0-based as the editor gets them.
     fn found(text: &str) -> Vec<(u32, u32, u32, String, String)> {
-        diagnostics(text, &LineIndex::new(text), &parser::parse(text), None, |_| true)
+        diagnostics(text, &LineIndex::with_lone_cr(text), &parser::parse(text), None, |_| true)
             .into_iter()
             .map(|d| {
                 let code = crate::util::code(&d).unwrap_or_default().to_string();
@@ -378,15 +369,15 @@ mod tests {
     }
 
     #[test]
-    fn a_lone_cr_ends_a_line_for_errors_and_leaves_out_the_rest() {
+    fn a_lone_cr_ends_a_line() {
         let message = "Inconsistent indentation. Expecting either 0 or 4 spaces/tabs.";
         assert_eq!(found("div\r    p\r  a\r"), [at(2, 0, 2, code::INCONSISTENT_INDENT, message)]);
         assert_eq!(
             found("p #[b\rq"),
             [at(0, 5, 5, code::UNCLOSED_BRACKET, "End of line was reached with no closing bracket for interpolation.")]
         );
-        assert!(found("img\r  p\r").is_empty());
-        assert!(found("img\n  p\n").len() == 1);
+        let void = "img is a self closing element: <img/> but contains nested content.";
+        assert_eq!(found("p\r\nimg\r  p\r"), [at(1, 0, 3, code::VOID_CHILDREN, void)]);
         assert!(has_lone_cr("a\rb") && has_lone_cr("a\r") && !has_lone_cr("a\r\nb\n"));
     }
 
@@ -449,10 +440,9 @@ mod tests {
             std::fs::write(&page, &extending).unwrap();
             diagnostics(&extending, &LineIndex::new(&extending), &parser::parse(&extending), Some(&page), |_| true);
             let _ = std::fs::remove_dir_all(&root);
-            let index = LineIndex::new(&text);
             if let Ok(tree) = parser::parse(&text) {
-                let markup = elements::tags(&text, &index, &tree);
-                let ancestry = elements::ancestry(&index, &tree);
+                let markup = elements::tags(&text, &tree);
+                let ancestry = elements::ancestry(&tree);
                 crate::element_lints::diagnostics(crate::lang::TemplateLang::Pug, &text, &markup, &[], Some(&ancestry));
                 crate::nested_interactive::diagnostics(crate::lang::TemplateLang::Pug, &text, &markup, &[], Some(&ancestry));
                 crate::outline::pug::document_symbols(&text);

@@ -2,9 +2,9 @@
 //! them: `pug.compile` adds `.pug` to a path without an extension, and pug-load reads a relative path from the template's
 //! folder and an absolute one from `basedir`, here the app's asset root.
 
-use super::lexer::{is_js_whitespace, BlockMode};
+use super::lexer::BlockMode;
 use super::parser::{self, has_extension, implied, Block, FileReference, Node, NodeKind};
-use super::{children, code, has_lone_cr, nodes, offset, parsed};
+use super::{children, code, has_lone_cr, nodes, parsed};
 use crate::lang::TemplateLang;
 use crate::rails::paths;
 use crate::util::{coded, error, lexically_normal, warning, LineIndex};
@@ -99,35 +99,27 @@ struct Source<'a> {
 }
 
 impl Source<'_> {
-    fn node_start(&self, node: &Node) -> usize {
-        offset(self.index, node.line, node.column)
-    }
-
-    /// From `start` to the end of its line's text.
-    fn rest_of_line(&self, start: usize) -> Range {
+    /// From where `node` starts to the end of its line's text.
+    fn rest_of_line(&self, node: &Node) -> Range {
+        let start = node.span.start;
         let line = self.index.line_of(start);
         let end = self.index.line_start(line) + self.index.line(line).trim_end().len();
         self.index.range(start, end.max(start))
     }
+}
 
-    fn file_ref(&self, keyword: Keyword, file: &FileReference) -> FileRef {
-        let at = offset(self.index, file.line, file.column);
-        // Pug's column is past the spaces after the keyword, not past the rest of the whitespace it trims.
-        let start = at + self.text[at..].len() - self.text[at..].trim_start_matches(is_js_whitespace).len();
-        FileRef { keyword, path: file.path.clone(), start, end: start + file.path.len() }
-    }
+fn file_ref(keyword: Keyword, file: &FileReference) -> FileRef {
+    FileRef { keyword, path: file.path.clone(), start: file.span.start, end: file.span.end }
 }
 
 /// The `include` and `extends` paths of `text`, or of the lines above its first syntax error; none for text with a lone `\r`,
-/// a line break for Pug that `LineIndex` doesn't count.
+/// whose positions the editor's requests and links are converted with `LineIndex::new`, which doesn't count it.
 pub fn file_refs(text: &str) -> Vec<FileRef> {
     if has_lone_cr(text) {
         return Vec::new();
     }
     let Some(tree) = parsed(text) else { return Vec::new() };
-    let index = LineIndex::new(text);
-    let source = Source { text, index: &index };
-    file_references(&tree).map(|(keyword, file)| source.file_ref(keyword, file)).collect()
+    file_references(&tree).map(|(keyword, file)| file_ref(keyword, file)).collect()
 }
 
 /// The path the cursor, at byte `at`, is in or next to.
@@ -220,11 +212,10 @@ pub fn diagnostics(text: &str, index: &LineIndex, tree: &Block, current: &Path, 
 /// Paths whose file doesn't exist; an absolute path without an asset root is left alone, since `basedir` can be set.
 fn missing_files(source: &Source, tree: &Block, current: &Path) -> Vec<Diagnostic> {
     file_references(tree)
-        .filter_map(|(keyword, file)| {
+        .filter_map(|(_, file)| {
             let missing = resolve(current, &file.path).filter(|found| !found.is_file())?;
-            let r = source.file_ref(keyword, file);
             let message = format!("Missing file {}", paths::rails_relative(&missing, current));
-            Some(coded(error(source.index.range(r.start, r.end), message), code::MISSING_FILE))
+            Some(coded(error(source.index.range(file.span.start, file.span.end), message), code::MISSING_FILE))
         })
         .collect()
 }
@@ -234,7 +225,7 @@ fn misplaced_extends(source: &Source, tree: &Block) -> Vec<Diagnostic> {
     let extends = nodes(tree).into_iter().filter(|node| matches!(node.kind, NodeKind::Extends { .. }));
     extends
         .skip(usize::from(layout_of(tree).is_some()))
-        .map(|node| coded(error(source.rest_of_line(source.node_start(node)), EXTENDS_NOT_FIRST_MESSAGE), code::EXTENDS_NOT_FIRST))
+        .map(|node| coded(error(source.rest_of_line(node), EXTENDS_NOT_FIRST_MESSAGE), code::EXTENDS_NOT_FIRST))
         .collect()
 }
 
@@ -253,7 +244,7 @@ fn unexpected_blocks(source: &Source, tree: &Block, current: &Path, linker: &mut
                 NodeKind::Include { file, .. } => format!("Unexpected block {name} in {}", file.path),
                 _ => format!("Unexpected block {name}"),
             };
-            coded(error(source.rest_of_line(source.node_start(node)), message), code::UNEXPECTED_BLOCK)
+            coded(error(source.rest_of_line(node), message), code::UNEXPECTED_BLOCK)
         })
         .collect()
 }
@@ -279,8 +270,9 @@ fn unknown_mixins(source: &Source, tree: &Block, current: &Path, linker: &mut Li
     unknown
         .into_iter()
         .map(|(node, name)| {
-            let start = source.node_start(node);
-            let end = source.text[start..].find(name).map_or(start, |at| start + at + name.len());
+            // The call starts at its `+`, which spaces may separate from the name.
+            let start = node.span.start;
+            let end = source.text[node.span.clone()].find(name).map_or(start, |at| start + at + name.len());
             let message = format!("Mixin `{name}` is not defined here, in an included file or in a layout");
             coded(warning(source.index.range(start, end), message), code::UNKNOWN_MIXIN)
         })
@@ -634,7 +626,7 @@ mod tests {
         let path = root.join(file);
         let text = std::fs::read_to_string(&path).unwrap();
         let tree = parser::parse(&text).unwrap();
-        diagnostics(&text, &LineIndex::new(&text), &tree, &path, |_| true)
+        diagnostics(&text, &LineIndex::with_lone_cr(&text), &tree, &path, |_| true)
             .into_iter()
             .map(|d| (d.range.start.line, crate::util::code(&d).unwrap_or_default().to_string(), d.message))
             .collect()
@@ -726,6 +718,10 @@ mod tests {
                 ),
                 ("app/assets/templates/users/doctype.pug", "doctype html\n//- dropped\nextends ../layout\n"),
                 ("app/assets/templates/users/first.pug", "//- dropped\n\nextends ../layout\n"),
+                (
+                    "app/assets/templates/users/cr.pug",
+                    "extends ../layout\rblock content\r\n  include missing\r  div\r    extends ../layout\r",
+                ),
             ],
         );
         let missing = |file: &str| format!("Missing file app/assets/templates/{file}");
@@ -741,6 +737,11 @@ mod tests {
         );
         assert_eq!(found(&root, "app/assets/templates/users/doctype.pug"), [at(2, code::EXTENDS_NOT_FIRST, EXTENDS_NOT_FIRST_MESSAGE)]);
         assert!(found(&root, "app/assets/templates/users/first.pug").is_empty());
+        assert_eq!(
+            found(&root, "app/assets/templates/users/cr.pug"),
+            [at(2, code::MISSING_FILE, &missing("users/missing.pug")), at(4, code::EXTENDS_NOT_FIRST, EXTENDS_NOT_FIRST_MESSAGE)],
+            "a lone `\\r` ends a line"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 

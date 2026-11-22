@@ -3,7 +3,7 @@
 use super::{block_end, Symbols, LANDMARKS};
 use crate::pug;
 use crate::pug::elements::static_string;
-use crate::pug::lexer::{BlockMode, Kind, Pos, Token};
+use crate::pug::lexer::{BlockMode, Kind, Token};
 use crate::pug::parser::{AttrValue, Node, NodeKind, Tag};
 use crate::util::LineIndex;
 use std::collections::HashMap;
@@ -11,15 +11,12 @@ use tower_lsp_server::ls_types::{DocumentSymbol, SymbolKind};
 
 /// Outline: tags with a `#id` or `.class`, a literal `id` or a landmark name, `block`s and `mixin` definitions, each
 /// spanning its line and the lines of what Pug nests under it, a `#[…]` tag its brackets. With a syntax error, the symbols
-/// of the lines above it; none for text with a lone `\r`, a line break for Pug that `LineIndex` doesn't count.
+/// of the lines above it. Lines are Pug's and the editor's, which a lone `\r` ends too.
 pub fn document_symbols(text: &str) -> Vec<DocumentSymbol> {
-    if pug::has_lone_cr(text) {
-        return Vec::new();
-    }
     let Some((tokens, tree)) = pug::parsable(text) else { return Vec::new() };
-    let index = LineIndex::new(text);
-    let mut outline =
-        Outline { text, lines: text.split('\n').collect(), index: &index, inline: inline_ends(&tokens), symbols: Symbols::new(&index) };
+    let index = LineIndex::with_lone_cr(text);
+    let lines = (0..=index.line_of(usize::MAX)).map(|n| index.line(n)).collect();
+    let mut outline = Outline { text, lines, index: &index, inline: inline_ends(&tokens), symbols: Symbols::new(&index) };
     for node in &tree.nodes {
         outline.node(node);
     }
@@ -27,7 +24,7 @@ pub fn document_symbols(text: &str) -> Vec<DocumentSymbol> {
 }
 
 /// Where each `#[…]` ends, past its `]`, by where the tag in it starts.
-fn inline_ends(tokens: &[Token]) -> HashMap<Pos, Pos> {
+fn inline_ends(tokens: &[Token]) -> HashMap<usize, usize> {
     let mut open = Vec::new();
     let mut ends = HashMap::new();
     for (i, token) in tokens.iter().enumerate() {
@@ -35,7 +32,7 @@ fn inline_ends(tokens: &[Token]) -> HashMap<Pos, Pos> {
             Kind::StartPugInterpolation => open.push(i + 1),
             Kind::EndPugInterpolation => {
                 if let Some(first) = open.pop().and_then(|first| tokens.get(first)) {
-                    ends.insert(first.start, token.end);
+                    ends.insert(first.span.start, token.span.end);
                 }
             }
             _ => {}
@@ -53,7 +50,7 @@ struct Outline<'a> {
     text: &'a str,
     lines: Vec<&'a str>,
     index: &'a LineIndex<'a>,
-    inline: HashMap<Pos, Pos>,
+    inline: HashMap<usize, usize>,
     symbols: Symbols<'a>,
 }
 
@@ -112,7 +109,7 @@ impl Outline<'_> {
             })
             .collect();
         if !shorthand.is_empty() {
-            let implicit_div = !tag.interpolated && self.text[self.offset(node)..].starts_with(['.', '#']);
+            let implicit_div = !tag.interpolated && self.text[node.span.clone()].starts_with(['.', '#']);
             return Some(if implicit_div { shorthand } else { name + &shorthand });
         }
         if let Some(id) = tag.attrs.iter().filter(|attr| attr.name == "id").find_map(|attr| match &attr.val {
@@ -125,21 +122,16 @@ impl Outline<'_> {
     }
 
     fn add(&mut self, node: &Node, name: String, kind: SymbolKind) {
-        let start = self.offset(node);
+        let start = node.span.start;
         let line_of = |line: usize| line.saturating_sub(1).min(self.lines.len() - 1);
-        let line_end = |line: usize| self.index.line_start(line) + self.index.line(line).trim_end().len();
-        if let Some(end) = self.inline.get(&Pos { line: node.line, column: node.column }) {
-            let end = pug::offset(self.index, end.line, end.column).max(start);
-            self.symbols.add(name, kind, (start, end), (start, end));
+        let line_end = |line: usize| self.index.line_start(line) + self.lines[line].trim_end().len();
+        if let Some(&end) = self.inline.get(&start) {
+            self.symbols.add(name, kind, (start, end.max(start)), (start, end.max(start)));
             return;
         }
         let selection = (start, line_end(line_of(node.line)).max(start));
         let range = (start, line_end(block_end(&self.lines, line_of(last_line(node)), 1)).max(start));
         self.symbols.add(name, kind, range, selection);
-    }
-
-    fn offset(&self, node: &Node) -> usize {
-        pug::offset(self.index, node.line, node.column)
     }
 }
 
@@ -212,8 +204,13 @@ mod tests {
     }
 
     #[test]
-    fn a_lone_cr_gives_no_symbols() {
-        assert!(document_symbols("nav#top\r  section#a\r").is_empty());
+    fn a_lone_cr_ends_a_line() {
+        let symbols = document_symbols("nav#top\r  section#a\r\n  p 😀 #[span#b x]\r");
+        assert_eq!(names(&symbols), ["nav#top[section#a,span#b]"]);
+        assert_eq!(symbols[0].range, Range::new(Position::new(0, 0), Position::new(2, 18)));
+        let children = symbols[0].children.as_ref().unwrap();
+        assert_eq!(children[0].selection_range, Range::new(Position::new(1, 2), Position::new(1, 11)));
+        assert_eq!(children[1].range, Range::new(Position::new(2, 9), Position::new(2, 18)));
     }
 
     #[test]

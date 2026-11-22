@@ -71,6 +71,12 @@ impl<'a> LineIndex<'a> {
         LineIndex { text, starts: std::iter::once(0).chain(text.match_indices('\n').map(|(i, _)| i + 1)).collect() }
     }
 
+    /// `new`, with a lone `\r` ending a line too, as the editor and Pug count lines.
+    pub fn with_lone_cr(text: &'a str) -> Self {
+        let breaks = text.match_indices(['\n', '\r']).filter(|&(i, c)| c == "\n" || !text[i + 1..].starts_with('\n'));
+        LineIndex { text, starts: std::iter::once(0).chain(breaks.map(|(i, _)| i + 1)).collect() }
+    }
+
     /// The line and UTF-16 column of `offset`, moved back to a character boundary and clamped to the text.
     pub fn position(&self, offset: usize) -> Position {
         let offset = char_floor(self.text, offset);
@@ -83,11 +89,13 @@ impl<'a> LineIndex<'a> {
         Range::new(self.position(start), self.position(end))
     }
 
-    /// Line `n` as `str::lines` gives it; empty past the end.
+    /// Line `n` without its line break, as `str::lines` gives it for `new`; empty past the end.
     pub fn line(&self, n: usize) -> &'a str {
         let Some(&start) = self.starts.get(n) else { return "" };
-        let end = self.starts.get(n + 1).copied().unwrap_or(self.text.len());
-        without_line_ending(&self.text[start..end])
+        let Some(&next) = self.starts.get(n + 1) else { return without_line_ending(&self.text[start..]) };
+        let raw = &self.text[start..next];
+        let raw = raw.strip_suffix('\n').unwrap_or(raw);
+        raw.strip_suffix('\r').unwrap_or(raw)
     }
 
     /// `line_text_range` of line `n`.
@@ -100,7 +108,7 @@ impl<'a> LineIndex<'a> {
     /// `str::lines().count()`.
     pub fn line_count(&self) -> usize {
         // A final line ending opens no line of its own.
-        self.starts.len() - usize::from(self.text.is_empty() || self.text.ends_with('\n'))
+        self.starts.len() - usize::from(self.starts.last() == Some(&self.text.len()))
     }
 
     /// The line `offset` is on.
@@ -537,6 +545,15 @@ mod tests {
                 assert_eq!(index.line(n), lines.get(n).copied().unwrap_or(""), "{text:?} line {n}");
             }
         }
+    }
+
+    #[test]
+    fn a_lone_cr_ends_a_line_when_asked() {
+        let index = LineIndex::with_lone_cr("a\rb\r\nc\n\rd\r");
+        assert_eq!((0..6).map(|n| index.line(n)).collect::<Vec<_>>(), ["a", "b", "c", "", "d", ""]);
+        assert_eq!(index.line_count(), 5);
+        assert_eq!(index.position(2), Position::new(1, 0));
+        assert_eq!(index.range(8, 9), Range::new(Position::new(4, 0), Position::new(4, 1)));
     }
 
     fn edit(range: Option<((u32, u32), (u32, u32))>, text: &str) -> TextDocumentContentChangeEvent {

@@ -4,7 +4,7 @@
 //! Pug asks it whether an attribute value has ended, `Completeness` answers.
 
 use super::{too_deep, Error, MAX_DEPTH};
-use crate::util::{closing_bracket, BOM};
+use crate::util::{closing_bracket, LineIndex, BOM};
 use regex::Regex;
 use std::borrow::Cow;
 use std::ops::Range;
@@ -222,15 +222,61 @@ pub struct Token {
     pub kind: Kind,
     pub start: Pos,
     pub end: Pos,
+    /// The bytes from `start` to `end` in the text given to `lex`; for a path, the path without the whitespace Pug trims.
+    pub span: Range<usize>,
 }
 
 /// Pug's tokens for `text`, or its first error.
 pub fn lex(text: &str) -> Result<Vec<Token>, Error> {
-    let text = text.strip_prefix(BOM).unwrap_or(text);
-    let input = if text.contains('\r') { Cow::Owned(text.replace("\r\n", "\n").replace('\r', "\n")) } else { Cow::Borrowed(text) };
+    let body = text.strip_prefix(BOM).unwrap_or(text);
+    let input = if body.contains('\r') { Cow::Owned(body.replace("\r\n", "\n").replace('\r', "\n")) } else { Cow::Borrowed(body) };
     let mut lexer = Lexer::new(input, Pos { line: 1, column: 1 });
     lexer.run()?;
-    Ok(lexer.tokens)
+    let mut offsets = Offsets::new(text);
+    let mut tokens = lexer.tokens;
+    for token in &mut tokens {
+        let start = offsets.of(token.start);
+        token.span = match &token.kind {
+            // Pug's column is past the spaces after the keyword, not past the rest of the whitespace it trims.
+            Kind::Path(path) => {
+                let start = start + text[start..].len() - text[start..].trim_start_matches(is_js_whitespace).len();
+                start..start + path.len()
+            }
+            _ => start..offsets.of(token.end).max(start),
+        };
+    }
+    Ok(tokens)
+}
+
+/// The byte offsets of Pug's positions in the text it lexed, found from the last one asked when that is earlier on the
+/// same line: tokens ask in about document order, and a line can hold thousands.
+struct Offsets<'a> {
+    index: LineIndex<'a>,
+    /// The 0-based line, UTF-16 column and offset of the last position asked.
+    last: (usize, usize, usize),
+}
+
+impl<'a> Offsets<'a> {
+    fn new(text: &'a str) -> Self {
+        Offsets { index: LineIndex::with_lone_cr(text), last: (0, 1, if text.starts_with(BOM) { BOM.len_utf8() } else { 0 }) }
+    }
+
+    /// The offset of Pug's 1-based line and UTF-16 column, which don't count the byte order mark.
+    fn of(&mut self, at: Pos) -> usize {
+        let line = at.line.saturating_sub(1).min(self.index.line_of(usize::MAX));
+        let line_start = self.index.line_start(line);
+        let (column, from) = match self.last {
+            (last_line, column, from) if last_line == line && column <= at.column => (column, from),
+            _ => {
+                let bom = if line == 0 && self.index.line(0).starts_with(BOM) { BOM.len_utf8() } else { 0 };
+                (1, line_start + bom)
+            }
+        };
+        let rest = &self.index.line(line)[from - line_start..];
+        let offset = from + unit_offset(rest, at.column.saturating_sub(column));
+        self.last = (line, at.column, offset);
+        offset
+    }
 }
 
 fn units(s: &str) -> usize {
@@ -419,7 +465,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn push(&mut self, kind: Kind, start: Pos) {
-        self.tokens.push(Token { kind, start, end: self.pos() });
+        self.tokens.push(Token { kind, start, end: self.pos(), span: 0..0 });
     }
 
     fn increment_line(&mut self, lines: usize) {
@@ -2269,5 +2315,31 @@ mod tests {
     fn columns_count_utf16_units() {
         let error = lex("p 😀 #{a").unwrap_err();
         assert_eq!((error.line, error.column), (1, 9));
+    }
+
+    #[test]
+    fn spans_are_bytes_of_the_text_as_given() {
+        let text = "\u{feff}p 😀 #[b x]\r\n  a(href=\"/\")\rinclude \u{a0}row \n";
+        let spans: Vec<(&str, &str)> = lex(text).unwrap().iter().map(|t| (t.kind.name(), &text[t.span.clone()])).collect();
+        let expected = [
+            ("tag", "p"),
+            ("text", "😀 "),
+            ("start-pug-interpolation", "#["),
+            ("tag", "b"),
+            ("text", "x"),
+            ("end-pug-interpolation", "]"),
+            ("text", ""),
+            ("indent", "  "),
+            ("tag", "a"),
+            ("start-attributes", "("),
+            ("attribute", "href=\"/\""),
+            ("end-attributes", ")"),
+            ("outdent", ""),
+            ("include", "include"),
+            ("path", "row"),
+            ("newline", ""),
+            ("eos", ""),
+        ];
+        assert_eq!(spans, expected);
     }
 }

@@ -144,14 +144,15 @@ pub(crate) fn diagnostics_in(
 /// to make elements.
 fn pug_diagnostics(uri: &Uri, doc: &Doc, rules: &ResolvedRules) -> Vec<Diagnostic> {
     let text = doc.text.as_str();
-    let (index, parsed) = (util::LineIndex::new(text), pug::parser::parse(text));
+    let (index, parsed) = (util::LineIndex::with_lone_cr(text), pug::parser::parse(text));
     let mut out = pug::diagnostics(text, &index, &parsed, util::file_path(uri).as_deref(), |code| rules.reports(code));
+    // The element lints and the line length count lines as `str::lines` does, which a lone `\r` doesn't end.
     if pug::has_lone_cr(text) {
         return out;
     }
     if let (Ok(tree), true) = (&parsed, ELEMENT_LINTS.iter().any(|code| rules.reports(code))) {
-        let markup = pug::elements::tags(text, &index, tree);
-        let ancestry = pug::elements::ancestry(&index, tree);
+        let markup = pug::elements::tags(text, tree);
+        let ancestry = pug::elements::ancestry(tree);
         out.extend(element_lints::diagnostics(doc.lang, text, &markup, &[], Some(&ancestry)));
         out.extend(nested_interactive::diagnostics(doc.lang, text, &markup, &[], Some(&ancestry)));
     }

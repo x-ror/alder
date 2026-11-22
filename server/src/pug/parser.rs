@@ -13,6 +13,7 @@ use super::lexer::{js_trim, lex, BlockMode, Kind, Pos, Token};
 use super::{too_deep, Error, MAX_DEPTH};
 use std::borrow::Cow;
 use std::collections::VecDeque;
+use std::ops::Range;
 
 /// pug-parser's `lib/inline-tags.js`.
 const INLINE_TAGS: &[&str] = &[
@@ -30,6 +31,8 @@ pub struct Block {
 pub struct Node {
     pub line: usize,
     pub column: usize,
+    /// The bytes of the token that starts it.
+    pub span: Range<usize>,
     pub kind: NodeKind,
 }
 
@@ -141,6 +144,8 @@ pub struct Attr {
     pub must_escape: bool,
     pub line: usize,
     pub column: usize,
+    /// From the name, or the quote before it, to the end of the value; a `#id` or `.class` with its `#` or `.`.
+    pub span: Range<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -156,6 +161,7 @@ pub struct AttributeBlock {
     pub val: String,
     pub line: usize,
     pub column: usize,
+    pub span: Range<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -187,6 +193,8 @@ pub struct FileReference {
     pub path: String,
     pub line: usize,
     pub column: usize,
+    /// The bytes of `path`.
+    pub span: Range<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -195,6 +203,7 @@ pub struct IncludeFilter {
     pub attrs: Vec<Attr>,
     pub line: usize,
     pub column: usize,
+    pub span: Range<usize>,
 }
 
 /// Pug's AST for `text`, or the first error its lexer or parser raises.
@@ -205,8 +214,8 @@ pub fn parse(text: &str) -> Result<Block, Error> {
 /// Pug's AST for the tokens `lex` gave, or the first error its parser raises.
 pub fn parse_tokens(tokens: Vec<Token>) -> Result<Block, Error> {
     let tokens = strip_comments(tokens);
-    let eos =
-        tokens.last().cloned().unwrap_or(Token { kind: Kind::Eos, start: Pos { line: 1, column: 1 }, end: Pos { line: 1, column: 1 } });
+    let start = Pos { line: 1, column: 1 };
+    let eos = tokens.last().cloned().unwrap_or(Token { kind: Kind::Eos, start, end: start, span: 0..0 });
     Parser { tokens: tokens.into(), eos, in_mixin: 0, depth: 0 }.parse()
 }
 
@@ -285,7 +294,7 @@ impl Expr {
 }
 
 fn node(token: &Token, kind: NodeKind) -> Node {
-    Node { line: token.start.line, column: token.start.column, kind }
+    Node { line: token.start.line, column: token.start.column, span: token.span.clone(), kind }
 }
 
 fn text_node(token: &Token, val: String) -> Node {
@@ -426,7 +435,7 @@ impl Parser {
             }
             Kind::Id(_) | Kind::Class(_) => {
                 let token = self.peek();
-                let div = Token { kind: Kind::Tag("div".to_string()), start: token.start, end: token.end };
+                let div = Token { kind: Kind::Tag("div".to_string()), start: token.start, end: token.end, span: token.span.clone() };
                 self.tokens.push_front(div);
                 one(self.parse_tag()?)
             }
@@ -665,7 +674,7 @@ impl Parser {
         let token = self.expect("filter")?;
         let Kind::Filter(name) = &token.kind else { unreachable!() };
         let attrs = if self.peek_is("start-attributes") { self.attrs(None)? } else { Vec::new() };
-        Ok(IncludeFilter { name: name.clone(), attrs, line: token.start.line, column: token.start.column })
+        Ok(IncludeFilter { name: name.clone(), attrs, line: token.start.line, column: token.start.column, span: token.span.clone() })
     }
 
     fn parse_filter(&mut self) -> Result<Node, Error> {
@@ -705,7 +714,7 @@ impl Parser {
     fn file_reference(&mut self) -> Result<FileReference, Error> {
         let path = self.expect("path")?;
         let Kind::Path(val) = &path.kind else { unreachable!() };
-        Ok(FileReference { path: js_trim(val).to_string(), line: path.start.line, column: path.start.column })
+        Ok(FileReference { path: val.clone(), line: path.start.line, column: path.start.column, span: path.span.clone() })
     }
 
     fn parse_extends(&mut self) -> Result<Node, Error> {
@@ -862,6 +871,7 @@ impl Parser {
                         must_escape: false,
                         line: token.start.line,
                         column: token.start.column,
+                        span: token.span.clone(),
                     });
                 }
                 Kind::StartAttributes => {
@@ -871,7 +881,8 @@ impl Parser {
                 Kind::AndAttributes(_) => {
                     let token = self.advance();
                     let Kind::AndAttributes(val) = &token.kind else { unreachable!() };
-                    tag.attribute_blocks.push(AttributeBlock { val: val.clone(), line: token.start.line, column: token.start.column });
+                    let (line, column, span) = (token.start.line, token.start.column, token.span.clone());
+                    tag.attribute_blocks.push(AttributeBlock { val: val.clone(), line, column, span });
                 }
                 _ => break,
             }
@@ -936,7 +947,8 @@ impl Parser {
                 }
             }
             let val = val.as_ref().map_or(AttrValue::Boolean, |val| AttrValue::Expr(val.clone()));
-            attrs.push(Attr { name: name.clone(), val, must_escape: *must_escape, line: token.start.line, column: token.start.column });
+            let (line, column, span) = (token.start.line, token.start.column, token.span.clone());
+            attrs.push(Attr { name: name.clone(), val, must_escape: *must_escape, line, column, span });
         }
         self.expect("end-attributes")?;
         Ok(attrs)
