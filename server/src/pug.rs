@@ -78,6 +78,7 @@ impl ErrorCode {
         use ErrorCode::*;
         match self {
             BlockInBufferedCode => "PUG:BLOCK_IN_BUFFERED_CODE",
+            // Pug's code has this spelling.
             BlockOutsideMixin => "PUG:BLOCK_OUTISDE_MIXIN",
             BracketMismatch => "PUG:BRACKET_MISMATCH",
             DefaultWithExpression => "PUG:DEFAULT_WITH_EXPRESSION",

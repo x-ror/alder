@@ -9,7 +9,7 @@
 //! - a message Pug builds from half of a surrogate pair (`a(foo!😀)`, `]]]]😀`) has the whole character: a Rust string
 //!   can't hold half of one.
 
-use super::lexer::{js_trim, lex, BlockMode, Kind, Pos, Token};
+use super::lexer::{js_trim, lex, BlockMode, Kind, Pos, Token, TokenType};
 use super::{too_deep, Error, ErrorCode, MAX_DEPTH};
 use std::borrow::Cow;
 use std::collections::VecDeque;
@@ -293,20 +293,45 @@ impl Expr {
     }
 }
 
-fn node(token: &Token, kind: NodeKind) -> Node {
-    Node { line: token.start.line, column: token.start.column, span: token.span.clone(), kind }
+/// A token without its kind; a node takes its position and bytes from the token that starts it.
+struct At {
+    start: Pos,
+    end: Pos,
+    span: Range<usize>,
 }
 
-fn text_node(token: &Token, val: String) -> Node {
-    node(token, NodeKind::Text { val, html: false })
+fn split(token: Token) -> (Kind, At) {
+    let Token { kind, start, end, span } = token;
+    (kind, At { start, end, span })
+}
+
+fn joined(kind: Kind, at: At) -> Token {
+    Token { kind, start: at.start, end: at.end, span: at.span }
+}
+
+fn node(at: At, kind: NodeKind) -> Node {
+    Node { line: at.start.line, column: at.start.column, span: at.span, kind }
+}
+
+fn text_node(at: At, val: String) -> Node {
+    node(at, NodeKind::Text { val, html: false })
+}
+
+fn interpolated_code(at: At, val: String, must_escape: bool) -> Node {
+    node(at, NodeKind::Code(Code { val, buffer: true, must_escape, inline: true, block: None }))
 }
 
 fn empty_block(line: usize) -> Block {
     Block { line, nodes: Vec::new() }
 }
 
-fn error_at(token: &Token, code: ErrorCode, message: impl Into<String>) -> Error {
-    Error { code, message: message.into(), line: token.start.line, column: token.start.column }
+fn error_at(start: Pos, code: ErrorCode, message: impl Into<String>) -> Error {
+    Error { code, message: message.into(), line: start.line, column: start.column }
+}
+
+fn unexpected(expected: TokenType, got: &Token) -> Error {
+    let message = format!("expected \"{}\", but got \"{}\"", expected.name(), got.kind.name());
+    error_at(got.start, ErrorCode::InvalidToken, message)
 }
 
 struct Parser {
@@ -323,29 +348,33 @@ impl Parser {
         self.tokens.front().unwrap_or(&self.eos)
     }
 
-    fn peek_is(&self, name: &str) -> bool {
-        self.peek().kind.name() == name
+    fn peek_is(&self, ty: TokenType) -> bool {
+        self.peek().kind.ty() == ty
     }
 
     fn advance(&mut self) -> Token {
         self.tokens.pop_front().unwrap_or_else(|| self.eos.clone())
     }
 
-    fn expect(&mut self, name: &str) -> Result<Token, Error> {
-        if self.peek_is(name) {
-            return Ok(self.advance());
-        }
-        let got = self.peek().kind.name();
-        Err(error_at(self.peek(), ErrorCode::InvalidToken, format!("expected \"{name}\", but got \"{got}\"")))
+    /// Puts back a token `advance` gave that what is being parsed doesn't take.
+    fn put_back(&mut self, kind: Kind, at: At) {
+        self.tokens.push_front(joined(kind, at));
     }
 
-    fn accept(&mut self, name: &str) -> Option<Token> {
-        self.peek_is(name).then(|| self.advance())
+    fn expect(&mut self, ty: TokenType) -> Result<Token, Error> {
+        if self.peek_is(ty) {
+            return Ok(self.advance());
+        }
+        Err(unexpected(ty, self.peek()))
+    }
+
+    fn accept(&mut self, ty: TokenType) -> Option<Token> {
+        self.peek_is(ty).then(|| self.advance())
     }
 
     fn parse(mut self) -> Result<Block, Error> {
         let mut block = empty_block(0);
-        while !self.peek_is("eos") {
+        while !self.peek_is(TokenType::Eos) {
             match self.peek().kind {
                 Kind::Newline => {
                     self.advance();
@@ -364,22 +393,26 @@ impl Parser {
         Ok(block)
     }
 
-    /// Goes a level deeper in the tree, which the node about to be parsed starts; refused past `MAX_DEPTH`.
-    fn descend(&mut self) -> Result<(), Error> {
+    /// Goes a level deeper in the tree, which the node starting at `start` starts; refused past `MAX_DEPTH`.
+    fn descend(&mut self, start: Pos) -> Result<(), Error> {
         if self.depth == MAX_DEPTH {
-            let Pos { line, column } = self.peek().start;
-            return Err(too_deep(line, column));
+            return Err(too_deep(start.line, start.column));
         }
         self.depth += 1;
         Ok(())
     }
 
-    /// `parse`, a level deeper in the tree.
-    fn nested<T>(&mut self, parse: impl FnOnce(&mut Self) -> Result<T, Error>) -> Result<T, Error> {
-        self.descend()?;
+    /// `parse`, a level deeper in the tree, for the node starting at `start`.
+    fn nested_at<T>(&mut self, start: Pos, parse: impl FnOnce(&mut Self) -> Result<T, Error>) -> Result<T, Error> {
+        self.descend(start)?;
         let parsed = parse(self);
         self.depth -= 1;
         parsed
+    }
+
+    /// `parse`, a level deeper in the tree, for the node the next token starts.
+    fn nested<T>(&mut self, parse: impl FnOnce(&mut Self) -> Result<T, Error>) -> Result<T, Error> {
+        self.nested_at(self.peek().start, parse)
     }
 
     /// `parseExpr` where Pug reads the result's `type`: nothing there (a `.` without text) makes Pug itself throw.
@@ -397,52 +430,44 @@ impl Parser {
 
     fn expr(&mut self) -> Result<Option<Expr>, Error> {
         let one = |node: Node| Ok(Some(Expr::Node(node)));
-        match &self.peek().kind {
-            Kind::Tag(_) => one(self.parse_tag()?),
-            Kind::Mixin { .. } => one(self.parse_mixin()?),
-            Kind::Block { .. } => one(self.parse_named_block()?),
-            Kind::MixinBlock => one(self.parse_mixin_block()?),
-            Kind::Case(_) => one(self.parse_case()?),
-            Kind::Extends => one(self.parse_extends()?),
-            Kind::Include => one(self.parse_include()?),
-            Kind::Doctype(_) => {
-                let token = self.advance();
-                let Kind::Doctype(val) = &token.kind else { unreachable!() };
-                one(node(&token, NodeKind::Doctype(val.clone())))
-            }
-            Kind::Filter(_) => one(self.parse_filter()?),
-            Kind::Comment { .. } => one(self.parse_comment()?),
-            Kind::Text(_) | Kind::InterpolatedCode { .. } | Kind::StartPugInterpolation => self.parse_text(true),
+        match self.peek().kind {
+            Kind::Text(_) | Kind::InterpolatedCode { .. } | Kind::StartPugInterpolation => return self.parse_text(true),
             Kind::TextHtml(_) => {
                 let line = self.peek().start.line;
-                Ok(Some(Expr::Block(Block { line, nodes: self.parse_text_html()? })))
-            }
-            Kind::Dot => {
-                self.advance();
-                Ok(self.parse_text_block()?.map(Expr::Block))
-            }
-            Kind::Each { .. } => one(self.parse_each()?),
-            Kind::EachOf { .. } => one(self.parse_each_of()?),
-            Kind::Code { .. } => one(self.parse_code(false)?),
-            Kind::BlockCode => one(self.parse_block_code()?),
-            Kind::If(_) => one(self.parse_conditional()?),
-            Kind::While(_) => one(self.parse_while()?),
-            Kind::Call { .. } => one(self.parse_call()?),
-            Kind::Interpolation(_) => one(self.parse_interpolation()?),
-            Kind::Yield => {
-                let token = self.advance();
-                one(node(&token, NodeKind::YieldBlock))
+                return Ok(Some(Expr::Block(Block { line, nodes: self.parse_text_html()? })));
             }
             Kind::Id(_) | Kind::Class(_) => {
                 let token = self.peek();
                 let div = Token { kind: Kind::Tag("div".to_string()), start: token.start, end: token.end, span: token.span.clone() };
                 self.tokens.push_front(div);
-                one(self.parse_tag()?)
             }
-            other => {
-                let message = format!("unexpected token \"{}\"", other.name());
-                Err(error_at(self.peek(), ErrorCode::InvalidToken, message))
+            _ => {}
+        }
+        let (kind, at) = split(self.advance());
+        match kind {
+            Kind::Tag(name) => one(self.parse_tag(at, name)?),
+            Kind::Mixin { name, args } => one(self.parse_mixin(at, name, args)?),
+            Kind::Block { name, mode } => one(self.parse_named_block(at, name, mode)?),
+            Kind::MixinBlock => one(self.parse_mixin_block(at)?),
+            Kind::Case(expr) => one(self.parse_case(at, expr)?),
+            Kind::Extends => one(self.parse_extends(at)?),
+            Kind::Include => one(self.parse_include(at)?),
+            Kind::Doctype(val) => one(node(at, NodeKind::Doctype(val))),
+            Kind::Filter(name) => one(self.parse_filter(at, name)?),
+            Kind::Comment { val, buffer } => one(self.parse_comment(at, val, buffer)?),
+            Kind::Dot => Ok(self.parse_text_block()?.map(Expr::Block)),
+            Kind::Each { val, key, code } => one(self.parse_each(at, val, key, code)?),
+            Kind::EachOf { val, code } => one(self.parse_each_of(at, val, code)?),
+            Kind::Code { val, must_escape, buffer } => {
+                one(self.parse_code(at, Code { val, buffer, must_escape, inline: false, block: None })?)
             }
+            Kind::BlockCode => one(self.parse_block_code(at)?),
+            Kind::If(test) => one(self.parse_conditional(at, test)?),
+            Kind::While(test) => one(self.parse_while(at, test)?),
+            Kind::Call { name, args } => one(self.parse_call(at, name, args)?),
+            Kind::Interpolation(expr) => one(self.parse_interpolation(at, expr)?),
+            Kind::Yield => one(node(at, NodeKind::YieldBlock)),
+            other => Err(error_at(at.start, ErrorCode::InvalidToken, format!("unexpected token \"{}\"", other.name()))),
         }
     }
 
@@ -451,30 +476,25 @@ impl Parser {
         let line = self.peek().start.line;
         let mut nodes = Vec::new();
         loop {
-            match self.peek().kind {
-                Kind::Text(_) => {
-                    let token = self.advance();
-                    let Kind::Text(val) = &token.kind else { unreachable!() };
-                    nodes.push(text_node(&token, val.clone()));
-                }
-                Kind::InterpolatedCode { .. } => {
-                    let token = self.advance();
-                    nodes.push(interpolated_code(&token));
-                }
+            let (kind, at) = split(self.advance());
+            match kind {
+                Kind::Text(val) => nodes.push(text_node(at, val)),
+                Kind::InterpolatedCode { val, must_escape } => nodes.push(interpolated_code(at, val, must_escape)),
                 Kind::Newline if block => {
-                    let token = self.advance();
                     if matches!(self.peek().kind, Kind::Text(_) | Kind::InterpolatedCode { .. }) {
-                        nodes.push(text_node(&token, "\n".to_string()));
+                        nodes.push(text_node(at, "\n".to_string()));
                     }
                 }
                 Kind::StartPugInterpolation => {
-                    self.advance();
                     if let Some(expr) = self.parse_expr()? {
                         expr.append_to(&mut nodes);
                     }
-                    self.expect("end-pug-interpolation")?;
+                    self.expect(TokenType::EndPugInterpolation)?;
                 }
-                _ => break,
+                kind => {
+                    self.put_back(kind, at);
+                    break;
+                }
             }
         }
         Ok(match nodes.len() {
@@ -505,307 +525,284 @@ impl Parser {
             }
         };
         loop {
-            match self.peek().kind {
-                Kind::TextHtml(_) => {
-                    let token = self.advance();
-                    let Kind::TextHtml(val) = &token.kind else { unreachable!() };
-                    add(&mut nodes, &mut current, node(&token, NodeKind::Text { val: val.clone(), html: true }));
+            if matches!(self.peek().kind, Kind::Indent(_)) {
+                for nested in self.nested(Self::block)?.nodes {
+                    add(&mut nodes, &mut current, nested);
                 }
-                Kind::Indent(_) => {
-                    for nested in self.nested(Self::block)?.nodes {
-                        add(&mut nodes, &mut current, nested);
-                    }
-                }
-                Kind::Code { .. } => {
+                continue;
+            }
+            let (kind, at) = split(self.advance());
+            match kind {
+                Kind::TextHtml(val) => add(&mut nodes, &mut current, node(at, NodeKind::Text { val, html: true })),
+                Kind::Code { val, must_escape, buffer } => {
                     current = None;
-                    nodes.push(self.parse_code(true)?);
+                    nodes.push(self.parse_code(at, Code { val, buffer, must_escape, inline: true, block: None })?);
                 }
-                Kind::Newline => {
-                    self.advance();
+                Kind::Newline => {}
+                kind => {
+                    self.put_back(kind, at);
+                    return Ok(nodes);
                 }
-                _ => return Ok(nodes),
             }
         }
     }
 
     /// `: expr` on the same line, or an indented block.
     fn parse_block_expansion(&mut self) -> Result<Block, Error> {
-        match self.accept(":") {
+        match self.accept(TokenType::Colon) {
             Some(colon) => Ok(self.parse_required_expr()?.into_block(colon.start.line)),
             None => self.block(),
         }
     }
 
-    fn parse_case(&mut self) -> Result<Node, Error> {
-        let token = self.expect("case")?;
-        let Kind::Case(expr) = &token.kind else { unreachable!() };
-        let mut block = empty_block(token.start.line + 1);
-        self.expect("indent")?;
-        while !self.peek_is("outdent") {
-            match self.peek().kind {
-                Kind::Comment { .. } | Kind::Newline => {
-                    self.advance();
-                }
+    fn parse_case(&mut self, at: At, expr: String) -> Result<Node, Error> {
+        let mut block = empty_block(at.start.line + 1);
+        self.expect(TokenType::Indent)?;
+        while !self.peek_is(TokenType::Outdent) {
+            let (kind, when) = split(self.advance());
+            match kind {
+                Kind::Comment { .. } | Kind::Newline => {}
                 // A `when` is a node of its own, a level below the `case`.
-                Kind::When(_) => block.nodes.push(self.nested(Self::parse_when)?),
-                Kind::Default => block.nodes.push(self.nested(|parser| {
-                    let default = parser.advance();
+                Kind::When(expr) => block.nodes.push(self.nested_at(when.start, |parser| parser.parse_when(when, expr))?),
+                Kind::Default => block.nodes.push(self.nested_at(when.start, |parser| {
                     let kind = NodeKind::When { expr: "default".to_string(), block: Some(parser.parse_block_expansion()?) };
-                    Ok(node(&default, kind))
+                    Ok(node(when, kind))
                 })?),
-                _ => {
-                    let message =
-                        format!("Unexpected token \"{}\", expected \"when\", \"default\" or \"newline\"", self.peek().kind.name());
-                    return Err(error_at(self.peek(), ErrorCode::InvalidToken, message));
+                other => {
+                    let message = format!("Unexpected token \"{}\", expected \"when\", \"default\" or \"newline\"", other.name());
+                    return Err(error_at(when.start, ErrorCode::InvalidToken, message));
                 }
             }
         }
-        self.expect("outdent")?;
-        Ok(node(&token, NodeKind::Case { expr: expr.clone(), block }))
+        self.expect(TokenType::Outdent)?;
+        Ok(node(at, NodeKind::Case { expr, block }))
     }
 
-    fn parse_when(&mut self) -> Result<Node, Error> {
-        let token = self.expect("when")?;
-        let Kind::When(expr) = &token.kind else { unreachable!() };
-        let block = if self.peek_is("newline") { None } else { Some(self.parse_block_expansion()?) };
-        Ok(node(&token, NodeKind::When { expr: expr.clone(), block }))
+    fn parse_when(&mut self, at: At, expr: String) -> Result<Node, Error> {
+        let block = if self.peek_is(TokenType::Newline) { None } else { Some(self.parse_block_expansion()?) };
+        Ok(node(at, NodeKind::When { expr, block }))
     }
 
-    fn parse_code(&mut self, inline: bool) -> Result<Node, Error> {
-        let token = self.expect("code")?;
-        let Kind::Code { val, must_escape, buffer } = &token.kind else { unreachable!() };
-        let mut code = Code { val: val.clone(), buffer: *buffer, must_escape: *must_escape, inline, block: None };
-        if !inline && self.peek_is("indent") {
+    /// The code of a `code` token, with the block a `-` line has under it.
+    fn parse_code(&mut self, at: At, mut code: Code) -> Result<Node, Error> {
+        if !code.inline && self.peek_is(TokenType::Indent) {
             if code.buffer {
-                return Err(error_at(self.peek(), ErrorCode::BlockInBufferedCode, "Buffered code cannot have a block attached to it"));
+                let message = "Buffered code cannot have a block attached to it";
+                return Err(error_at(self.peek().start, ErrorCode::BlockInBufferedCode, message));
             }
             code.block = Some(self.block()?);
         }
-        Ok(node(&token, NodeKind::Code(code)))
+        Ok(node(at, NodeKind::Code(code)))
     }
 
-    fn parse_conditional(&mut self) -> Result<Node, Error> {
-        let token = self.expect("if")?;
-        let Kind::If(test) = &token.kind else { unreachable!() };
-        let consequent = self.optional_block(token.start.line)?;
+    fn parse_conditional(&mut self, at: At, test: String) -> Result<Node, Error> {
+        let consequent = self.optional_block(at.start.line)?;
         let mut else_ifs = Vec::new();
         let mut alternate = None;
         // Each `else if` is a level deeper in the tree than the one before.
         let depth = self.depth;
         loop {
-            match self.peek().kind {
-                Kind::Newline => {
-                    self.advance();
-                }
-                Kind::ElseIf(_) => {
-                    self.descend()?;
-                    let else_if = self.advance();
-                    let consequent = self.optional_block(else_if.start.line)?;
-                    else_ifs.push((else_if, consequent));
+            let (kind, next) = split(self.advance());
+            match kind {
+                Kind::Newline => {}
+                Kind::ElseIf(test) => {
+                    self.descend(next.start)?;
+                    let consequent = self.optional_block(next.start.line)?;
+                    else_ifs.push((next, test, consequent));
                 }
                 Kind::Else => {
-                    self.advance();
-                    if self.peek_is("indent") {
+                    if self.peek_is(TokenType::Indent) {
                         alternate = Some(Alternate::Else(self.block()?));
                     }
                     break;
                 }
-                _ => break,
+                kind => {
+                    self.put_back(kind, next);
+                    break;
+                }
             }
         }
         self.depth = depth;
-        for (else_if, consequent) in else_ifs.into_iter().rev() {
-            let Kind::ElseIf(test) = &else_if.kind else { unreachable!() };
-            let conditional = Conditional { test: test.clone(), consequent, alternate };
-            alternate = Some(Alternate::ElseIf(Box::new(node(&else_if, NodeKind::Conditional(conditional)))));
+        for (else_if, test, consequent) in else_ifs.into_iter().rev() {
+            let conditional = Conditional { test, consequent, alternate };
+            alternate = Some(Alternate::ElseIf(Box::new(node(else_if, NodeKind::Conditional(conditional)))));
         }
-        Ok(node(&token, NodeKind::Conditional(Conditional { test: test.clone(), consequent, alternate })))
+        Ok(node(at, NodeKind::Conditional(Conditional { test, consequent, alternate })))
     }
 
     /// The indented block that follows, or an empty one at `line`.
     fn optional_block(&mut self, line: usize) -> Result<Block, Error> {
-        if self.peek_is("indent") {
+        if self.peek_is(TokenType::Indent) {
             self.block()
         } else {
             Ok(empty_block(line))
         }
     }
 
-    fn parse_while(&mut self) -> Result<Node, Error> {
-        let token = self.expect("while")?;
-        let Kind::While(test) = &token.kind else { unreachable!() };
-        let block = self.optional_block(token.start.line)?;
-        Ok(node(&token, NodeKind::While { test: test.clone(), block }))
+    fn parse_while(&mut self, at: At, test: String) -> Result<Node, Error> {
+        let block = self.optional_block(at.start.line)?;
+        Ok(node(at, NodeKind::While { test, block }))
     }
 
     /// `-` alone on a line, with its code in the indented text below.
-    fn parse_block_code(&mut self) -> Result<Node, Error> {
-        let token = self.expect("blockcode")?;
+    fn parse_block_code(&mut self, at: At) -> Result<Node, Error> {
         let mut val = String::new();
-        if self.accept("start-pipeless-text").is_some() {
-            while !self.peek_is("end-pipeless-text") {
-                let line = self.advance();
-                match &line.kind {
-                    Kind::Text(text) => val.push_str(text),
+        if self.accept(TokenType::StartPipelessText).is_some() {
+            while !self.peek_is(TokenType::EndPipelessText) {
+                let (kind, line) = split(self.advance());
+                match kind {
+                    Kind::Text(text) => val.push_str(&text),
                     Kind::Newline => val.push('\n'),
                     other => {
                         let message = format!("Unexpected token type: {}", other.name());
-                        return Err(error_at(&line, ErrorCode::InvalidToken, message));
+                        return Err(error_at(line.start, ErrorCode::InvalidToken, message));
                     }
                 }
             }
             self.advance();
         }
         let code = Code { val, buffer: false, must_escape: false, inline: false, block: None };
-        Ok(node(&token, NodeKind::Code(code)))
+        Ok(node(at, NodeKind::Code(code)))
     }
 
-    fn parse_comment(&mut self) -> Result<Node, Error> {
-        let token = self.expect("comment")?;
-        let Kind::Comment { val, buffer } = &token.kind else { unreachable!() };
-        let (val, buffer) = (val.clone(), *buffer);
+    fn parse_comment(&mut self, at: At, val: String, buffer: bool) -> Result<Node, Error> {
         Ok(match self.parse_text_block()? {
-            Some(block) => node(&token, NodeKind::BlockComment { val, buffer, block }),
-            None => node(&token, NodeKind::Comment { val, buffer }),
+            Some(block) => node(at, NodeKind::BlockComment { val, buffer, block }),
+            None => node(at, NodeKind::Comment { val, buffer }),
         })
     }
 
-    fn parse_include_filter(&mut self) -> Result<IncludeFilter, Error> {
-        let token = self.expect("filter")?;
-        let Kind::Filter(name) = &token.kind else { unreachable!() };
-        let attrs = if self.peek_is("start-attributes") { self.attrs(None)? } else { Vec::new() };
-        Ok(IncludeFilter { name: name.clone(), attrs, line: token.start.line, column: token.start.column, span: token.span.clone() })
+    /// `(...)` after a filter, when there is one.
+    fn filter_attrs(&mut self) -> Result<Vec<Attr>, Error> {
+        match self.accept(TokenType::StartAttributes) {
+            Some(_) => self.attrs(None),
+            None => Ok(Vec::new()),
+        }
     }
 
-    fn parse_filter(&mut self) -> Result<Node, Error> {
-        let token = self.expect("filter")?;
-        let Kind::Filter(name) = &token.kind else { unreachable!() };
-        let attrs = if self.peek_is("start-attributes") { self.attrs(None)? } else { Vec::new() };
-        let block = match self.peek().kind {
-            Kind::Text(_) => {
-                let text = self.advance();
-                let Kind::Text(val) = &text.kind else { unreachable!() };
-                Block { line: text.start.line, nodes: vec![text_node(&text, val.clone())] }
+    fn parse_filter(&mut self, at: At, name: String) -> Result<Node, Error> {
+        let attrs = self.filter_attrs()?;
+        let (kind, next) = split(self.advance());
+        let block = match kind {
+            Kind::Text(val) => Block { line: next.start.line, nodes: vec![text_node(next, val)] },
+            kind => {
+                let nested = matches!(kind, Kind::Filter(_));
+                self.put_back(kind, next);
+                if nested {
+                    self.parse_required_expr()?.into_block(at.start.line)
+                } else {
+                    self.parse_text_block()?.unwrap_or_else(|| empty_block(at.start.line))
+                }
             }
-            Kind::Filter(_) => self.parse_required_expr()?.into_block(token.start.line),
-            _ => self.parse_text_block()?.unwrap_or_else(|| empty_block(token.start.line)),
         };
-        Ok(node(&token, NodeKind::Filter { name: name.clone(), attrs, block }))
+        Ok(node(at, NodeKind::Filter { name, attrs, block }))
     }
 
-    fn parse_each(&mut self) -> Result<Node, Error> {
-        let token = self.expect("each")?;
-        let Kind::Each { val, key, code } = &token.kind else { unreachable!() };
+    fn parse_each(&mut self, at: At, val: String, key: Option<String>, obj: String) -> Result<Node, Error> {
         let block = self.block()?;
-        let alternate = match self.accept("else") {
+        let alternate = match self.accept(TokenType::Else) {
             Some(_) => Some(self.block()?),
             None => None,
         };
-        Ok(node(&token, NodeKind::Each { obj: code.clone(), val: val.clone(), key: key.clone(), block, alternate }))
+        Ok(node(at, NodeKind::Each { obj, val, key, block, alternate }))
     }
 
-    fn parse_each_of(&mut self) -> Result<Node, Error> {
-        let token = self.expect("eachOf")?;
-        let Kind::EachOf { val, code } = &token.kind else { unreachable!() };
+    fn parse_each_of(&mut self, at: At, val: String, obj: String) -> Result<Node, Error> {
         let block = self.block()?;
-        Ok(node(&token, NodeKind::EachOf { obj: code.clone(), val: val.clone(), block }))
+        Ok(node(at, NodeKind::EachOf { obj, val, block }))
     }
 
     fn file_reference(&mut self) -> Result<FileReference, Error> {
-        let path = self.expect("path")?;
-        let Kind::Path(val) = &path.kind else { unreachable!() };
-        Ok(FileReference { path: val.clone(), line: path.start.line, column: path.start.column, span: path.span.clone() })
-    }
-
-    fn parse_extends(&mut self) -> Result<Node, Error> {
-        let token = self.expect("extends")?;
-        let file = self.file_reference()?;
-        Ok(node(&token, NodeKind::Extends { file }))
-    }
-
-    fn parse_named_block(&mut self) -> Result<Node, Error> {
-        let token = self.expect("block")?;
-        let Kind::Block { name, mode } = &token.kind else { unreachable!() };
-        let block = self.optional_block(token.start.line)?;
-        Ok(node(&token, NodeKind::NamedBlock { name: js_trim(name).to_string(), mode: *mode, block }))
-    }
-
-    fn parse_mixin_block(&mut self) -> Result<Node, Error> {
-        let token = self.expect("mixin-block")?;
-        if self.in_mixin == 0 {
-            // Pug's code has this spelling.
-            return Err(error_at(
-                &token,
-                ErrorCode::BlockOutsideMixin,
-                "Anonymous blocks are not allowed unless they are part of a mixin.",
-            ));
+        let token = self.advance();
+        match token.kind {
+            Kind::Path(path) => Ok(FileReference { path, line: token.start.line, column: token.start.column, span: token.span }),
+            _ => Err(unexpected(TokenType::Path, &token)),
         }
-        Ok(node(&token, NodeKind::MixinBlock))
     }
 
-    fn parse_include(&mut self) -> Result<Node, Error> {
-        let token = self.expect("include")?;
+    fn parse_extends(&mut self, at: At) -> Result<Node, Error> {
+        let file = self.file_reference()?;
+        Ok(node(at, NodeKind::Extends { file }))
+    }
+
+    fn parse_named_block(&mut self, at: At, name: String, mode: BlockMode) -> Result<Node, Error> {
+        let block = self.optional_block(at.start.line)?;
+        Ok(node(at, NodeKind::NamedBlock { name: js_trim(&name).to_string(), mode, block }))
+    }
+
+    fn parse_mixin_block(&mut self, at: At) -> Result<Node, Error> {
+        if self.in_mixin == 0 {
+            let message = "Anonymous blocks are not allowed unless they are part of a mixin.";
+            return Err(error_at(at.start, ErrorCode::BlockOutsideMixin, message));
+        }
+        Ok(node(at, NodeKind::MixinBlock))
+    }
+
+    fn parse_include(&mut self, at: At) -> Result<Node, Error> {
         let mut filters = Vec::new();
-        while self.peek_is("filter") {
-            filters.push(self.parse_include_filter()?);
+        loop {
+            let (kind, filter) = split(self.advance());
+            let Kind::Filter(name) = kind else {
+                self.put_back(kind, filter);
+                break;
+            };
+            let attrs = self.filter_attrs()?;
+            let (line, column) = (filter.start.line, filter.start.column);
+            filters.push(IncludeFilter { name, attrs, line, column, span: filter.span });
         }
         let file = self.file_reference()?;
         let read = implied(&file.path);
         if filters.is_empty() && (read.ends_with(".pug") || read.ends_with(".jade")) {
-            let block = self.optional_block(token.start.line)?;
-            return Ok(node(&token, NodeKind::Include { file, block }));
+            let block = self.optional_block(at.start.line)?;
+            return Ok(node(at, NodeKind::Include { file, block }));
         }
-        if self.peek_is("indent") {
-            return Err(error_at(self.peek(), ErrorCode::RawIncludeBlock, "Raw inclusion cannot contain a block"));
+        if self.peek_is(TokenType::Indent) {
+            return Err(error_at(self.peek().start, ErrorCode::RawIncludeBlock, "Raw inclusion cannot contain a block"));
         }
-        Ok(node(&token, NodeKind::RawInclude { file, filters }))
+        Ok(node(at, NodeKind::RawInclude { file, filters }))
     }
 
-    fn parse_call(&mut self) -> Result<Node, Error> {
-        let token = self.expect("call")?;
-        let Kind::Call { name, args } = &token.kind else { unreachable!() };
+    fn parse_call(&mut self, at: At, name: String, args: Option<String>) -> Result<Node, Error> {
         let (name, interpolated) = match name.strip_prefix("#{").and_then(|expr| expr.strip_suffix('}')) {
             Some(expr) => (expr.to_string(), true),
-            None => (name.clone(), false),
+            None => (name, false),
         };
-        let mut tag = Tag { name, interpolated, block: empty_block(token.start.line), ..Tag::default() };
-        self.tag(&mut tag, token.start.line, false)?;
-        Ok(node(&token, NodeKind::MixinCall { args: args.clone(), tag }))
+        let mut tag = Tag { name, interpolated, block: empty_block(at.start.line), ..Tag::default() };
+        self.tag(&mut tag, at.start.line, false)?;
+        Ok(node(at, NodeKind::MixinCall { args, tag }))
     }
 
-    fn parse_mixin(&mut self) -> Result<Node, Error> {
-        let token = self.expect("mixin")?;
-        let Kind::Mixin { name, args } = &token.kind else { unreachable!() };
-        if !self.peek_is("indent") {
-            return Err(error_at(&token, ErrorCode::MixinWithoutBody, format!("Mixin {name} declared without body")));
+    fn parse_mixin(&mut self, at: At, name: String, args: Option<String>) -> Result<Node, Error> {
+        if !self.peek_is(TokenType::Indent) {
+            return Err(error_at(at.start, ErrorCode::MixinWithoutBody, format!("Mixin {name} declared without body")));
         }
         self.in_mixin += 1;
         let block = self.block()?;
         self.in_mixin -= 1;
-        Ok(node(&token, NodeKind::MixinDefinition { name: name.clone(), args: args.clone(), block }))
+        Ok(node(at, NodeKind::MixinDefinition { name, args, block }))
     }
 
     /// The text lines after `.`, `//` or a filter.
     fn parse_text_block(&mut self) -> Result<Option<Block>, Error> {
-        let Some(start) = self.accept("start-pipeless-text") else {
+        let Some(start) = self.accept(TokenType::StartPipelessText) else {
             return Ok(None);
         };
         let mut block = empty_block(start.start.line);
-        while !self.peek_is("end-pipeless-text") {
-            let token = self.advance();
-            match &token.kind {
-                Kind::Text(val) => block.nodes.push(text_node(&token, val.clone())),
-                Kind::Newline => block.nodes.push(text_node(&token, "\n".to_string())),
+        while !self.peek_is(TokenType::EndPipelessText) {
+            let (kind, at) = split(self.advance());
+            match kind {
+                Kind::Text(val) => block.nodes.push(text_node(at, val)),
+                Kind::Newline => block.nodes.push(text_node(at, "\n".to_string())),
                 Kind::StartPugInterpolation => {
                     if let Some(expr) = self.parse_expr()? {
                         expr.append_to(&mut block.nodes);
                     }
-                    self.expect("end-pug-interpolation")?;
+                    self.expect(TokenType::EndPugInterpolation)?;
                 }
-                Kind::InterpolatedCode { .. } => block.nodes.push(interpolated_code(&token)),
+                Kind::InterpolatedCode { val, must_escape } => block.nodes.push(interpolated_code(at, val, must_escape)),
                 other => {
                     let message = format!("Unexpected token type: {}", other.name());
-                    return Err(error_at(&token, ErrorCode::InvalidToken, message));
+                    return Err(error_at(at.start, ErrorCode::InvalidToken, message));
                 }
             }
         }
@@ -815,9 +812,9 @@ impl Parser {
 
     /// An indented block, up to its outdent.
     fn block(&mut self) -> Result<Block, Error> {
-        let token = self.expect("indent")?;
+        let token = self.expect(TokenType::Indent)?;
         let mut block = empty_block(token.start.line);
-        while !self.peek_is("outdent") {
+        while !self.peek_is(TokenType::Outdent) {
             match self.peek().kind {
                 Kind::Newline => {
                     self.advance();
@@ -829,69 +826,61 @@ impl Parser {
                 _ => self.parse_required_expr()?.append_to(&mut block.nodes),
             }
         }
-        self.expect("outdent")?;
+        self.expect(TokenType::Outdent)?;
         Ok(block)
     }
 
-    fn parse_interpolation(&mut self) -> Result<Node, Error> {
-        let token = self.advance();
-        let Kind::Interpolation(expr) = &token.kind else { unreachable!() };
-        let mut tag = Tag { name: expr.clone(), interpolated: true, block: empty_block(token.start.line), ..Tag::default() };
-        self.tag(&mut tag, token.start.line, true)?;
-        Ok(node(&token, NodeKind::Tag(tag)))
+    fn parse_interpolation(&mut self, at: At, expr: String) -> Result<Node, Error> {
+        let mut tag = Tag { name: expr, interpolated: true, block: empty_block(at.start.line), ..Tag::default() };
+        self.tag(&mut tag, at.start.line, true)?;
+        Ok(node(at, NodeKind::Tag(tag)))
     }
 
-    fn parse_tag(&mut self) -> Result<Node, Error> {
-        let token = self.advance();
-        let Kind::Tag(name) = &token.kind else { unreachable!() };
+    fn parse_tag(&mut self, at: At, name: String) -> Result<Node, Error> {
         let inline = INLINE_TAGS.contains(&name.as_str());
-        let mut tag = Tag { name: name.clone(), inline, block: empty_block(token.start.line), ..Tag::default() };
-        self.tag(&mut tag, token.start.line, true)?;
-        Ok(node(&token, NodeKind::Tag(tag)))
+        let mut tag = Tag { name, inline, block: empty_block(at.start.line), ..Tag::default() };
+        self.tag(&mut tag, at.start.line, true)?;
+        Ok(node(at, NodeKind::Tag(tag)))
     }
 
     /// What follows a tag, interpolated tag or mixin call on line `line`: `#id`, `.class`, `(attributes)` and
     /// `&attributes(...)`, then `.`, text, `= code`, `: expr` or `/`, then the indented block.
     fn tag(&mut self, tag: &mut Tag, line: usize, self_closing_allowed: bool) -> Result<(), Error> {
         let mut names = Vec::new();
+        let shorthand = |name: &str, val: String, at: At| Attr {
+            name: name.to_string(),
+            val: AttrValue::Shorthand(val),
+            must_escape: false,
+            line: at.start.line,
+            column: at.start.column,
+            span: at.span,
+        };
         loop {
-            match self.peek().kind {
-                Kind::Id(_) | Kind::Class(_) => {
-                    let token = self.advance();
-                    let (name, val) = match &token.kind {
-                        Kind::Id(val) => ("id", val),
-                        Kind::Class(val) => ("class", val),
-                        _ => unreachable!(),
-                    };
-                    if name == "id" {
-                        if names.iter().any(|n| n == "id") {
-                            return Err(error_at(&token, ErrorCode::DuplicateId, "Duplicate attribute \"id\" is not allowed."));
-                        }
-                        names.push("id".to_string());
+            let (kind, at) = split(self.advance());
+            match kind {
+                Kind::Id(val) => {
+                    if names.iter().any(|n| n == "id") {
+                        return Err(error_at(at.start, ErrorCode::DuplicateId, "Duplicate attribute \"id\" is not allowed."));
                     }
-                    tag.attrs.push(Attr {
-                        name: name.to_string(),
-                        val: AttrValue::Shorthand(val.clone()),
-                        must_escape: false,
-                        line: token.start.line,
-                        column: token.start.column,
-                        span: token.span.clone(),
-                    });
+                    names.push("id".to_string());
+                    tag.attrs.push(shorthand("id", val, at));
                 }
+                Kind::Class(val) => tag.attrs.push(shorthand("class", val, at)),
                 Kind::StartAttributes => {
                     let attrs = self.attrs(Some(&mut names))?;
                     tag.attrs.extend(attrs);
                 }
-                Kind::AndAttributes(_) => {
-                    let token = self.advance();
-                    let Kind::AndAttributes(val) = &token.kind else { unreachable!() };
-                    let (line, column, span) = (token.start.line, token.start.column, token.span.clone());
-                    tag.attribute_blocks.push(AttributeBlock { val: val.clone(), line, column, span });
+                Kind::AndAttributes(val) => {
+                    let (line, column) = (at.start.line, at.start.column);
+                    tag.attribute_blocks.push(AttributeBlock { val, line, column, span: at.span });
                 }
-                _ => break,
+                kind => {
+                    self.put_back(kind, at);
+                    break;
+                }
             }
         }
-        if self.accept("dot").is_some() {
+        if self.accept(TokenType::Dot).is_some() {
             tag.text_only = true;
         }
         match self.peek().kind {
@@ -900,73 +889,62 @@ impl Parser {
                     text.append_to(&mut tag.block.nodes);
                 }
             }
-            Kind::Code { .. } => {
-                let code = self.parse_code(true)?;
-                tag.block.nodes.push(code);
-            }
-            Kind::Colon => {
-                self.advance();
-                tag.block = self.parse_required_expr()?.into_block(line);
-            }
             Kind::Newline | Kind::Indent(_) | Kind::Outdent | Kind::Eos | Kind::StartPipelessText | Kind::EndPugInterpolation => {}
-            Kind::Slash if self_closing_allowed => {
-                self.advance();
-                tag.self_closing = true;
-            }
-            ref other => {
-                let slash = if self_closing_allowed { ", `slash`" } else { "" };
-                let message = format!(
-                    "Unexpected token `{}` expected `text`, `interpolated-code`, `code`, `:`{slash}, `newline` or `eos`",
-                    other.name()
-                );
-                return Err(error_at(self.peek(), ErrorCode::InvalidToken, message));
+            _ => {
+                let (kind, at) = split(self.advance());
+                match kind {
+                    Kind::Code { val, must_escape, buffer } => {
+                        let code = self.parse_code(at, Code { val, buffer, must_escape, inline: true, block: None })?;
+                        tag.block.nodes.push(code);
+                    }
+                    Kind::Colon => tag.block = self.parse_required_expr()?.into_block(line),
+                    Kind::Slash if self_closing_allowed => tag.self_closing = true,
+                    other => {
+                        let slash = if self_closing_allowed { ", `slash`" } else { "" };
+                        let message = format!(
+                            "Unexpected token `{}` expected `text`, `interpolated-code`, `code`, `:`{slash}, `newline` or `eos`",
+                            other.name()
+                        );
+                        return Err(error_at(at.start, ErrorCode::InvalidToken, message));
+                    }
+                }
             }
         }
-        while self.accept("newline").is_some() {}
+        while self.accept(TokenType::Newline).is_some() {}
         if tag.text_only {
             tag.block = self.parse_text_block()?.unwrap_or_else(|| empty_block(line));
-        } else if self.peek_is("indent") {
+        } else if self.peek_is(TokenType::Indent) {
             let block = self.block()?;
             tag.block.nodes.extend(block.nodes);
         }
         Ok(())
     }
 
-    /// `(...)`; with `names`, the attribute names already on the tag, a repeated one other than `class` is an error.
+    /// The attributes after `(`, and the `)`; with `names`, the attribute names already on the tag, a repeated one other
+    /// than `class` is an error.
     fn attrs(&mut self, mut names: Option<&mut Vec<String>>) -> Result<Vec<Attr>, Error> {
-        self.expect("start-attributes")?;
         let mut attrs = Vec::new();
         loop {
-            let token = self.advance();
-            let Kind::Attribute { name, val, must_escape } = &token.kind else {
-                self.tokens.push_front(token);
+            let (kind, at) = split(self.advance());
+            let Kind::Attribute { name, val, must_escape } = kind else {
+                self.put_back(kind, at);
                 break;
             };
             if name != "class" {
                 if let Some(names) = names.as_deref_mut() {
-                    if names.contains(name) {
-                        return Err(error_at(
-                            &token,
-                            ErrorCode::DuplicateAttribute,
-                            format!("Duplicate attribute \"{name}\" is not allowed."),
-                        ));
+                    if names.contains(&name) {
+                        let message = format!("Duplicate attribute \"{name}\" is not allowed.");
+                        return Err(error_at(at.start, ErrorCode::DuplicateAttribute, message));
                     }
                     names.push(name.clone());
                 }
             }
-            let val = val.as_ref().map_or(AttrValue::Boolean, |val| AttrValue::Expr(val.clone()));
-            let (line, column, span) = (token.start.line, token.start.column, token.span.clone());
-            attrs.push(Attr { name: name.clone(), val, must_escape: *must_escape, line, column, span });
+            let val = val.map_or(AttrValue::Boolean, AttrValue::Expr);
+            attrs.push(Attr { name, val, must_escape, line: at.start.line, column: at.start.column, span: at.span });
         }
-        self.expect("end-attributes")?;
+        self.expect(TokenType::EndAttributes)?;
         Ok(attrs)
     }
-}
-
-fn interpolated_code(token: &Token) -> Node {
-    let Kind::InterpolatedCode { val, must_escape } = &token.kind else { unreachable!() };
-    let code = Code { val: val.clone(), buffer: true, must_escape: *must_escape, inline: true, block: None };
-    node(token, NodeKind::Code(code))
 }
 
 #[cfg(test)]
