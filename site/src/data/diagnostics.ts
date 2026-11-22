@@ -659,7 +659,7 @@ export const diagnostics: Diagnostic[] = [
     languages: ["pug"],
     summary: "Any other error the Pug parser raises.",
     explanation:
-      "Pug's lexer and parser errors that belong to no other code, such as `PUG:UNEXPECTED_TEXT`, `PUG:INVALID_TOKEN`, `PUG:MIXIN_WITHOUT_BODY` and `PUG:BLOCK_OUTISDE_MIXIN` (an anonymous `block` outside a mixin), with Pug's message. A few templates make Pug itself throw a JavaScript error (a `#` with nothing after it, a lone `.` under a tag); that error's message is reported. The JavaScript in `- code`, `#{}` and attribute values is not checked, so Pug's `PUG:SYNTAX_ERROR` is never reported.",
+      "Pug's lexer and parser errors that belong to no other code, such as `PUG:UNEXPECTED_TEXT`, `PUG:INVALID_TOKEN`, `PUG:MIXIN_WITHOUT_BODY` and `PUG:BLOCK_OUTISDE_MIXIN` (an anonymous `block` outside a mixin), with Pug's message. A few templates make Pug itself throw a JavaScript error (a `#` with nothing after it, a lone `.` under a tag); that error's message is reported. Nesting more than 256 levels deep (tags, `#[…]`, block expansion, `if`, `else if`, loops, `case`) is reported here too, as \"Nested more than 256 levels deep, which isn't checked\", and the template is checked no further; Pug itself runs out of stack some hundreds of levels deeper. The JavaScript in `- code`, `#{}` and attribute values is not checked, so Pug's `PUG:SYNTAX_ERROR` is never reported.",
     example: {
       file: "app/assets/templates/users/badge.jst.pug",
       lang: "pug",

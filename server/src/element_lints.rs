@@ -29,14 +29,19 @@ const ANCHOR_EXCEPTIONS: [&str; 2] = ["name", "tabindex"];
 /// Haml and Slim merge these from the shorthand, the list and the hash instead of repeating them.
 const MERGED: [&str; 2] = ["class", "id"];
 
-/// The findings in a template's `markup` (its tags) and `helpers` (the elements Rails tag helpers make). A repeated attribute
-/// in Slim or Pug markup is not reported: each rejects it itself, and its parser reports that (`Syntax/Template`,
-/// `Syntax/PugDuplicateAttribute`).
-pub(crate) fn diagnostics(lang: TemplateLang, text: &str, markup: &[Element], helpers: &[Element]) -> Vec<Diagnostic> {
+/// The findings in a template's `markup` (its tags) and `helpers` (the elements Rails tag helpers make); a Pug template's
+/// tags are placed by its `ancestry`, the others' by their lines' indentation. A repeated attribute in Slim or Pug markup is
+/// not reported: each rejects it itself, and its parser reports that (`Syntax/Template`, `Syntax/PugDuplicateAttribute`).
+pub(crate) fn diagnostics(
+    lang: TemplateLang,
+    text: &str,
+    markup: &[Element],
+    helpers: &[Element],
+    ancestry: Option<&pug::elements::Ancestry>,
+) -> Vec<Diagnostic> {
     let index = LineIndex::new(text);
     let lines: Vec<(usize, &str)> = lines_with_offsets(text).collect();
     let report = |at: &Range<usize>, message: String, code: &str| coded(warning(index.range(at.start, at.end), message), code);
-    let ancestry = (lang == TemplateLang::Pug).then(|| pug::elements::ancestry(text));
     let mut out = Vec::new();
     if lang != TemplateLang::Erb {
         for element in markup.iter().chain(helpers).filter(|element| element.name == "img") {
@@ -49,7 +54,7 @@ pub(crate) fn diagnostics(lang: TemplateLang, text: &str, markup: &[Element], he
             }
         }
         out.extend(
-            duplicate_ids(text, &lines, markup, &index, ancestry.as_ref())
+            duplicate_ids(text, &lines, markup, &index, ancestry)
                 .into_iter()
                 .map(|(at, message)| report(&at, message, html_lint::code::DUPLICATE_ID)),
         );
@@ -62,7 +67,7 @@ pub(crate) fn diagnostics(lang: TemplateLang, text: &str, markup: &[Element], he
                     .map(|(at, message)| report(&at, message, DUPLICATE_ATTRIBUTE)),
             );
         }
-        out.extend(anchor_without_href(lang, text, &lines, &index, element, ancestry.as_ref()).map(|at| {
+        out.extend(anchor_without_href(lang, text, &lines, &index, element, ancestry).map(|at| {
             report(
                 &at,
                 "`<a>` without `href` is not a link and the keyboard can't reach it; use a `<button>` for an action".into(),
@@ -279,7 +284,7 @@ mod tests {
         let helpers = helper_elements(&compiled, &compiled.parse(&options).unwrap().node());
         let index = LineIndex::new(text);
         let at = |position| (0..=text.len()).find(|&offset| index.position(offset) == position).unwrap();
-        diagnostics(lang, text, &markup, &helpers)
+        diagnostics(lang, text, &markup, &helpers, None)
             .into_iter()
             .map(|d| (crate::util::code(&d).unwrap().to_string(), text[at(d.range.start)..at(d.range.end)].to_string(), d.range.start.line))
             .collect()
@@ -327,7 +332,7 @@ mod tests {
             let options = ruby_prism::Options::default().build();
             let parsed = compiled.parse(&options).unwrap();
             let helpers = crate::attributes::helper_elements(&compiled, &parsed.node());
-            let found = diagnostics(lang, text, &markup, &helpers);
+            let found = diagnostics(lang, text, &markup, &helpers, None);
             crate::util::edited(text, &crate::util::data_edit(&found[0]).unwrap())
         };
         assert_eq!(fix(Haml, "%img{src: x}\n"), "%img{src: x, alt: \"\"}\n");
@@ -506,7 +511,7 @@ mod tests {
     fn messages() {
         let message = |lang, text: &str| {
             let markup = markup_elements(lang, text, &[], ruby_prism::Version::Latest);
-            diagnostics(lang, text, &markup, &[]).remove(0).message
+            diagnostics(lang, text, &markup, &[], None).remove(0).message
         };
         assert_eq!(message(Haml, "%img{src: x}\n"), "`<img>` without `alt`: the alt attribute must be specified (HTML 4.8.4.4.1)");
         assert_eq!(
@@ -530,7 +535,7 @@ mod tests {
     fn a_repeated_key_is_reported_at_the_value_that_is_dropped() {
         let columns = |lang, text: &str| {
             let markup = markup_elements(lang, text, &[], ruby_prism::Version::Latest);
-            diagnostics(lang, text, &markup, &[]).into_iter().map(|d| d.range.start.character).collect::<Vec<_>>()
+            diagnostics(lang, text, &markup, &[], None).into_iter().map(|d| d.range.start.character).collect::<Vec<_>>()
         };
         assert_eq!(columns(Haml, "%a{href: 1, href: 2}\n"), [3], "the last in a hash wins");
         assert_eq!(columns(Haml, "%a(href=1){href: 2}\n"), [3], "the hash beats the list");
@@ -573,11 +578,17 @@ mod tests {
         assert_eq!(flagged(Slim, anchor, "a#menu data-action=\"x\" Menu\n"), ["a"]);
     }
 
-    /// Pug has no Ruby, so no helper elements.
+    /// The findings in a Pug template, which has no Ruby, so no helper elements.
+    fn pug_diagnostics(text: &str) -> Vec<Diagnostic> {
+        let index = LineIndex::new(text);
+        let Ok(tree) = pug::parser::parse(text) else { return Vec::new() };
+        diagnostics(Pug, text, &pug::elements::tags(text, &index, &tree), &[], Some(&pug::elements::ancestry(&index, &tree)))
+    }
+
     fn pug(code: &str, text: &str) -> Vec<String> {
         let index = LineIndex::new(text);
         let at = |position| (0..=text.len()).find(|&offset| index.position(offset) == position).unwrap();
-        let found = diagnostics(Pug, text, &markup_elements(Pug, text, &[], ruby_prism::Version::Latest), &[]);
+        let found = pug_diagnostics(text);
         found
             .into_iter()
             .filter(|d| crate::util::code(d) == Some(code))
@@ -605,7 +616,7 @@ mod tests {
             assert!(pug(alt, text).is_empty(), "{text}");
         }
         let fix = |text: &str| {
-            let found = diagnostics(Pug, text, &markup_elements(Pug, text, &[], ruby_prism::Version::Latest), &[]);
+            let found = pug_diagnostics(text);
             crate::util::data_edit(&found[0]).map(|edit| crate::util::edited(text, &edit))
         };
         assert_eq!(fix("img(src=\"a.png\")\n").as_deref(), Some("img(src=\"a.png\" alt=\"\")\n"));

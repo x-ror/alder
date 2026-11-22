@@ -9,6 +9,7 @@ use crate::lang::TemplateLang;
 use crate::pug;
 use crate::ruby::BlockEffect;
 use crate::util::{coded, lines_with_offsets, warning, LineIndex};
+use std::collections::HashMap;
 use std::ops::Range;
 use tower_lsp_server::ls_types::Diagnostic;
 
@@ -25,27 +26,41 @@ const INTERACTIVE: [&str; 7] = ["button", "select", "textarea", "iframe", "detai
 type Content<'a> = (&'a Element, Range<usize>);
 
 /// The findings in a template's `markup` (its tags) and `helpers` (the elements Rails tag helpers make), on the inner element.
-pub(crate) fn diagnostics(lang: TemplateLang, text: &str, markup: &[Element], helpers: &[Element]) -> Vec<Diagnostic> {
+/// A Pug template's tags are placed by its `ancestry`.
+pub(crate) fn diagnostics(
+    lang: TemplateLang,
+    text: &str,
+    markup: &[Element],
+    helpers: &[Element],
+    ancestry: Option<&pug::elements::Ancestry>,
+) -> Vec<Diagnostic> {
     let elements: Vec<&Element> = markup.iter().chain(helpers).filter(|element| !element.at.is_empty()).collect();
     let holders: Vec<&Element> =
         elements.iter().copied().filter(|e| RESTRICTING.contains(&e.name.as_str()) || OPAQUE.contains(&e.name.as_str())).collect();
-    let contents = match lang {
-        TemplateLang::Erb => erb_contents(text, &holders),
-        TemplateLang::Pug => pug_contents(text, &holders),
-        _ => indented_contents(text, &holders),
-    };
     let index = LineIndex::new(text);
-    let report = |inner: &Element| {
-        let around: Vec<&Content> = contents.iter().filter(|(_, content)| content.contains(&inner.at.start)).collect();
-        if around.iter().any(|(holder, _)| OPAQUE.contains(&holder.name.as_str())) {
+    // `around` holds the holders `inner` is in, the nearest first.
+    let report = |inner: &Element, around: Vec<&Element>| {
+        if around.iter().any(|holder| OPAQUE.contains(&holder.name.as_str())) {
             return None;
         }
-        let nearest =
-            around.iter().filter_map(|(outer, content)| Some((content.len(), forbidden(text, outer, inner)?))).min_by_key(|found| found.0);
-        let (_, message) = nearest?;
+        let message = around.iter().find_map(|outer| forbidden(text, outer, inner))?;
         Some(coded(warning(index.range(inner.at.start, inner.at.end), message), NESTED_INTERACTIVE))
     };
-    elements.into_iter().filter_map(report).collect()
+    if let Some(ancestry) = ancestry {
+        let by_start: HashMap<usize, &Element> = holders.iter().map(|&holder| (holder.at.start, holder)).collect();
+        let around = |inner: &Element| ancestry.enclosing(inner.at.start).filter_map(|at| by_start.get(&at).copied()).collect();
+        return elements.into_iter().filter_map(|inner| report(inner, around(inner))).collect();
+    }
+    let contents = match lang {
+        TemplateLang::Erb => erb_contents(text, &holders),
+        _ => indented_contents(text, &holders),
+    };
+    let around = |inner: &Element| {
+        let mut around: Vec<&Content> = contents.iter().filter(|(_, content)| content.contains(&inner.at.start)).collect();
+        around.sort_by_key(|(_, content)| content.len());
+        around.into_iter().map(|&(holder, _)| holder).collect()
+    };
+    elements.into_iter().filter_map(|inner| report(inner, around(inner))).collect()
 }
 
 /// ERB: the content of a matched `<a>…</a>` pair, and of a helper's `do … end` block, which spans ERB tags.
@@ -114,13 +129,6 @@ fn indented_contents<'a>(text: &str, holders: &[&'a Element]) -> Vec<Content<'a>
     holders.iter().filter_map(|&holder| Some((holder, content(holder)?))).collect()
 }
 
-/// Pug: the tags under the element in Pug's tree.
-fn pug_contents<'a>(text: &str, holders: &[&'a Element]) -> Vec<Content<'a>> {
-    let contents = pug::elements::contents(text);
-    let content = |holder: &Element| contents.iter().find(|(at, _)| *at == holder.at.start).map(|(_, content)| content.clone());
-    holders.iter().filter_map(|&holder| Some((holder, content(holder)?))).collect()
-}
-
 /// Why `inner` can't be in `outer`.
 fn forbidden(text: &str, outer: &Element, inner: &Element) -> Option<String> {
     if is_form(text, outer) && is_form(text, inner) {
@@ -174,7 +182,7 @@ mod tests {
         let helpers = helper_elements(&compiled, &parsed.node());
         let index = LineIndex::new(text);
         let at = |position| (0..=text.len()).find(|&offset| index.position(offset) == position).unwrap();
-        let found = diagnostics(lang, text, &markup, &helpers);
+        let found = diagnostics(lang, text, &markup, &helpers, None);
         found.into_iter().map(|d| (d.message, text[at(d.range.start)..at(d.range.end)].to_string())).collect()
     }
 
@@ -243,7 +251,10 @@ mod tests {
     #[test]
     fn pug_nesting_follows_the_tree_not_the_indentation() {
         let flagged = |text: &str| {
-            let found = diagnostics(TemplateLang::Pug, text, &pug::elements::markup(text), &[]);
+            let tree = pug::parser::parse(text).unwrap();
+            let index = LineIndex::new(text);
+            let ancestry = pug::elements::ancestry(&index, &tree);
+            let found = diagnostics(TemplateLang::Pug, text, &pug::elements::tags(text, &index, &tree), &[], Some(&ancestry));
             found.into_iter().map(|d| (d.range.start.line, d.message)).collect::<Vec<_>>()
         };
         let button_in_a = "`<button>` inside `<a>`: interactive content can't be nested (HTML 4.5.1)".to_string();

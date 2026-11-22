@@ -1,11 +1,12 @@
 //! Port of `pug-lexer` 5.0.1 (Pug 3.0.4) with the parts of `character-parser` 2.2.0 it uses to find where a
 //! bracketed expression, attribute value or interpolation ends. Lines and columns are Pug's: 1-based, columns in
 //! UTF-16 code units. `is-expression` isn't ported: the JavaScript isn't validated (`PUG:SYNTAX_ERROR`), and where
-//! Pug asks it whether an attribute value has ended, `looks_complete` answers.
+//! Pug asks it whether an attribute value has ended, `Completeness` answers.
 
-use super::Error;
+use super::{too_deep, Error, MAX_DEPTH};
 use crate::util::{closing_bracket, BOM};
 use regex::Regex;
+use std::borrow::Cow;
 use std::ops::Range;
 use std::sync::LazyLock;
 
@@ -28,10 +29,8 @@ regex!(CLASS, r"^\.([_a-zA-Z0-9\-]*[_a-zA-Z][_a-zA-Z0-9\-]*)");
 regex!(CLASS_WITHOUT_LETTER, r"^\.[_a-zA-Z0-9\-]+");
 // The name quoted in an invalid id or class message.
 regex!(INVALID_NAME, r"[^\n\r\u{2028}\u{2029}][^ \t(#.:]*");
-regex!(TEXT, r"^(?:\| ?| )([^\n]+)");
 regex!(TEXT_SPACE, r"^( )");
 regex!(TEXT_PIPE, r"^\|( ?)");
-regex!(TEXT_HTML, r"^(<[^\n]*)");
 regex!(DOT, r"^\.");
 regex!(EXTENDS, r"^extends?");
 regex!(EXTENDS_WORD, r"^extends?(?-u:\b)");
@@ -68,8 +67,6 @@ regex!(BLOCK_CODE, r"^-");
 regex!(ATTRIBUTES_BLOCK, r"^&attributes(?-u:\b)");
 regex!(SLASH, r"^/");
 regex!(COLON, r"^: +");
-// The text after the `{` must reach the end without a line terminator other than `\n`.
-regex!(STRING_INTERPOLATION, r"(\\)?([#!])\{([^\r\u{2028}\u{2029}]*)$");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Pos {
@@ -230,7 +227,8 @@ pub struct Token {
 /// Pug's tokens for `text`, or its first error.
 pub fn lex(text: &str) -> Result<Vec<Token>, Error> {
     let text = text.strip_prefix(BOM).unwrap_or(text);
-    let mut lexer = Lexer::new(text.replace("\r\n", "\n").replace('\r', "\n"), false, Pos { line: 1, column: 1 });
+    let input = if text.contains('\r') { Cow::Owned(text.replace("\r\n", "\n").replace('\r', "\n")) } else { Cow::Borrowed(text) };
+    let mut lexer = Lexer::new(input, Pos { line: 1, column: 1 });
     lexer.run()?;
     Ok(lexer.tokens)
 }
@@ -239,8 +237,19 @@ fn units(s: &str) -> usize {
     s.encode_utf16().count()
 }
 
+/// The bytes and UTF-16 units of a regular expression's whole match.
+fn extent(caps: &regex::Captures) -> (usize, usize) {
+    let whole = caps.get(0).map_or("", |m| m.as_str());
+    (whole.len(), units(whole))
+}
+
 /// Byte length of the first `n` UTF-16 code units of `s`.
 pub(crate) fn unit_offset(s: &str, n: usize) -> usize {
+    // ASCII, a unit a byte, is checked many bytes at a time: nodes far along a long line ask often.
+    let head = &s.as_bytes()[..n.min(s.len())];
+    if head.is_ascii() {
+        return head.len();
+    }
     let mut count = 0;
     for (at, c) in s.char_indices() {
         if count >= n {
@@ -289,12 +298,14 @@ struct AttributeValue {
     must_escape: bool,
 }
 
-struct Lexer {
-    input: String,
+struct Lexer<'a> {
+    input: Cow<'a, str>,
     /// Where the unconsumed input starts in `input`.
     at: usize,
-    /// Lexing the inside of `#[...]`, which ends at its `]`.
-    interpolated: bool,
+    /// How many `#[...]` this lexer is inside; in one, the input ends at the end of its line and the lexer at its `]`.
+    depth: usize,
+    /// In `#[...]`, where its line goes on without a line terminator but `\n`, in the input.
+    terminated: usize,
     line: usize,
     column: usize,
     /// Open indentation widths, innermost last.
@@ -306,12 +317,13 @@ struct Lexer {
     ended: bool,
 }
 
-impl Lexer {
-    fn new(input: String, interpolated: bool, start: Pos) -> Self {
+impl<'a> Lexer<'a> {
+    fn new(input: Cow<'a, str>, start: Pos) -> Self {
         Lexer {
             input,
             at: 0,
-            interpolated,
+            depth: 0,
+            terminated: 0,
             line: start.line,
             column: start.column,
             indent_stack: vec![0],
@@ -333,39 +345,39 @@ impl Lexer {
         type Step = fn(&mut Lexer) -> Result<bool, Error>;
         const STEPS: &[Step] = &[
             |l| Ok(l.blank()),
-            Lexer::eos,
+            |l| l.eos(),
             |l| Ok(l.end_interpolation()),
             |l| Ok(l.simple_end_of_line(&YIELD, Kind::Yield)),
-            Lexer::doctype,
-            Lexer::interpolation,
-            Lexer::case,
-            Lexer::when,
-            Lexer::default_case,
-            Lexer::extends,
+            |l| l.doctype(),
+            |l| l.interpolation(),
+            |l| l.case(),
+            |l| l.when(),
+            |l| l.default_case(),
+            |l| l.extends(),
             |l| Ok(l.named_block(&APPEND, BlockMode::Append)),
             |l| Ok(l.named_block(&PREPEND, BlockMode::Prepend)),
             |l| Ok(l.named_block(&BLOCK, BlockMode::Replace)),
             |l| Ok(l.simple_end_of_line(&MIXIN_BLOCK, Kind::MixinBlock)),
-            Lexer::include,
+            |l| l.include(),
             |l| Ok(l.mixin()),
-            Lexer::call,
-            Lexer::conditional,
-            Lexer::each_of,
-            Lexer::each,
-            Lexer::while_,
+            |l| l.call(),
+            |l| l.conditional(),
+            |l| l.each_of(),
+            |l| l.each(),
+            |l| l.while_(),
             |l| Ok(l.tag()),
             |l| l.filter(false),
-            Lexer::block_code,
-            Lexer::code,
-            Lexer::id,
-            Lexer::dot,
-            Lexer::class_name,
-            Lexer::attrs,
-            Lexer::attributes_block,
-            Lexer::indent,
-            Lexer::text,
-            Lexer::text_html,
-            Lexer::comment,
+            |l| l.block_code(),
+            |l| l.code(),
+            |l| l.id(),
+            |l| l.dot(),
+            |l| l.class_name(),
+            |l| l.attrs(),
+            |l| l.attributes_block(),
+            |l| l.indent(),
+            |l| l.text(),
+            |l| l.text_html(),
+            |l| l.comment(),
             |l| Ok(l.punctuation(&SLASH, Kind::Slash)),
             |l| Ok(l.punctuation(&COLON, Kind::Colon)),
         ];
@@ -523,7 +535,7 @@ impl Lexer {
         if !self.rest().is_empty() {
             return Ok(false);
         }
-        if self.interpolated {
+        if self.depth > 0 {
             return Err(self.error("PUG:NO_END_BRACKET", INTERPOLATION_END));
         }
         let open = self.indent_stack.iter().rev().take_while(|&&width| width != 0).count();
@@ -549,17 +561,17 @@ impl Lexer {
     }
 
     fn comment(&mut self) -> Result<bool, Error> {
-        let Some((whole, buffer, val)) =
-            COMMENT.captures(self.rest()).map(|caps| (caps[0].to_string(), caps.get(1).is_none(), caps[2].to_string()))
+        let Some(((len, width), buffer, val)) =
+            COMMENT.captures(self.rest()).map(|caps| (extent(&caps), caps.get(1).is_none(), caps[2].to_string()))
         else {
             return Ok(false);
         };
-        self.consume(whole.len());
+        self.consume(len);
         let start = self.pos();
         self.interpolation_allowed = buffer;
-        self.column += units(&whole);
+        self.column += width;
         self.push(Kind::Comment { val, buffer }, start);
-        self.pipeless_text(None)?;
+        self.pipeless_text()?;
         Ok(true)
     }
 
@@ -600,7 +612,7 @@ impl Lexer {
         self.attrs()?;
         if !in_include {
             self.interpolation_allowed = false;
-            self.pipeless_text(None)?;
+            self.pipeless_text()?;
         }
         Ok(true)
     }
@@ -672,7 +684,7 @@ impl Lexer {
     }
 
     fn end_interpolation(&mut self) -> bool {
-        if !self.interpolated || !self.rest().starts_with(']') {
+        if self.depth == 0 || !self.rest().starts_with(']') {
             return false;
         }
         self.consume(1);
@@ -680,133 +692,197 @@ impl Lexer {
         true
     }
 
-    /// Text with its `#{}`, `!{}` and `#[]` interpolations, and in `#[...]` the `]` that ends it.
-    fn add_text(&mut self, make: fn(String) -> Kind, value: &str, prefix: &str, escaped: usize) -> Result<(), Error> {
-        // pug-lexer returns early on an empty text only with a prefix given, which no call does, so "" is a token.
-        const NONE: usize = usize::MAX;
-        let allowed = self.interpolation_allowed;
-        let end = if self.interpolated { value.find(']') } else { None }.unwrap_or(NONE);
-        let start = if allowed { value.find("#[") } else { None }.unwrap_or(NONE);
-        let escaped_start = if allowed { value.find("\\#[") } else { None }.unwrap_or(NONE);
-        let string_interpolation = STRING_INTERPOLATION.captures(value);
-        let string_at = match &string_interpolation {
-            Some(caps) if allowed => caps.get(0).map_or(NONE, |m| m.start()),
-            _ => NONE,
+    /// The text in the `value` bytes of the input, with its `#{}`, `!{}` and `#[]` interpolations, and in `#[...]` the `]`
+    /// that ends it. `prefix` is text that goes before it, and `escaped` the backslashes dropped from it, which take columns.
+    fn add_text(&mut self, make: fn(String) -> Kind, mut value: Range<usize>, mut prefix: String, mut escaped: usize) -> Result<(), Error> {
+        #[derive(Clone, Copy)]
+        enum Next {
+            EscapedTag,
+            Tag,
+            Interpolation { escaped: bool },
+        }
+        let (allowed, text_end) = (self.interpolation_allowed, value.end);
+        // A `#{` or `!{` interpolates only when no line terminator but `\n` follows it; `#[...]` has its line's.
+        let terminated = if self.depth > 0 && text_end == self.input.len() {
+            self.terminated.max(value.start)
+        } else {
+            let terminator = self.input[value.clone()].char_indices().rev().find(|&(_, c)| matches!(c, '\r' | '\u{2028}' | '\u{2029}'));
+            terminator.map_or(value.start, |(at, c)| value.start + at + c.len_utf8())
         };
-
-        if escaped_start != NONE && escaped_start < end && escaped_start < start && escaped_start < string_at {
-            let prefix = format!("{prefix}{}#[", &value[..escaped_start]);
-            return self.add_text(make, &value[escaped_start + 3..], &prefix, escaped + 1);
-        }
-        if start != NONE && start < end && start < escaped_start && start < string_at {
-            return self.add_tag_interpolation(make, value, prefix, escaped, start);
-        }
-        if end != NONE && end < start && end < escaped_start && end < string_at {
-            if !prefix.is_empty() || end > 0 {
-                self.add_text(make, &value[..end], prefix, 0)?;
+        let (mut escaped_tags, mut tags, mut interpolations, mut ends) =
+            (Ahead::default(), Ahead::default(), Ahead::default(), Ahead::default());
+        loop {
+            let input: &str = &self.input;
+            let from = value.start;
+            let search = |pattern: &'static str| move |from: usize, end: usize| input[from..end].find(pattern).map(|at| from + at);
+            let end = (self.depth > 0).then(|| ends.find(from, text_end, search("]"))).flatten();
+            // Each is looked for where it can be, before the `]` (none of them can hold one); the first one found wins.
+            let before = end.unwrap_or(text_end);
+            let candidates = [
+                allowed.then(|| escaped_tags.find(from, before, search("\\#["))).flatten().map(|at| (at, Next::EscapedTag)),
+                allowed.then(|| tags.find(from, before, search("#["))).flatten().map(|at| (at, Next::Tag)),
+                allowed
+                    .then(|| interpolations.find(from, before, |from, end| interpolation_at(input, from.max(terminated), end)))
+                    .flatten()
+                    .map(|at| {
+                        if at > from && input.as_bytes()[at - 1] == b'\\' {
+                            (at - 1, Next::Interpolation { escaped: true })
+                        } else {
+                            (at, Next::Interpolation { escaped: false })
+                        }
+                    }),
+            ];
+            let first = candidates.into_iter().flatten().min_by_key(|&(at, _)| at);
+            if let Some(end) = end.filter(|_| first.is_none()) {
+                if !prefix.is_empty() || end > from {
+                    self.add_text(make, from..end, prefix, 0)?;
+                }
+                self.ended = true;
+                // In `#[...]` the text runs to the end of the input, which goes on past the `]`.
+                self.at = end + 1;
+                return Ok(());
             }
-            self.ended = true;
-            self.input = format!("{}{}", &value[end + 1..], self.rest());
-            self.at = 0;
-            return Ok(());
-        }
-        if let Some(caps) = string_interpolation.filter(|_| string_at != NONE) {
-            if caps.get(1).is_some() {
-                let prefix = format!("{prefix}{}{}{{", &value[..string_at], &caps[2]);
-                return self.add_text(make, &value[string_at + 3..], &prefix, escaped + 1);
+            let Some((at, next)) = first else {
+                // pug-lexer returns early on an empty text only with a prefix given, which no call does, so "" is a token.
+                prefix.push_str(&input[from..text_end]);
+                self.push_text(make, prefix, escaped);
+                return Ok(());
+            };
+            prefix.push_str(&input[from..at]);
+            match next {
+                Next::EscapedTag => {
+                    prefix.push_str("#[");
+                    escaped += 1;
+                    value.start = at + "\\#[".len();
+                }
+                Next::Interpolation { escaped: true } => {
+                    prefix.push_str(&input[at + 1..at + "\\#{".len()]);
+                    escaped += 1;
+                    value.start = at + "\\#{".len();
+                }
+                Next::Tag => {
+                    self.push_text(make, std::mem::take(&mut prefix), escaped);
+                    escaped = 0;
+                    value.start = self.tag_interpolation(at + "#[".len()..text_end, terminated)?;
+                }
+                Next::Interpolation { escaped: false } => {
+                    let must_escape = input[at..].starts_with('#');
+                    if !prefix.is_empty() {
+                        self.push_text(make, std::mem::take(&mut prefix), escaped);
+                    }
+                    escaped = 0;
+                    match self.string_interpolation(at + "#{".len()..text_end, must_escape)? {
+                        Some(after) => value.start = after,
+                        None => return Ok(()),
+                    }
+                }
             }
-            let before = format!("{prefix}{}", &value[..string_at]);
-            if !before.is_empty() {
-                let at = self.pos();
-                self.column += units(&before) + escaped;
-                self.push(make(before), at);
-            }
-            let must_escape = &caps[2] == "#";
-            return self.add_string_interpolation(make, &caps[3], must_escape);
         }
-        let value = format!("{prefix}{value}");
-        let at = self.pos();
-        self.column += units(&value) + escaped;
-        self.push(make(value), at);
-        Ok(())
     }
 
-    /// `#[tag ...]` at byte `start` of `value`: lexed by a lexer of its own that stops at the `]`.
-    fn add_tag_interpolation(
-        &mut self,
-        make: fn(String) -> Kind,
-        value: &str,
-        prefix: &str,
-        escaped: usize,
-        start: usize,
-    ) -> Result<(), Error> {
-        let before = format!("{prefix}{}", &value[..start]);
+    /// Text that took `escaped` more columns than it has, for the backslashes dropped from it.
+    fn push_text(&mut self, make: fn(String) -> Kind, text: String, escaped: usize) {
         let at = self.pos();
-        self.column += units(prefix) + units(&value[..start]) + escaped;
-        self.push(make(before), at);
+        self.column += units(&text) + escaped;
+        self.push(make(text), at);
+    }
+
+    /// The `#[...]` whose inside starts the `inside` bytes of the input, the rest of a line that goes on without a line
+    /// terminator but `\n` from `terminated`: lexed by a lexer of its own that stops at the `]`. Where the input goes on after it.
+    fn tag_interpolation(&mut self, inside: Range<usize>, terminated: usize) -> Result<usize, Error> {
         let at = self.pos();
+        if self.depth == MAX_DEPTH {
+            return Err(too_deep(at.line, at.column));
+        }
         self.column += 2;
         self.push(Kind::StartPugInterpolation, at);
-        let mut child = Lexer::new(value[start + 2..].to_string(), true, self.pos());
-        if let Err(error) = child.run() {
+        let mut child = Lexer::new(Cow::Borrowed(&self.input[inside.clone()]), self.pos());
+        child.depth = self.depth + 1;
+        child.terminated = terminated.saturating_sub(inside.start);
+        child.tokens = std::mem::take(&mut self.tokens);
+        let lexed = child.run();
+        let Lexer { tokens, column, at: after, .. } = child;
+        self.tokens = tokens;
+        if let Err(error) = lexed {
             if !error.code.starts_with("PUG:") {
                 return Err(error);
             }
             self.column = error.column;
             return Err(self.error(error.code, error.message));
         }
-        self.column = child.column;
-        self.tokens.append(&mut child.tokens);
+        self.column = column;
         let at = self.pos();
         self.column += 1;
         self.push(Kind::EndPugInterpolation, at);
-        self.add_text(make, child.rest(), "", 0)
+        Ok(inside.start + after)
     }
 
-    /// The code of a `#{` or `!{` whose brace ended before `rest`, then the text after its `}`.
-    fn add_string_interpolation(&mut self, make: fn(String) -> Kind, rest: &str, must_escape: bool) -> Result<(), Error> {
+    /// The code of a `#{` or `!{` whose brace ended before the `rest` bytes of the input; where the text after its `}` starts,
+    /// unless the line ends there.
+    fn string_interpolation(&mut self, rest: Range<usize>, must_escape: bool) -> Result<Option<usize>, Error> {
         let at = self.pos();
         self.column += 2;
-        let range = match parse_until(rest, '}', 0) {
+        let code = &self.input[rest.clone()];
+        let range = match parse_until(code, '}', 0) {
             Ok(range) => range,
             Err((failure, index)) => {
-                self.column += units(&rest[..index]);
+                self.column += units(&code[..index]);
                 return Err(self.interpolation_error(failure));
             }
         };
-        let val = rest[range.clone()].to_string();
+        let val = code[range.clone()].to_string();
         let after = range.end + 1;
-        if after < rest.len() {
-            self.column += units(&rest[..after]);
-            self.push(Kind::InterpolatedCode { val, must_escape }, at);
-            return self.add_text(make, &rest[after..], "", 0);
-        }
-        self.column += units(rest);
+        self.column += units(&code[..after]);
         self.push(Kind::InterpolatedCode { val, must_escape }, at);
-        Ok(())
+        Ok((after < rest.len()).then_some(rest.start + after))
     }
 
+    /// pug-lexer's `text`: `| text`, `|text` or ` text` (`TEXT`), or a lone `|`, `| ` or space, which is empty text.
     fn text(&mut self) -> Result<bool, Error> {
-        let Some(Scanned { val, .. }) = self.scan(&TEXT).or_else(|| self.scan(&TEXT_SPACE)).or_else(|| self.scan(&TEXT_PIPE)) else {
+        let rest = self.rest();
+        let goes_on = |at: usize| rest[at..].starts_with(|c| c != '\n');
+        // As `TEXT` matches it: past `| ` unless the line ends there, then past `|`, or past a space.
+        let mark = match rest.strip_prefix('|') {
+            Some(after) if after.starts_with(' ') && goes_on(2) => Some(2),
+            Some(_) => goes_on(1).then_some(1),
+            None => (rest.starts_with(' ') && goes_on(1)).then_some(1),
+        };
+        if let Some(mark) = mark {
+            let (start, line) = (self.at + mark, self.line_end());
+            self.column += mark;
+            self.consume(line - self.at);
+            self.add_text(Kind::Text, start..line, String::new(), 0)?;
+            return Ok(true);
+        }
+        let Some(Scanned { val, .. }) = self.scan(&TEXT_SPACE).or_else(|| self.scan(&TEXT_PIPE)) else {
             return Ok(false);
         };
-        self.add_text(Kind::Text, &val.unwrap_or_default(), "", 0)?;
+        let len = val.map_or(0, |val| val.len());
+        self.add_text(Kind::Text, self.at - len..self.at, String::new(), 0)?;
         Ok(true)
     }
 
     fn text_html(&mut self) -> Result<bool, Error> {
-        let Some(Scanned { val, .. }) = self.scan(&TEXT_HTML) else {
+        if !self.rest().starts_with('<') {
             return Ok(false);
-        };
-        self.add_text(Kind::TextHtml, &val.unwrap_or_default(), "", 0)?;
+        }
+        let (start, line) = (self.at, self.line_end());
+        self.consume(line - start);
+        self.add_text(Kind::TextHtml, start..line, String::new(), 0)?;
         Ok(true)
+    }
+
+    /// Where the line the unconsumed input starts on ends; the input of `#[...]` is the rest of one line.
+    fn line_end(&self) -> usize {
+        let rest = self.rest();
+        self.at + if self.depth > 0 { rest.len() } else { rest.find('\n').unwrap_or(rest.len()) }
     }
 
     fn dot(&mut self) -> Result<bool, Error> {
         if !self.simple_end_of_line(&DOT, Kind::Dot) {
             return Ok(false);
         }
-        self.pipeless_text(None)?;
+        self.pipeless_text()?;
         Ok(true)
     }
 
@@ -910,7 +986,16 @@ impl Lexer {
             return Ok(false);
         };
         let mut expr = val.unwrap_or_default();
-        while self.char_state(&expr)?.is_nesting() {
+        let mut state = CharState::default();
+        let mut read = 0;
+        loop {
+            for c in expr[read..].chars() {
+                state.parse_char(c).map_err(|close| self.crash_on_mismatch(close))?;
+            }
+            read = expr.len();
+            if !state.is_nesting() {
+                break;
+            }
             // Pug finds the next `:` anywhere ahead but consumes from where it is.
             let Some(more) = WHEN_MORE.find(self.rest()).map(|m| m.as_str().to_string()) else {
                 break;
@@ -936,26 +1021,25 @@ impl Lexer {
 
     /// `+name` or `+#{expr}`, then `(args)` unless the parentheses hold attributes.
     fn call(&mut self) -> Result<bool, Error> {
-        let Some((whole, spaces, name)) =
-            CALL.captures(self.rest()).map(|caps| (caps[0].to_string(), caps[1].len(), caps.get(3).map(|m| m.as_str().to_string())))
+        let Some(((len, width), spaces, name)) =
+            CALL.captures(self.rest()).map(|caps| (extent(&caps), caps[1].len(), caps.get(3).map(|m| m.as_str().to_string())))
         else {
             return Ok(false);
         };
         let (start, name) = match name {
             Some(name) => {
-                self.consume(whole.len());
+                self.consume(len);
                 let start = self.pos();
-                self.column += units(&whole);
+                self.column += width;
                 (start, name)
             }
             None => {
                 let range = self.bracket_expression(1 + spaces + 1)?;
-                let consumed = self.rest()[..range.end + 1].to_string();
-                let expr = &self.rest()[range];
-                let name = format!("#{{{expr}}}");
-                self.consume(consumed.len());
+                let name = format!("#{{{}}}", &self.rest()[range.clone()]);
+                let width = units(&self.rest()[..range.end + 1]);
+                self.consume(range.end + 1);
                 let start = self.pos();
-                self.column += units(&consumed);
+                self.column += width;
                 (start, name)
             }
         };
@@ -967,7 +1051,9 @@ impl Lexer {
                 self.column += 1;
                 self.consume(range.end + 1);
                 // Pug counts the arguments and the `)`, not the spaces before the `(`.
-                src.chars().for_each(|c| self.step(c));
+                for c in src.chars() {
+                    self.step(c);
+                }
                 self.column += 1;
                 args = Some(src);
             }
@@ -977,27 +1063,27 @@ impl Lexer {
     }
 
     fn mixin(&mut self) -> bool {
-        let Some((whole, name, args)) =
-            MIXIN.captures(self.rest()).map(|caps| (caps[0].to_string(), caps[1].to_string(), caps.get(2).map(|m| m.as_str().to_string())))
+        let Some(((len, width), name, args)) =
+            MIXIN.captures(self.rest()).map(|caps| (extent(&caps), caps[1].to_string(), caps.get(2).map(|m| m.as_str().to_string())))
         else {
             return false;
         };
-        self.consume(whole.len());
+        self.consume(len);
         let start = self.pos();
-        self.column += units(&whole);
+        self.column += width;
         self.push(Kind::Mixin { name, args: args.filter(|a| !a.is_empty()) }, start);
         true
     }
 
     fn conditional(&mut self) -> Result<bool, Error> {
-        let Some((whole, keyword, js)) =
-            CONDITIONAL.captures(self.rest()).map(|caps| (caps[0].to_string(), caps[1].to_string(), js_trim(&caps[2]).to_string()))
+        let Some(((len, width), keyword, js)) =
+            CONDITIONAL.captures(self.rest()).map(|caps| (extent(&caps), caps[1].to_string(), js_trim(&caps[2]).to_string()))
         else {
             return Ok(false);
         };
-        self.consume(whole.len());
+        self.consume(len);
         let start = self.pos();
-        self.column += units(&whole) - units(&js);
+        self.column += width - units(&js);
         let kind = match keyword.as_str() {
             "if" => Kind::If(js.clone()),
             "unless" => Kind::If(format!("!({js})")),
@@ -1013,10 +1099,10 @@ impl Lexer {
     }
 
     fn while_(&mut self) -> Result<bool, Error> {
-        if let Some((whole, test)) = WHILE.captures(self.rest()).map(|caps| (caps[0].to_string(), caps[1].to_string())) {
-            self.consume(whole.len());
+        if let Some(((len, width), test)) = WHILE.captures(self.rest()).map(|caps| (extent(&caps), caps[1].to_string())) {
+            self.consume(len);
             let start = self.pos();
-            self.column += units(&whole);
+            self.column += width;
             self.push(Kind::While(test), start);
             return Ok(true);
         }
@@ -1029,11 +1115,11 @@ impl Lexer {
     fn each(&mut self) -> Result<bool, Error> {
         let captured = EACH
             .captures(self.rest())
-            .map(|caps| (caps[0].to_string(), caps[1].to_string(), caps.get(2).map(|m| m.as_str().to_string()), caps[3].to_string()));
-        if let Some((whole, val, key, code)) = captured {
-            self.consume(whole.len());
+            .map(|caps| (extent(&caps), caps[1].to_string(), caps.get(2).map(|m| m.as_str().to_string()), caps[3].to_string()));
+        if let Some(((len, width), val, key, code)) = captured {
+            self.consume(len);
             let start = self.pos();
-            self.column += units(&whole);
+            self.column += width;
             self.push(Kind::Each { val, key, code }, start);
             return Ok(true);
         }
@@ -1056,11 +1142,11 @@ impl Lexer {
     /// `each item of list` and `for [key, value] of map`, tried before `each`: `each x in offers` is one too, with a value
     /// Pug refuses.
     fn each_of(&mut self) -> Result<bool, Error> {
-        let captured = EACH_OF.captures(self.rest()).map(|caps| (caps[0].to_string(), caps[1].to_string(), caps[2].to_string()));
-        if let Some((whole, val, code)) = captured {
-            self.consume(whole.len());
+        let captured = EACH_OF.captures(self.rest()).map(|caps| (extent(&caps), caps[1].to_string(), caps[2].to_string()));
+        if let Some(((len, width), val, code)) = captured {
+            self.consume(len);
             let start = self.pos();
-            self.column += units(&whole);
+            self.column += width;
             if !EACH_OF_VALUE.is_match(js_trim(&val)) {
                 return Err(self.error(
                     "PUG:MALFORMED_EACH_OF_LVAL",
@@ -1081,14 +1167,14 @@ impl Lexer {
 
     /// `= code`, `!= code` and `- code`; inside `#[...]` the code ends at the `]`.
     fn code(&mut self) -> Result<bool, Error> {
-        let Some((whole, flags, mut code)) =
-            CODE.captures(self.rest()).map(|caps| (caps[0].to_string(), caps[1].to_string(), caps[2].to_string()))
+        let Some(((len, width), flags, mut code)) =
+            CODE.captures(self.rest()).map(|caps| (extent(&caps), caps[1].to_string(), caps[2].to_string()))
         else {
             return Ok(false);
         };
-        let lead = units(&whole) - units(&code);
+        let lead = width - units(&code);
         let mut shortened = 0;
-        if self.interpolated {
+        if self.depth > 0 {
             match parse_until(&code, ']', 0) {
                 Ok(range) => {
                     shortened = code.len() - range.end;
@@ -1100,7 +1186,7 @@ impl Lexer {
                 }
             }
         }
-        self.consume(whole.len() - shortened);
+        self.consume(len - shortened);
         let start = self.pos();
         let must_escape = flags.starts_with('=');
         let buffer = must_escape || flags.ends_with('=');
@@ -1114,14 +1200,16 @@ impl Lexer {
             return Ok(false);
         }
         self.interpolation_allowed = false;
-        self.pipeless_text(None)?;
+        self.pipeless_text()?;
         Ok(true)
     }
 
     /// One attribute of `chars`, the inside of `(...)`, and the comma after it; returns the characters it used.
     fn attribute(&mut self, chars: &[char]) -> Result<usize, Error> {
         let mut i = chars.iter().take_while(|&&c| is_space(c)).count();
-        chars[..i].iter().for_each(|&c| self.step(c));
+        for &c in &chars[..i] {
+            self.step(c);
+        }
         if i == chars.len() {
             return Ok(i);
         }
@@ -1202,48 +1290,44 @@ impl Lexer {
         }
         let mut at = self.pos();
         let mut state = CharState::default();
-        let mut val = String::new();
+        let start = i;
+        let mut complete = Completeness::default();
+        // Where the first character after the spaces at `i` is, once looked for.
+        let mut next = 0;
         while i < chars.len() {
             let c = chars[i];
             if !state.is_nesting() {
                 if is_space(c) {
-                    let Some(next) = chars[i..].iter().position(|&c| !is_space(c)).map(|n| i + n) else {
+                    if next <= i {
+                        next = chars[i..].iter().position(|&c| !is_space(c)).map_or(chars.len(), |n| i + n);
+                    }
+                    let Some(&following) = chars.get(next) else {
                         break;
                     };
-                    let following = chars[next];
                     let spread = chars.get(next..next + 3) == Some(&['.', '.', '.'][..]);
                     let continues = is_punctuator(Some(following)) && !matches!(following, '\'' | '"' | ':') && !spread;
-                    if !continues && looks_complete(&val) {
+                    if !continues && complete.check(&chars[start..i]) {
                         break;
                     }
                 }
-                if c == ',' && looks_complete(&val) {
+                if c == ',' && complete.check(&chars[start..i]) {
                     break;
                 }
             }
             if let Err(close) = state.parse_char(c) {
                 return Err(self.crash_on_mismatch(close));
             }
-            val.push(c);
             at = step_pos(at, c);
             i += 1;
         }
         self.line = at.line;
         self.column = at.column;
-        Ok((Some(AttributeValue { val, must_escape }), i))
+        Ok((Some(AttributeValue { val: chars[start..i].iter().collect(), must_escape }), i))
     }
 
     /// character-parser throws a SyntaxError without a Pug code; Pug passes it on.
     fn crash_on_mismatch(&self, close: char) -> Error {
         self.error("CHARACTER_PARSER:MISMATCHED_BRACKET", mismatched_bracket(close))
-    }
-
-    fn char_state(&self, code: &str) -> Result<CharState, Error> {
-        let mut state = CharState::default();
-        for c in code.chars() {
-            state.parse_char(c).map_err(|close| self.crash_on_mismatch(close))?;
-        }
-        Ok(state)
     }
 
     fn attrs(&mut self) -> Result<bool, Error> {
@@ -1275,10 +1359,10 @@ impl Lexer {
         let start = self.pos();
         self.column += len;
         let range = self.bracket_expression(0)?;
-        let consumed = self.rest()[..range.end + 1].to_string();
-        let val = self.rest()[range].to_string();
-        self.consume(consumed.len());
-        self.column += units(&consumed);
+        let width = units(&self.rest()[..range.end + 1]);
+        let val = self.rest()[range.clone()].to_string();
+        self.consume(range.end + 1);
+        self.column += width;
         self.push(Kind::AndAttributes(val), start);
         Ok(true)
     }
@@ -1299,10 +1383,12 @@ impl Lexer {
         let top = self.top();
         if indents < top {
             let mut outdents = 0;
-            while self.top() > indents {
-                let below = self.indent_stack[self.indent_stack.len() - 2];
+            while let [.., below, top] = self.indent_stack[..] {
+                if top <= indents {
+                    break;
+                }
                 if below < indents {
-                    let message = format!("Inconsistent indentation. Expecting either {below} or {} spaces/tabs.", self.top());
+                    let message = format!("Inconsistent indentation. Expecting either {below} or {top} spaces/tabs.");
                     return Err(self.error("PUG:INCONSISTENT_INDENTATION", message));
                 }
                 outdents += 1;
@@ -1328,18 +1414,18 @@ impl Lexer {
         Ok(true)
     }
 
-    /// The lines indented deeper than the current block after `.`, `//`, `-` or a filter, as text; `indents` is
-    /// the width found when a less indented line made Pug start over.
-    fn pipeless_text(&mut self, indents: Option<usize>) -> Result<bool, Error> {
+    /// The lines indented deeper than the current block after `.`, `//`, `-` or a filter, as text.
+    fn pipeless_text(&mut self) -> Result<bool, Error> {
         while self.blank() {}
-        let captured = self.scan_indentation();
-        let Some(indents) = indents.filter(|&n| n > 0).or(captured).filter(|&n| n > self.top()) else {
+        let Some(first) = self.scan_indentation().filter(|&n| n > self.top()) else {
             return Ok(false);
         };
-        let (len, mut lines) = match self.text_block_lines(indents) {
-            Ok(block) => block,
-            Err(width) => return self.pipeless_text(Some(width)),
-        };
+        let (len, indents, lines) = self.text_block_lines(first);
+        // Each line without the block's indentation, and whether it had all of it (a blank line may not).
+        let mut lines: Vec<(Range<usize>, bool)> = lines
+            .into_iter()
+            .map(|(line, width)| (line.start + unit_offset(&self.input[line.clone()], indents)..line.end, width >= indents))
+            .collect();
         self.push(Kind::StartPipelessText, self.pos());
         self.consume(len);
         if self.rest().is_empty() {
@@ -1347,44 +1433,83 @@ impl Lexer {
                 lines.pop();
             }
         }
-        for (i, (line, indented)) in lines.iter().enumerate() {
+        for (i, (line, indented)) in lines.into_iter().enumerate() {
             self.increment_line(1);
             let newline = (i != 0).then(|| self.pos());
-            if *indented {
+            if indented {
                 self.column += indents;
             }
             if let Some(start) = newline {
                 self.push(Kind::Newline, start);
             }
-            self.add_text(Kind::Text, line, "", 0)?;
+            self.add_text(Kind::Text, line, String::new(), 0)?;
         }
         self.push(Kind::EndPipelessText, self.pos());
         Ok(true)
     }
 
-    /// The bytes a text block `indents` deep takes and its lines, each without that indentation and with whether
-    /// it had all of it (a blank line may not); or the width to start over with when a line less indented than the
-    /// first is still inside the enclosing block.
-    fn text_block_lines(&self, indents: usize) -> Result<(usize, Vec<(String, bool)>), usize> {
+    /// The bytes a text block whose first line is `first` deep takes, the indentation Pug reads it with and its lines as
+    /// byte ranges of the input, each with its indentation's width. A line less indented than the first but inside the
+    /// enclosing block makes Pug start over with that width, which the lines before it also have.
+    fn text_block_lines(&self, first: usize) -> (usize, usize, Vec<(Range<usize>, usize)>) {
         let rest = self.rest();
+        let mut indents = first;
         let mut lines = Vec::new();
         let mut at = 0;
         while let Some(after) = rest.get(at + 1..) {
             let line = &after[..after.find('\n').unwrap_or(after.len())];
             let width = self.line_indentation(line);
             if width < indents && !line.chars().all(is_js_whitespace) {
-                if width > self.top() {
-                    return Err(width);
+                if width <= self.top() {
+                    break;
                 }
-                break;
+                indents = width;
             }
+            let start = self.at + at + 1;
+            lines.push((start..start + line.len(), width));
             at += line.len() + 1;
-            lines.push((line[unit_offset(line, indents)..].to_string(), width >= indents));
             if at >= rest.len() {
                 break;
             }
         }
-        Ok((at, lines))
+        (at, indents, lines)
+    }
+}
+
+/// A search through text the lexer goes on reading, from ever later bytes: what it found and how far it looked are kept, so
+/// each part of the text is searched once.
+#[derive(Default)]
+struct Ahead {
+    found: Option<usize>,
+    /// Where the last search stopped: at what it found, or at the end it was given.
+    until: usize,
+}
+
+impl Ahead {
+    /// The first match in the bytes `from..end`; `search(start, end)` finds it in a part of them.
+    fn find(&mut self, from: usize, end: usize, search: impl FnOnce(usize, usize) -> Option<usize>) -> Option<usize> {
+        let start = match self.found {
+            Some(at) if at >= from => return Some(at).filter(|&at| at < end),
+            Some(_) => from,
+            None => from.max(self.until),
+        };
+        if start >= end {
+            return None;
+        }
+        self.found = search(start, end);
+        self.until = self.found.unwrap_or(end);
+        self.found
+    }
+}
+
+/// Where the first `#{` or `!{` in `input[from..end]` starts.
+fn interpolation_at(input: &str, mut from: usize, end: usize) -> Option<usize> {
+    loop {
+        let at = from + input.get(from..end)?.find(['#', '!'])?;
+        if input[at + 1..end].starts_with('{') {
+            return Some(at);
+        }
+        from = at + 1;
     }
 }
 
@@ -1516,14 +1641,15 @@ impl CharState {
 
     /// character-parser's `isRegexp`: whether a `/` here starts a regular expression rather than dividing.
     fn regexp_can_start(&self) -> bool {
-        let mut before = self.history.iter().rev().copied().skip_while(|&c| is_js_whitespace(c)).peekable();
-        match before.peek().copied() {
+        let end = self.history.iter().rposition(|&c| !is_js_whitespace(c)).map_or(0, |at| at + 1);
+        let before = &self.history[..end];
+        match before.last().copied() {
             Some(')') => false,
             Some('}') => true,
-            next if is_punctuator(next) => true,
+            last if is_punctuator(last) => true,
             _ => {
-                let word: String = before.take_while(|&c| c.is_ascii_alphanumeric() || c == '_').collect();
-                is_keyword(&word.chars().rev().collect::<String>())
+                let word = before.iter().rposition(|&c| !(c.is_ascii_alphanumeric() || c == '_')).map_or(0, |at| at + 1);
+                is_keyword(&before[word..])
             }
         }
     }
@@ -1553,7 +1679,7 @@ fn is_punctuator(c: Option<char>) -> bool {
     c.is_none_or(|c| ".();,{}[]:?~%&*+-/<>^|!=".contains(c))
 }
 
-fn is_keyword(word: &str) -> bool {
+fn is_keyword(word: &[char]) -> bool {
     const KEYWORDS: &[&str] = &[
         "if",
         "in",
@@ -1598,49 +1724,113 @@ fn is_keyword(word: &str) -> bool {
         "public",
         "static",
     ];
-    KEYWORDS.contains(&word)
+    KEYWORDS.iter().any(|keyword| keyword.chars().eq(word.iter().copied()))
 }
 
 /// Stands in for `is-expression` (acorn 7, ES2019, not strict) where Pug only asks whether an attribute value is complete
 /// before a space or a comma: balanced, without an open `?` of a conditional (`?.` and `??` are ES2020), a `class` or
-/// `function` with its body, no statement keyword, and ending in an operand or a postfix `++`/`--`.
-fn looks_complete(code: &str) -> bool {
-    let Some(tokens) = js_tokens(code) else {
-        return false;
-    };
-    let mut brackets = Vec::new();
-    // The bracket depths of the `class` and `function` words whose body hasn't closed.
-    let mut bodies: Vec<usize> = Vec::new();
-    let mut open_conditionals = 0i32;
-    for token in &tokens {
-        match token.kind {
-            Js::Open(close) => brackets.push(close),
-            Js::Close(c) => {
-                if brackets.pop() != Some(c) {
+/// `function` with its body, no statement keyword, and ending in an operand or a postfix `++`/`--`. Pug asks again as
+/// the value grows, so the tokens that more characters can't change are read once.
+#[derive(Default)]
+struct Completeness {
+    /// Where the characters start that the next check reads again.
+    unread: usize,
+    /// A line break comes between the last token read and `unread`.
+    newline: bool,
+    /// The tokens before `unread`.
+    read: Tokens,
+}
+
+impl Completeness {
+    /// Whether `code`, which the code of the checks before starts, looks like a complete expression.
+    fn check(&mut self, code: &[char]) -> bool {
+        if self.read.refused {
+            return false;
+        }
+        // The tokens past those read for good, on a copy of what those left.
+        let mut tail: Option<Tokens> = None;
+        let (mut at, mut newline) = (self.unread, self.newline);
+        loop {
+            let previous = tail.as_ref().unwrap_or(&self.read).last[1].map(|token| token.kind);
+            let (start, kind, end) = match js_token(code, at, previous, &mut newline) {
+                Ok(token) => token,
+                Err(Stop::End) => {
+                    if tail.is_none() {
+                        (self.unread, self.newline) = (code.len(), newline);
+                    }
+                    break;
+                }
+                Err(Stop::Unfinished) => return false,
+                Err(Stop::Never) => {
+                    self.read.refused |= tail.is_none();
                     return false;
                 }
-                let depth = brackets.len();
-                bodies.retain(|&at| at <= depth);
-                if c == '}' && bodies.last() == Some(&depth) {
-                    bodies.pop();
+            };
+            let token = JsToken { kind, newline_before: newline };
+            newline = false;
+            // A token is decided by its characters and at most the two after it.
+            if tail.is_none() && end + 2 <= code.len() {
+                self.read.add(token);
+                (self.unread, self.newline) = (end, false);
+            } else {
+                if tail.is_none() {
+                    (self.unread, self.newline) = (start, token.newline_before);
+                }
+                tail.get_or_insert_with(|| self.read.clone()).add(token);
+            }
+            at = end;
+        }
+        tail.as_ref().unwrap_or(&self.read).complete()
+    }
+}
+
+/// What `Completeness` keeps of the tokens it read.
+#[derive(Default, Clone)]
+struct Tokens {
+    brackets: Vec<char>,
+    /// The bracket depths of the `class` and `function` words whose body hasn't closed.
+    bodies: Vec<usize>,
+    open_conditionals: i32,
+    /// The last two tokens, the last one last.
+    last: [Option<JsToken>; 2],
+    /// A token was read that no code after it makes an expression of.
+    refused: bool,
+}
+
+impl Tokens {
+    fn add(&mut self, token: JsToken) {
+        match token.kind {
+            Js::Open(close) => self.brackets.push(close),
+            Js::Close(c) => {
+                self.refused |= self.brackets.pop() != Some(c);
+                let depth = self.brackets.len();
+                self.bodies.retain(|&at| at <= depth);
+                if c == '}' && self.bodies.last() == Some(&depth) {
+                    self.bodies.pop();
                 }
             }
-            Js::Question if brackets.is_empty() => open_conditionals += 1,
-            Js::Colon if brackets.is_empty() => open_conditionals -= 1,
-            Js::Spread if brackets.is_empty() => return false,
-            Js::Reserved(Reserved::Body) => bodies.push(brackets.len()),
+            Js::Question if self.brackets.is_empty() => self.open_conditionals += 1,
+            Js::Colon if self.brackets.is_empty() => self.open_conditionals -= 1,
+            Js::Spread if self.brackets.is_empty() => self.refused = true,
+            Js::Reserved(Reserved::Body) => self.bodies.push(self.brackets.len()),
             // Inside brackets a statement keyword may be in a function's body or an object's key.
-            Js::Reserved(Reserved::Statement) if brackets.is_empty() => return false,
+            Js::Reserved(Reserved::Statement) if self.brackets.is_empty() => self.refused = true,
             _ => {}
         }
+        self.last = [self.last[1], Some(token)];
     }
-    if !brackets.is_empty() || !bodies.is_empty() || open_conditionals > 0 {
-        return false;
-    }
-    match tokens.as_slice() {
-        [.., before, last] if last.kind == Js::Update => !last.newline_before && matches!(before.kind, Js::Name | Js::Close(')' | ']')),
-        [.., last] => last.kind.ends_operand(),
-        [] => false,
+
+    fn complete(&self) -> bool {
+        if self.refused || !self.brackets.is_empty() || !self.bodies.is_empty() || self.open_conditionals > 0 {
+            return false;
+        }
+        match self.last {
+            [Some(before), Some(last)] if last.kind == Js::Update => {
+                !last.newline_before && matches!(before.kind, Js::Name | Js::Close(')' | ']'))
+            }
+            [_, Some(last)] => last.kind.ends_operand(),
+            [_, None] => false,
+        }
     }
 }
 
@@ -1667,7 +1857,7 @@ fn reserved(word: &str) -> Option<Reserved> {
     })
 }
 
-/// A JavaScript token, as far as `looks_complete` tells them apart.
+/// A JavaScript token, as far as `Completeness` tells them apart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Js {
     /// An identifier, or any word after `.`.
@@ -1699,50 +1889,57 @@ struct JsToken {
     newline_before: bool,
 }
 
-/// The tokens of `code`, or `None` where acorn stops: an unclosed string, template, regular expression or comment, a line
-/// comment (`is-expression` refuses them), or a character no token starts with.
-fn js_tokens(code: &str) -> Option<Vec<JsToken>> {
-    let chars: Vec<char> = code.chars().collect();
-    let mut tokens: Vec<JsToken> = Vec::new();
-    let mut newline_before = false;
-    let mut i = 0;
-    while let Some(&c) = chars.get(i) {
+/// Why `js_token` found no token.
+enum Stop {
+    /// Only whitespace and comments are left.
+    End,
+    /// The code ends in a string, template literal, regular expression or comment, which more code may close.
+    Unfinished,
+    /// Where acorn stops whatever follows: a line comment (`is-expression` refuses them), a line break in a string or
+    /// regular expression, a bracket mismatch in a template literal, or a character no token starts with.
+    Never,
+}
+
+/// The first token of `chars` from `i` on, past whitespace and comments: where it starts, what it is and where it ends.
+/// `previous` is the token before; `newline` is set when a line break comes before this one.
+fn js_token(chars: &[char], mut i: usize, previous: Option<Js>, newline: &mut bool) -> Result<(usize, Js, usize), Stop> {
+    loop {
+        let Some(&c) = chars.get(i) else { return Err(Stop::End) };
         let start = i;
         let next = chars.get(i + 1).copied();
-        let previous = tokens.last().map(|t| t.kind);
         i += 1;
         let kind = match c {
             _ if is_js_line_terminator(c) => {
-                newline_before = true;
+                *newline = true;
                 continue;
             }
             _ if is_js_whitespace(c) => continue,
-            '/' if next == Some('/') => return None,
+            '/' if next == Some('/') => return Err(Stop::Never),
             '/' if next == Some('*') => {
                 let body = &chars[start + 2..];
-                let len = body.windows(2).position(|pair| pair == ['*', '/'])?;
-                newline_before |= body[..len].iter().any(|&c| is_js_line_terminator(c));
+                let len = body.windows(2).position(|pair| pair == ['*', '/']).ok_or(Stop::Unfinished)?;
+                *newline |= body[..len].iter().any(|&c| is_js_line_terminator(c));
                 i = start + 2 + len + 2;
                 continue;
             }
             '/' if previous.is_none_or(|p| !p.ends_operand() && p != Js::Update) => {
-                i = regexp_end(&chars, start)?;
+                i = regexp_end(chars, start)?;
                 Js::Literal
             }
             '\'' | '"' => {
-                i = string_end(&chars, start)?;
+                i = string_end(chars, start)?;
                 Js::Literal
             }
             '`' => {
-                i = template_end(&chars, start)?;
+                i = template_end(chars, start)?;
                 Js::Literal
             }
             '.' if next.is_some_and(|n| n.is_ascii_digit()) => {
-                i = number_end(&chars, start);
+                i = number_end(chars, start);
                 Js::Literal
             }
             '0'..='9' => {
-                i = number_end(&chars, start);
+                i = number_end(chars, start);
                 Js::Literal
             }
             '.' if chars.get(i..i + 2) == Some(&['.', '.'][..]) => {
@@ -1757,7 +1954,7 @@ fn js_tokens(code: &str) -> Option<Vec<JsToken>> {
             '?' => Js::Question,
             ':' => Js::Colon,
             ')' | ']' | '}' => Js::Close(c),
-            '(' | '[' | '{' => Js::Open(closing_bracket(c)?),
+            '(' | '[' | '{' => Js::Open(closing_bracket(c).ok_or(Stop::Never)?),
             _ if is_punctuator(Some(c)) => Js::Operator,
             _ if c.is_alphabetic() || c == '_' || c == '$' => {
                 while chars.get(i).is_some_and(|&c| is_identifier_part(c)) {
@@ -1769,12 +1966,10 @@ fn js_tokens(code: &str) -> Option<Vec<JsToken>> {
                     _ => Js::Name,
                 }
             }
-            _ => return None,
+            _ => return Err(Stop::Never),
         };
-        tokens.push(JsToken { kind, newline_before });
-        newline_before = false;
+        return Ok((start, kind, i));
     }
-    Some(tokens)
 }
 
 fn is_identifier_part(c: char) -> bool {
@@ -1804,13 +1999,13 @@ fn number_end(chars: &[char], start: usize) -> usize {
 }
 
 /// The end of the string whose quote is at `open`; a line break can't be in it.
-fn string_end(chars: &[char], open: usize) -> Option<usize> {
+fn string_end(chars: &[char], open: usize) -> Result<usize, Stop> {
     let mut i = open + 1;
     loop {
-        match *chars.get(i)? {
+        match *chars.get(i).ok_or(Stop::Unfinished)? {
             '\\' => i += 1,
-            '\n' | '\r' => return None,
-            c if c == chars[open] => return Some(i + 1),
+            '\n' | '\r' => return Err(Stop::Never),
+            c if c == chars[open] => return Ok(i + 1),
             _ => {}
         }
         i += 1;
@@ -1818,25 +2013,25 @@ fn string_end(chars: &[char], open: usize) -> Option<usize> {
 }
 
 /// The end of the template literal at `open`, with what its `${...}` hold.
-fn template_end(chars: &[char], open: usize) -> Option<usize> {
+fn template_end(chars: &[char], open: usize) -> Result<usize, Stop> {
     let mut state = CharState::default();
     for (i, &c) in chars.iter().enumerate().skip(open) {
-        state.parse_char(c).ok()?;
+        state.parse_char(c).map_err(|_| Stop::Never)?;
         if !state.is_nesting() {
-            return Some(i + 1);
+            return Ok(i + 1);
         }
     }
-    None
+    Err(Stop::Unfinished)
 }
 
 /// The end of the regular expression at `open`, its flags included.
-fn regexp_end(chars: &[char], open: usize) -> Option<usize> {
+fn regexp_end(chars: &[char], open: usize) -> Result<usize, Stop> {
     let mut i = open + 1;
     let mut in_class = false;
     loop {
-        let c = *chars.get(i)?;
+        let c = *chars.get(i).ok_or(Stop::Unfinished)?;
         if is_js_line_terminator(c) {
-            return None;
+            return Err(Stop::Never);
         }
         match c {
             '\\' => i += 1,
@@ -1851,12 +2046,16 @@ fn regexp_end(chars: &[char], open: usize) -> Option<usize> {
     while chars.get(i).is_some_and(|&c| is_identifier_part(c)) {
         i += 1;
     }
-    Some(i)
+    Ok(i)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn looks_complete(code: &str) -> bool {
+        Completeness::default().check(&code.chars().collect::<Vec<_>>())
+    }
 
     /// A token's type, value, start and end as pug-lexer prints them.
     type Printed = (&'static str, String, (usize, usize), (usize, usize));
@@ -1984,6 +2183,35 @@ mod tests {
         ];
         for code in incomplete {
             assert!(!looks_complete(code), "{code}");
+        }
+    }
+
+    /// Checked as a value grows a character at a time, as Pug's lexer asks, the answers are those for each prefix alone.
+    #[test]
+    fn values_read_as_they_grow_are_judged_as_a_whole() {
+        let values = [
+            "f(a, b) ? c : d ? e : f",
+            "a /* x */ + b // c",
+            "`a${b}` + 1 ... x",
+            "x = /re/g.test(y) / 2",
+            "1. + .5e3 - 0x1f",
+            "f(a)(b) ++ \n--c",
+            "'s\\'q' + \"t\\\"u\" + 'v\nw'",
+            "{a: [1, (2)]}.a .. .b",
+            "class A extends B { m() { return 1 } } (x)",
+            "function () {} () if",
+            "o. default + x.if + typeof /a/",
+            "πin + cafénew + \u{feff}x\u{2028}y",
+            "a ?. b ?? c } ] )",
+            "`${`${a}`}` + `x",
+        ];
+        for value in values {
+            let chars: Vec<char> = value.chars().collect();
+            let mut growing = Completeness::default();
+            for end in 0..=chars.len() {
+                let prefix = &chars[..end];
+                assert_eq!(growing.check(prefix), Completeness::default().check(prefix), "{:?}", prefix.iter().collect::<String>());
+            }
         }
     }
 

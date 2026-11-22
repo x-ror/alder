@@ -24,8 +24,6 @@ use tower_lsp_server::ls_types::{DiagnosticSeverity, Range, Uri};
 const OK: i32 = 0;
 const FINDINGS: i32 = 1;
 const USAGE: i32 = 2;
-/// The main thread's usual stack: Prism and the template walkers recurse with the nesting of the code.
-const WORKER_STACK: usize = 8 << 20;
 
 const HELP: &str = "\
 Usage:
@@ -276,7 +274,7 @@ fn check(paths: &[PathBuf], format: Format) -> i32 {
                 }
             };
             // A thread the system refuses still gets its share of the files, here.
-            if std::thread::Builder::new().stack_size(WORKER_STACK).spawn_scoped(scope, work.clone()).is_err() {
+            if std::thread::Builder::new().stack_size(crate::util::THREAD_STACK).spawn_scoped(scope, work.clone()).is_err() {
                 work();
             }
         }

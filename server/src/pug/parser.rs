@@ -5,12 +5,13 @@
 //! - `#[...]` in text is spliced into the text's nodes, and one whose expression gives several nodes (Pug's `Block`) is
 //!   spliced flat: there is no `Block` node;
 //! - a mixin call without a block has an empty one rather than none;
-//! - `FileReference::path` is the path as written; `refs::implied` adds the `.pug`;
+//! - `FileReference::path` is the path as written; `implied` adds the `.pug`;
 //! - a message Pug builds from half of a surrogate pair (`a(foo!😀)`, `]]]]😀`) has the whole character: a Rust string
 //!   can't hold half of one.
 
 use super::lexer::{js_trim, lex, BlockMode, Kind, Pos, Token};
-use super::Error;
+use super::{too_deep, Error, MAX_DEPTH};
+use std::borrow::Cow;
 use std::collections::VecDeque;
 
 /// pug-parser's `lib/inline-tags.js`.
@@ -75,7 +76,8 @@ pub enum NodeKind {
         args: Option<String>,
         block: Block,
     },
-    /// `+name(args)`: the tag's name is the mixin's (`#{expr}` when interpolated); its block is empty when none is given.
+    /// `+name(args)`: the tag's name is the mixin's, or the JavaScript of `+#{expr}`, interpolated; its block is empty when
+    /// none is given.
     MixinCall {
         args: Option<String>,
         tag: Tag,
@@ -197,10 +199,36 @@ pub struct IncludeFilter {
 
 /// Pug's AST for `text`, or the first error its lexer or parser raises.
 pub fn parse(text: &str) -> Result<Block, Error> {
-    let tokens = strip_comments(lex(text)?);
+    parse_tokens(lex(text)?)
+}
+
+/// Pug's AST for the tokens `lex` gave, or the first error its parser raises.
+pub fn parse_tokens(tokens: Vec<Token>) -> Result<Block, Error> {
+    let tokens = strip_comments(tokens);
     let eos =
         tokens.last().cloned().unwrap_or(Token { kind: Kind::Eos, start: Pos { line: 1, column: 1 }, end: Pos { line: 1, column: 1 } });
-    Parser { tokens: tokens.into(), eos, in_mixin: 0 }.parse()
+    Parser { tokens: tokens.into(), eos, in_mixin: 0, depth: 0 }.parse()
+}
+
+/// Node's `path.extname(path) != ""`, which on Windows also splits at `\` and skips a drive (`C:`).
+pub(crate) fn has_extension(path: &str, windows: bool) -> bool {
+    let is_separator = |c: char| c == '/' || (windows && c == '\\');
+    let path = match path.as_bytes() {
+        [drive, b':', ..] if windows && drive.is_ascii_alphabetic() => &path[2..],
+        _ => path,
+    };
+    let name = path.trim_end_matches(is_separator).rsplit(is_separator).next().unwrap_or_default();
+    name != ".." && name.rfind('.').is_some_and(|dot| dot > 0)
+}
+
+/// The path Pug reads for `path`: `pug.compile` adds `.pug` when it has no extension, so `include row` never finds
+/// pug-rails' `row.jst.pug`.
+pub fn implied(path: &str) -> Cow<'_, str> {
+    if has_extension(path, cfg!(windows)) {
+        Cow::Borrowed(path)
+    } else {
+        Cow::Owned(format!("{path}.pug"))
+    }
 }
 
 /// `pug-strip-comments` with `stripUnbuffered` (`//-` and its body go) and without `stripBuffered`.
@@ -277,6 +305,8 @@ struct Parser {
     /// The last token, which `peek` and `advance` return once the others are used up.
     eos: Token,
     in_mixin: usize,
+    /// How many levels deep the node being parsed is.
+    depth: usize,
 }
 
 impl Parser {
@@ -325,6 +355,24 @@ impl Parser {
         Ok(block)
     }
 
+    /// Goes a level deeper in the tree, which the node about to be parsed starts; refused past `MAX_DEPTH`.
+    fn descend(&mut self) -> Result<(), Error> {
+        if self.depth == MAX_DEPTH {
+            let Pos { line, column } = self.peek().start;
+            return Err(too_deep(line, column));
+        }
+        self.depth += 1;
+        Ok(())
+    }
+
+    /// `parse`, a level deeper in the tree.
+    fn nested<T>(&mut self, parse: impl FnOnce(&mut Self) -> Result<T, Error>) -> Result<T, Error> {
+        self.descend()?;
+        let parsed = parse(self);
+        self.depth -= 1;
+        parsed
+    }
+
     /// `parseExpr` where Pug reads the result's `type`: nothing there (a `.` without text) makes Pug itself throw.
     fn parse_required_expr(&mut self) -> Result<Expr, Error> {
         let Pos { line, column } = self.peek().start;
@@ -335,6 +383,10 @@ impl Parser {
     }
 
     fn parse_expr(&mut self) -> Result<Option<Expr>, Error> {
+        self.nested(Self::expr)
+    }
+
+    fn expr(&mut self) -> Result<Option<Expr>, Error> {
         let one = |node: Node| Ok(Some(Expr::Node(node)));
         match &self.peek().kind {
             Kind::Tag(_) => one(self.parse_tag()?),
@@ -376,7 +428,7 @@ impl Parser {
                 let token = self.peek();
                 let div = Token { kind: Kind::Tag("div".to_string()), start: token.start, end: token.end };
                 self.tokens.push_front(div);
-                self.parse_expr()
+                one(self.parse_tag()?)
             }
             other => {
                 let message = format!("unexpected token \"{}\"", other.name());
@@ -451,7 +503,7 @@ impl Parser {
                     add(&mut nodes, &mut current, node(&token, NodeKind::Text { val: val.clone(), html: true }));
                 }
                 Kind::Indent(_) => {
-                    for nested in self.block()?.nodes {
+                    for nested in self.nested(Self::block)?.nodes {
                         add(&mut nodes, &mut current, nested);
                     }
                 }
@@ -485,12 +537,13 @@ impl Parser {
                 Kind::Comment { .. } | Kind::Newline => {
                     self.advance();
                 }
-                Kind::When(_) => block.nodes.push(self.parse_when()?),
-                Kind::Default => {
-                    let default = self.advance();
-                    let kind = NodeKind::When { expr: "default".to_string(), block: Some(self.parse_block_expansion()?) };
-                    block.nodes.push(node(&default, kind));
-                }
+                // A `when` is a node of its own, a level below the `case`.
+                Kind::When(_) => block.nodes.push(self.nested(Self::parse_when)?),
+                Kind::Default => block.nodes.push(self.nested(|parser| {
+                    let default = parser.advance();
+                    let kind = NodeKind::When { expr: "default".to_string(), block: Some(parser.parse_block_expansion()?) };
+                    Ok(node(&default, kind))
+                })?),
                 _ => {
                     let message =
                         format!("Unexpected token \"{}\", expected \"when\", \"default\" or \"newline\"", self.peek().kind.name());
@@ -528,12 +581,15 @@ impl Parser {
         let consequent = self.optional_block(token.start.line)?;
         let mut else_ifs = Vec::new();
         let mut alternate = None;
+        // Each `else if` is a level deeper in the tree than the one before.
+        let depth = self.depth;
         loop {
             match self.peek().kind {
                 Kind::Newline => {
                     self.advance();
                 }
                 Kind::ElseIf(_) => {
+                    self.descend()?;
                     let else_if = self.advance();
                     let consequent = self.optional_block(else_if.start.line)?;
                     else_ifs.push((else_if, consequent));
@@ -548,6 +604,7 @@ impl Parser {
                 _ => break,
             }
         }
+        self.depth = depth;
         for (else_if, consequent) in else_ifs.into_iter().rev() {
             let Kind::ElseIf(test) = &else_if.kind else { unreachable!() };
             let conditional = Conditional { test: test.clone(), consequent, alternate };
@@ -621,7 +678,7 @@ impl Parser {
                 let Kind::Text(val) = &text.kind else { unreachable!() };
                 Block { line: text.start.line, nodes: vec![text_node(&text, val.clone())] }
             }
-            Kind::Filter(_) => Block { line: token.start.line, nodes: vec![self.parse_filter()?] },
+            Kind::Filter(_) => self.parse_required_expr()?.into_block(token.start.line),
             _ => self.parse_text_block()?.unwrap_or_else(|| empty_block(token.start.line)),
         };
         Ok(node(&token, NodeKind::Filter { name: name.clone(), attrs, block }))
@@ -680,7 +737,7 @@ impl Parser {
             filters.push(self.parse_include_filter()?);
         }
         let file = self.file_reference()?;
-        let read = super::refs::implied(&file.path);
+        let read = implied(&file.path);
         if filters.is_empty() && (read.ends_with(".pug") || read.ends_with(".jade")) {
             let block = self.optional_block(token.start.line)?;
             return Ok(node(&token, NodeKind::Include { file, block }));
@@ -694,7 +751,11 @@ impl Parser {
     fn parse_call(&mut self) -> Result<Node, Error> {
         let token = self.expect("call")?;
         let Kind::Call { name, args } = &token.kind else { unreachable!() };
-        let mut tag = Tag { name: name.clone(), block: empty_block(token.start.line), ..Tag::default() };
+        let (name, interpolated) = match name.strip_prefix("#{").and_then(|expr| expr.strip_suffix('}')) {
+            Some(expr) => (expr.to_string(), true),
+            None => (name.clone(), false),
+        };
+        let mut tag = Tag { name, interpolated, block: empty_block(token.start.line), ..Tag::default() };
         self.tag(&mut tag, token.start.line, false)?;
         Ok(node(&token, NodeKind::MixinCall { args: args.clone(), tag }))
     }
@@ -918,7 +979,7 @@ mod tests {
 
     fn outline_node(node: &Node, out: &mut Vec<String>) {
         let at = format!("@{}:{}", node.line, node.column);
-        let file = |f: &FileReference| format!("{}@{}:{}", crate::pug::refs::implied(&f.path), f.line, f.column);
+        let file = |f: &FileReference| format!("{}@{}:{}", implied(&f.path), f.line, f.column);
         match &node.kind {
             NodeKind::NamedBlock { name, mode, block } => {
                 let mode = match mode {
@@ -938,7 +999,8 @@ mod tests {
             }
             NodeKind::MixinCall { args, tag } => {
                 let args = args.as_deref().unwrap_or("");
-                out.push(format!("+{}({args}) ({}){at}", tag.name, attr_list(&tag.attrs, &tag.attribute_blocks)));
+                let name = if tag.interpolated { format!("#{{{}}}", tag.name) } else { tag.name.clone() };
+                out.push(format!("+{name}({args}) ({}){at}", attr_list(&tag.attrs, &tag.attribute_blocks)));
                 outline(&tag.block, out);
             }
             NodeKind::MixinDefinition { name, args, block } => {
@@ -1141,6 +1203,44 @@ mod tests {
         for (text, code, message) in cases {
             let (got_code, got_message, ..) = error_of(text);
             assert_eq!((got_code, got_message.as_str()), (code, message), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn paths_get_pugs_implied_extension() {
+        for (path, read) in [
+            ("row", "row.pug"),
+            ("row.jst.pug", "row.jst.pug"),
+            ("old.jade", "old.jade"),
+            ("frag.html", "frag.html"),
+            ("../shared/.hidden", "../shared/.hidden.pug"),
+            ("sub/", "sub/.pug"),
+            ("..", "...pug"),
+            ("a.", "a."),
+        ] {
+            assert_eq!(implied(path), read, "{path}");
+        }
+    }
+
+    /// Node's `path.posix.extname` and `path.win32.extname`, whatever the platform the test runs on.
+    #[test]
+    fn extensions_follow_the_platforms_separators() {
+        for (path, posix, windows) in [
+            ("a.b\\c", true, false),
+            ("a\\b.c", true, true),
+            ("dir\\.a", true, false),
+            ("x\\..", true, false),
+            ("a.b\\", true, true),
+            ("C:.a", true, false),
+            ("C:a.b", true, true),
+            ("c:\\x\\y.pug", true, true),
+            ("a.b/c", false, false),
+            ("dir/.a", false, false),
+            ("..a", true, true),
+            ("...", true, true),
+            (".", false, false),
+        ] {
+            assert_eq!((has_extension(path, false), has_extension(path, true)), (posix, windows), "{path}");
         }
     }
 

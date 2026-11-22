@@ -415,13 +415,15 @@ fn indent_haml(text: &str, settings: &Settings) -> Result<Indented, Skipped> {
 }
 
 fn indent_pug(text: &str, settings: &Settings) -> Result<Indented, Skipped> {
-    if crate::pug::parser::parse(text).is_err() {
+    let lexed = crate::pug::lexer::lex(text);
+    let parsed = lexed.as_ref().ok().and_then(|tokens| crate::pug::parser::parse_tokens(tokens.clone()).ok());
+    let (Ok(tokens), Some(tree)) = (&lexed, parsed) else {
         return skip(SkipKind::Doubt, "Pug would reject the file");
-    }
-    let Some(indented) = pug::format(text, settings) else {
+    };
+    let Some(indented) = pug::format(text, tokens, settings) else {
         return skip(SkipKind::Doubt, "its indentation can't move safely");
     };
-    if !crate::pug::same_compilation(text, &indented.text) {
+    if !crate::pug::compiles_as(tree, &indented.text) {
         return skip(SkipKind::Doubt, "the compiled output would change");
     }
     Ok(indented)

@@ -980,6 +980,59 @@ const check = (label, actual, expected) => {
     ).map(tree),
     ["block content [section#main [.card]]", "mixin badge [span.badge]"],
   );
+  // Nesting that used to overflow the stack: refused past 256 levels, the server living on.
+  const deepTags = Array.from(
+    { length: 1500 },
+    (_, i) => `${"  ".repeat(i)}div#d${i}`,
+  ).join("\n");
+  const deepUri = fileUri(path.join(pugAssets, "deep.jst.pug"));
+  check(
+    "pug: nesting too deep is reported",
+    [
+      ...(await diagnosticsFor(deepUri, "jade", `${deepTags}\n`)),
+      ...(await diagnosticsFor(
+        fileUri(path.join(pugAssets, "deep-inline.jst.pug")),
+        "jade",
+        `p ${"#[b ".repeat(1500)}x${"]".repeat(1500)}\n`,
+      )),
+    ],
+    ["256:Syntax/PugTemplate", "0:Syntax/PugTemplate"],
+  );
+  check(
+    "pug: the deep template's outline, links and formatting",
+    [
+      (
+        await send("textDocument/documentSymbol", {
+          textDocument: { uri: deepUri },
+        })
+      ).result.length,
+      (
+        await send("textDocument/documentLink", {
+          textDocument: { uri: deepUri },
+        })
+      ).result.length,
+      (
+        (
+          await send("textDocument/formatting", {
+            textDocument: { uri: deepUri },
+            options: { tabSize: 2, insertSpaces: true },
+          })
+        ).result ?? []
+      ).length,
+    ],
+    [1, 0, 0],
+  );
+  check(
+    "pug: the server answers after the deep template",
+    (
+      (
+        await send("textDocument/documentSymbol", {
+          textDocument: { uri: pugShowUri },
+        })
+      ).result || []
+    ).length,
+    2,
+  );
   check(
     "pug foldingRanges: VS Code's own",
     (

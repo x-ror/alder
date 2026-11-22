@@ -6,7 +6,7 @@
 
 use crate::format::blank_lines::LineInfo;
 use crate::format::{IndentStyle, Indented, Settings};
-use crate::pug::lexer::{is_js_whitespace, lex, unit_offset, Kind, Token};
+use crate::pug::lexer::{is_js_whitespace, unit_offset, Kind, Token};
 use crate::util::{leading_ws, raw_lines, BOM};
 use std::borrow::Cow;
 
@@ -39,9 +39,9 @@ struct Classified {
     keeps_trailing: bool,
 }
 
-/// The formatted text, or `None` when Pug would reject the text, it has a line break Pug reads where the editor doesn't
-/// (a lone `\r`), or its lines can't be told apart from Pug's tokens.
-pub(crate) fn format(text: &str, settings: &Settings) -> Option<Indented> {
+/// The formatted text of a template Pug accepts, whose tokens are `tokens`; `None` when it has a line break Pug reads where
+/// the editor doesn't (a lone `\r`), or its lines can't be told apart from Pug's tokens.
+pub(crate) fn format(text: &str, tokens: &[Token], settings: &Settings) -> Option<Indented> {
     if settings.indent_size == 0 && settings.indent_style == IndentStyle::Spaces {
         return None;
     }
@@ -49,10 +49,9 @@ pub(crate) fn format(text: &str, settings: &Settings) -> Option<Indented> {
     if crate::pug::has_lone_cr(body) {
         return None;
     }
-    crate::pug::parser::parse(text).ok()?;
     let lines: Vec<(usize, &str, &str)> = raw_lines(body).collect();
     let rows: Vec<&str> = lines.iter().map(|&(_, line, _)| line).collect();
-    let classified = classify(&rows, &lex(text).ok()?)?;
+    let classified = classify(&rows, tokens)?;
     let unit = settings.indent_unit();
     let indent_of = |line: usize| match classified[line].role {
         Role::Node { depth } => Some(unit.repeat(depth)),
@@ -180,8 +179,8 @@ fn classify(rows: &[&str], tokens: &[Token]) -> Option<Vec<Classified>> {
             Kind::Call { .. } if name_on_a_later_line(rows[line], token.start.column) => return None,
             kind => {
                 let end = token.end.line - 1;
-                roles[line + 1..=end].fill(Some(Role::Inside));
-                keeps[line..end].fill(true);
+                roles.get_mut(line + 1..=end)?.fill(Some(Role::Inside));
+                keeps.get_mut(line..end)?.fill(true);
                 // Pug joins consecutive `-` lines into one piece of JavaScript, so a string can go on past the line end.
                 keeps[end] = matches!(
                     kind,
@@ -219,8 +218,15 @@ fn name_on_a_later_line(row: &str, column: usize) -> bool {
 mod tests {
     use super::*;
 
+    /// `format` of a template Pug accepts.
+    fn formatted(text: &str, settings: &Settings) -> Option<Indented> {
+        let tokens = crate::pug::lexer::lex(text).ok()?;
+        crate::pug::parser::parse_tokens(tokens.clone()).ok()?;
+        format(text, &tokens, settings)
+    }
+
     fn reindent(text: &str, settings: &Settings) -> Option<String> {
-        format(text, settings).map(|indented| indented.text)
+        formatted(text, settings).map(|indented| indented.text)
     }
 
     /// `text` formatted with the defaults, checked to compile as it did and to stay as it is when formatted again.
@@ -362,7 +368,7 @@ mod tests {
 
     #[test]
     fn only_blank_lines_outside_text_may_go() {
-        let removable = |text: &str| format(text, &Settings::default()).unwrap().lines.iter().map(|l| l.removable).collect::<Vec<_>>();
+        let removable = |text: &str| formatted(text, &Settings::default()).unwrap().lines.iter().map(|l| l.removable).collect::<Vec<_>>();
         assert_eq!(removable("p\n\nq\n"), [false, true, false, true]);
         assert_eq!(removable("p.\n  a\n\n  b\nq\n"), [false, false, false, false, false, true]);
         assert_eq!(removable("a(href=x\n\n  title=y)\n"), [false, true, false, true]);

@@ -3,13 +3,12 @@
 //! folder and an absolute one from `basedir`, here the app's asset root.
 
 use super::lexer::{is_js_whitespace, BlockMode};
-use super::parser::{self, Block, FileReference, Node, NodeKind};
-use super::{children, code, nodes, offset, parsed};
+use super::parser::{self, has_extension, implied, Block, FileReference, Node, NodeKind};
+use super::{children, code, has_lone_cr, nodes, offset, parsed};
 use crate::lang::TemplateLang;
 use crate::rails::paths;
 use crate::util::{coded, error, lexically_normal, warning, LineIndex};
 use dashmap::DashMap;
-use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -60,27 +59,6 @@ pub struct Candidate {
     pub file: PathBuf,
 }
 
-/// Node's `path.extname(path) != ""`, which on Windows also splits at `\` and skips a drive (`C:`).
-fn has_extension(path: &str, windows: bool) -> bool {
-    let is_separator = |c: char| c == '/' || (windows && c == '\\');
-    let path = match path.as_bytes() {
-        [drive, b':', ..] if windows && drive.is_ascii_alphabetic() => &path[2..],
-        _ => path,
-    };
-    let name = path.trim_end_matches(is_separator).rsplit(is_separator).next().unwrap_or_default();
-    name != ".." && name.rfind('.').is_some_and(|dot| dot > 0)
-}
-
-/// The path Pug reads for `path`: `pug.compile` adds `.pug` when it has no extension, so `include row` never finds
-/// pug-rails' `row.jst.pug`.
-pub fn implied(path: &str) -> Cow<'_, str> {
-    if has_extension(path, cfg!(windows)) {
-        Cow::Borrowed(path)
-    } else {
-        Cow::Owned(format!("{path}.pug"))
-    }
-}
-
 /// The folder an absolute path starts from, standing in for the `basedir` pug-rails users set.
 fn asset_root(current: &Path) -> Option<PathBuf> {
     let root = paths::rails_root(current)?;
@@ -117,16 +95,12 @@ fn layout_of(tree: &Block) -> Option<&FileReference> {
 
 struct Source<'a> {
     text: &'a str,
-    index: LineIndex<'a>,
+    index: &'a LineIndex<'a>,
 }
 
-impl<'a> Source<'a> {
-    fn new(text: &'a str) -> Self {
-        Source { text, index: LineIndex::new(text) }
-    }
-
+impl Source<'_> {
     fn node_start(&self, node: &Node) -> usize {
-        offset(&self.index, node.line, node.column)
+        offset(self.index, node.line, node.column)
     }
 
     /// From `start` to the end of its line's text.
@@ -137,17 +111,22 @@ impl<'a> Source<'a> {
     }
 
     fn file_ref(&self, keyword: Keyword, file: &FileReference) -> FileRef {
-        let at = offset(&self.index, file.line, file.column);
+        let at = offset(self.index, file.line, file.column);
         // Pug's column is past the spaces after the keyword, not past the rest of the whitespace it trims.
         let start = at + self.text[at..].len() - self.text[at..].trim_start_matches(is_js_whitespace).len();
         FileRef { keyword, path: file.path.clone(), start, end: start + file.path.len() }
     }
 }
 
-/// The `include` and `extends` paths of `text`, or of the lines above its first syntax error.
+/// The `include` and `extends` paths of `text`, or of the lines above its first syntax error; none for text with a lone `\r`,
+/// a line break for Pug that `LineIndex` doesn't count.
 pub fn file_refs(text: &str) -> Vec<FileRef> {
+    if has_lone_cr(text) {
+        return Vec::new();
+    }
     let Some(tree) = parsed(text) else { return Vec::new() };
-    let source = Source::new(text);
+    let index = LineIndex::new(text);
+    let source = Source { text, index: &index };
     file_references(&tree).map(|(keyword, file)| source.file_ref(keyword, file)).collect()
 }
 
@@ -218,8 +197,8 @@ pub fn candidates(current: &Path, keyword: Keyword, typed: &str) -> Vec<Candidat
 
 /// The problems with what a template that parses includes and extends, which Pug reports when it compiles it (a mixin
 /// call, when it renders it); only those whose code `reports` takes are looked for.
-pub fn diagnostics(text: &str, tree: &Block, current: &Path, reports: &dyn Fn(&str) -> bool) -> Vec<Diagnostic> {
-    let source = Source::new(text);
+pub fn diagnostics(text: &str, index: &LineIndex, tree: &Block, current: &Path, reports: impl Fn(&str) -> bool) -> Vec<Diagnostic> {
+    let source = Source { text, index };
     let current = lexically_normal(current);
     let mut linker = Linker::new(&current);
     let mut out = Vec::new();
@@ -287,7 +266,7 @@ fn unknown_mixins(source: &Source, tree: &Block, current: &Path, linker: &mut Li
         .into_iter()
         .filter_map(|node| match &node.kind {
             // `+#{expr}` names its mixin at render time.
-            NodeKind::MixinCall { tag, .. } if !tag.name.starts_with("#{") => Some((node, tag.name.as_str())),
+            NodeKind::MixinCall { tag, .. } if !tag.interpolated => Some((node, tag.name.as_str())),
             _ => None,
         })
         .collect();
@@ -394,7 +373,7 @@ struct Linker {
     trees: HashMap<PathBuf, Option<Rc<Block>>>,
     /// The mixins a file and what it includes and extends define, and the blocks an included file adds. Each is the same
     /// wherever the file is reached from: one that reaches an open file is in a cycle with it.
-    mixins: HashMap<PathBuf, Option<Names>>,
+    mixins: HashMap<PathBuf, Option<Rc<Names>>>,
     included: HashMap<PathBuf, Option<Rc<Vec<Flat>>>>,
     /// The named blocks of the trees being linked, which linking changes as pug-linker changes Pug's nodes.
     blocks: Vec<Named>,
@@ -620,7 +599,7 @@ impl Linker {
                     names.insert(name.clone());
                 }
                 NodeKind::Include { file: other, .. } | NodeKind::Extends { file: other } => {
-                    names.extend(self.mixins_of(file, &other.path)?);
+                    names.extend(self.mixins_of(file, &other.path)?.iter().cloned());
                 }
                 _ => {}
             }
@@ -628,12 +607,12 @@ impl Linker {
         Some(names)
     }
 
-    fn mixins_of(&mut self, from: &Path, path: &str) -> Option<Names> {
+    fn mixins_of(&mut self, from: &Path, path: &str) -> Option<Rc<Names>> {
         let file = resolve(from, path)?;
         if let Some(found) = self.mixins.get(&file) {
             return found.clone();
         }
-        let found = self.within(from, path, |linker, tree, file| linker.mixin_names(tree, file));
+        let found = self.within(from, path, |linker, tree, file| linker.mixin_names(tree, file).map(Rc::new));
         self.mixins.insert(file, found.clone());
         found
     }
@@ -655,7 +634,7 @@ mod tests {
         let path = root.join(file);
         let text = std::fs::read_to_string(&path).unwrap();
         let tree = parser::parse(&text).unwrap();
-        diagnostics(&text, &tree, &path, &|_| true)
+        diagnostics(&text, &LineIndex::new(&text), &tree, &path, |_| true)
             .into_iter()
             .map(|d| (d.range.start.line, crate::util::code(&d).unwrap_or_default().to_string(), d.message))
             .collect()
@@ -663,44 +642,6 @@ mod tests {
 
     fn at(line: u32, code: &str, message: &str) -> (u32, String, String) {
         (line, code.to_string(), message.to_string())
-    }
-
-    #[test]
-    fn paths_get_pugs_implied_extension() {
-        for (path, read) in [
-            ("row", "row.pug"),
-            ("row.jst.pug", "row.jst.pug"),
-            ("old.jade", "old.jade"),
-            ("frag.html", "frag.html"),
-            ("../shared/.hidden", "../shared/.hidden.pug"),
-            ("sub/", "sub/.pug"),
-            ("..", "...pug"),
-            ("a.", "a."),
-        ] {
-            assert_eq!(implied(path), read, "{path}");
-        }
-    }
-
-    /// Node's `path.posix.extname` and `path.win32.extname`, whatever the platform the test runs on.
-    #[test]
-    fn extensions_follow_the_platforms_separators() {
-        for (path, posix, windows) in [
-            ("a.b\\c", true, false),
-            ("a\\b.c", true, true),
-            ("dir\\.a", true, false),
-            ("x\\..", true, false),
-            ("a.b\\", true, true),
-            ("C:.a", true, false),
-            ("C:a.b", true, true),
-            ("c:\\x\\y.pug", true, true),
-            ("a.b/c", false, false),
-            ("dir/.a", false, false),
-            ("..a", true, true),
-            ("...", true, true),
-            (".", false, false),
-        ] {
-            assert_eq!((has_extension(path, false), has_extension(path, true)), (posix, windows), "{path}");
-        }
     }
 
     #[test]
@@ -727,6 +668,8 @@ mod tests {
         assert_eq!(ref_at("include a\np #[b", 9).map(|r| r.path), Some("a".to_string()), "lines above a syntax error");
         let spaced = "include \u{a0}missing \u{feff}\n";
         assert_eq!(file_refs(spaced).iter().map(|r| &spaced[r.start..r.end]).collect::<Vec<_>>(), ["missing"]);
+        // Pug's second line is the editor's first: the span would run past the text.
+        assert!(file_refs("p\rinclude é\n").is_empty());
     }
 
     #[test]

@@ -117,8 +117,8 @@ pub(crate) fn diagnostics_in(
         tree.as_ref().filter(|_| elements_wanted || attributes_wanted).map(|tree| attributes::helper_elements(tree.compiled, &tree.root));
     let helpers = helpers.unwrap_or_default();
     if elements_wanted {
-        out.extend(element_lints::diagnostics(doc.lang, &doc.text, &markup, &helpers));
-        out.extend(nested_interactive::diagnostics(doc.lang, &doc.text, &markup, &helpers));
+        out.extend(element_lints::diagnostics(doc.lang, &doc.text, &markup, &helpers, None));
+        out.extend(nested_interactive::diagnostics(doc.lang, &doc.text, &markup, &helpers, None));
     }
     if let (Some(path), Some(views_root), Some(tree)) = (&path, &views_root, &tree) {
         out.extend(view_diagnostics(doc, rules, path, views_root, tree, &[markup.as_slice(), helpers.as_slice()].concat(), &ruby));
@@ -140,16 +140,20 @@ pub(crate) fn diagnostics_in(
     out
 }
 
-/// Pug's own checks, then the element lints on its tags and the line length; a Pug template has no Ruby to make elements.
+/// Pug's own checks, then the element lints on its tags and the line length, all on one parse; a Pug template has no Ruby
+/// to make elements.
 fn pug_diagnostics(uri: &Uri, doc: &Doc, rules: &ResolvedRules) -> Vec<Diagnostic> {
-    let mut out = pug::diagnostics(&doc.text, util::file_path(uri).as_deref(), &|code| rules.reports(code));
-    if pug::has_lone_cr(&doc.text) {
+    let text = doc.text.as_str();
+    let (index, parsed) = (util::LineIndex::new(text), pug::parser::parse(text));
+    let mut out = pug::diagnostics(text, &index, &parsed, util::file_path(uri).as_deref(), |code| rules.reports(code));
+    if pug::has_lone_cr(text) {
         return out;
     }
-    if ELEMENT_LINTS.iter().any(|code| rules.reports(code)) {
-        let markup = pug::elements::markup(&doc.text);
-        out.extend(element_lints::diagnostics(doc.lang, &doc.text, &markup, &[]));
-        out.extend(nested_interactive::diagnostics(doc.lang, &doc.text, &markup, &[]));
+    if let (Ok(tree), true) = (&parsed, ELEMENT_LINTS.iter().any(|code| rules.reports(code))) {
+        let markup = pug::elements::tags(text, &index, tree);
+        let ancestry = pug::elements::ancestry(&index, tree);
+        out.extend(element_lints::diagnostics(doc.lang, text, &markup, &[], Some(&ancestry)));
+        out.extend(nested_interactive::diagnostics(doc.lang, text, &markup, &[], Some(&ancestry)));
     }
     if let Some(max) = rules.line_length() {
         out.extend(line_length::diagnostics(&doc.text, max));

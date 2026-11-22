@@ -3,6 +3,7 @@
 
 use crate::attributes::{ends_in_options, last_argument_bytes, Element};
 use crate::lang::TemplateLang;
+use crate::pug::lexer::Kind;
 use crate::util::find_balanced;
 use ruby_prism::{CallNode, Visit};
 use std::ops::Range;
@@ -49,18 +50,28 @@ fn in_slim_tag(text: &str, head: usize, name: &str) -> Option<(usize, String)> {
 }
 
 /// `img(src="a")` takes `alt=""` in its first list, a tag without one `(alt="")` after its name and shorthands; none unless Pug
-/// reads the result as the same tag with the attribute added.
+/// reads the result as the same tag with the attribute added. Pug lexes a tag's attribute list on its own, so the tag up to
+/// the end of that list is all that is read again.
 fn in_pug_tag(text: &str, element: &Element, head: usize, name: &str) -> Option<(usize, String)> {
     let entry = format!("{name}=\"\"");
-    let (at, added) = match text[head..].chars().next() {
-        // Where Pug ends the list, past `)` in strings, template literals and regular expressions.
-        Some('(') => append_entry(text, crate::pug::lexer::parse_until(text, ')', head + 1).ok()?, &entry, " "),
-        _ => (head, format!("({entry})")),
+    let (at, added, end) = match text[head..].chars().next() {
+        Some('(') => {
+            // Where Pug ends the list, past `)` in strings, template literals and regular expressions.
+            let inside = crate::pug::lexer::parse_until(text, ')', head + 1).ok()?;
+            let (at, added) = append_entry(text, inside.clone(), &entry, " ");
+            (at, added, inside.end + ")".len())
+        }
+        _ => (head, format!("({entry})"), head),
     };
-    let edited = format!("{}{added}{}", &text[..at], &text[at..]);
-    let gained =
-        |tag: &Element| tag.at == element.at && tag.attributes.len() == element.attributes.len() + 1 && tag.attribute(name).is_some();
-    crate::pug::elements::markup(&edited).iter().any(gained).then_some((at, added))
+    let start = element.at.start;
+    let attributes = |tag: &str| -> Option<Vec<Kind>> {
+        let tokens = crate::pug::lexer::lex(tag).ok()?;
+        Some(tokens.into_iter().map(|token| token.kind).filter(|kind| matches!(kind, Kind::Attribute { .. })).collect())
+    };
+    let before = attributes(&text[start..end])?;
+    let after = attributes(&format!("{}{added}{}", &text[start..at], &text[at..end]))?;
+    let expected = Kind::Attribute { name: name.to_string(), val: Some("\"\"".to_string()), must_escape: true };
+    (after.split_last() == Some((&expected, &before[..]))).then_some((at, added))
 }
 
 /// Appends `entry` after the last entry of the group that opens at `open` and ends with `close`; `separator` follows an entry
@@ -212,6 +223,17 @@ mod tests {
         assert_eq!(img("img(src=1.)\n").as_deref(), Some("img(src=1. alt=\"\")\n"));
         // Pug would read `alt` as part of the comment's line, not as an attribute.
         assert_eq!(img("img(src=x //\n)\n"), None);
+        assert_eq!(img("img(src=x\n  //\n)\n"), None);
+    }
+
+    #[test]
+    fn a_pug_fix_is_checked_on_its_tag_alone() {
+        let valid = "p\n  img(src=x)\n  img.big\n";
+        let found = crate::pug::elements::markup(valid);
+        // What follows the tags doesn't parse: only the tags themselves are read again.
+        let text = format!("{valid}  ]\n");
+        assert_eq!(empty_attribute(TemplateLang::Pug, &text, &found[1], "alt"), Some((13, " alt=\"\"".to_string())));
+        assert_eq!(empty_attribute(TemplateLang::Pug, &text, &found[2], "alt"), Some((24, "(alt=\"\")".to_string())));
     }
 
     #[test]

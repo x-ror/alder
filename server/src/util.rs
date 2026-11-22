@@ -6,6 +6,9 @@ use tower_lsp_server::ls_types::{
 };
 
 pub const BOM: char = '\u{feff}';
+/// The stack of a thread that checks or formats templates, a main thread's usual one: Prism and the template walkers
+/// recurse with the nesting of the code, Pug's down to `pug::MAX_DEPTH` levels.
+pub const THREAD_STACK: usize = 8 << 20;
 
 /// `path` with `/` separators on every platform, the form render names and Rails paths take.
 pub fn slash_path(path: &Path) -> String {

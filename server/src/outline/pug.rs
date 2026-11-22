@@ -3,8 +3,8 @@
 use super::{block_end, Symbols, LANDMARKS};
 use crate::pug;
 use crate::pug::elements::static_string;
-use crate::pug::lexer::{lex, BlockMode, Kind, Pos, Token};
-use crate::pug::parser::{self, Alternate, AttrValue, Block, Node, NodeKind, Tag};
+use crate::pug::lexer::{BlockMode, Kind, Pos, Token};
+use crate::pug::parser::{AttrValue, Node, NodeKind, Tag};
 use crate::util::LineIndex;
 use std::collections::HashMap;
 use tower_lsp_server::ls_types::{DocumentSymbol, SymbolKind};
@@ -16,12 +16,13 @@ pub fn document_symbols(text: &str) -> Vec<DocumentSymbol> {
     if pug::has_lone_cr(text) {
         return Vec::new();
     }
-    let Some(source) = pug::parsable(text) else { return Vec::new() };
-    let (Ok(tree), Ok(tokens)) = (parser::parse(source), lex(source)) else { return Vec::new() };
+    let Some((tokens, tree)) = pug::parsable(text) else { return Vec::new() };
     let index = LineIndex::new(text);
     let mut outline =
         Outline { text, lines: text.split('\n').collect(), index: &index, inline: inline_ends(&tokens), symbols: Symbols::new(&index) };
-    outline.block(&tree);
+    for node in &tree.nodes {
+        outline.node(node);
+    }
     outline.symbols.finish()
 }
 
@@ -57,51 +58,44 @@ struct Outline<'a> {
 }
 
 impl Outline<'_> {
-    fn block(&mut self, block: &Block) {
-        block.nodes.iter().for_each(|node| self.node(node));
-    }
-
     fn node(&mut self, node: &Node) {
         match &node.kind {
             NodeKind::Tag(tag) => {
                 if let Some(name) = self.tag_name(node, tag) {
                     self.add(node, name, SymbolKind::FIELD);
                 }
-                self.block(&tag.block);
             }
-            NodeKind::NamedBlock { name, mode, block } => {
+            NodeKind::NamedBlock { name, mode, .. } => {
                 let mode = match mode {
                     BlockMode::Replace => "",
                     BlockMode::Append => "append ",
                     BlockMode::Prepend => "prepend ",
                 };
                 self.add(node, format!("block {mode}{name}"), SymbolKind::NAMESPACE);
-                self.block(block);
             }
-            NodeKind::MixinDefinition { name, block, .. } => {
-                self.add(node, format!("mixin {name}"), SymbolKind::FUNCTION);
-                self.block(block);
-            }
-            NodeKind::MixinCall { tag, .. } => self.block(&tag.block),
-            NodeKind::Conditional(conditional) => {
-                self.block(&conditional.consequent);
-                match &conditional.alternate {
-                    Some(Alternate::ElseIf(node)) => self.node(node),
-                    Some(Alternate::Else(block)) => self.block(block),
-                    None => {}
-                }
-            }
-            NodeKind::Each { block, alternate, .. } => {
-                self.block(block);
-                alternate.iter().for_each(|block| self.block(block));
-            }
-            NodeKind::When { block: Some(block), .. }
-            | NodeKind::EachOf { block, .. }
-            | NodeKind::While { block, .. }
-            | NodeKind::Case { block, .. }
-            | NodeKind::Include { block, .. } => self.block(block),
-            NodeKind::Code(code) => code.block.iter().for_each(|block| self.block(block)),
-            _ => {}
+            NodeKind::MixinDefinition { name, .. } => self.add(node, format!("mixin {name}"), SymbolKind::FUNCTION),
+            // What is commented out isn't part of the page.
+            NodeKind::BlockComment { .. } => return,
+            NodeKind::MixinCall { .. }
+            | NodeKind::Conditional(_)
+            | NodeKind::Each { .. }
+            | NodeKind::When { .. }
+            | NodeKind::EachOf { .. }
+            | NodeKind::While { .. }
+            | NodeKind::Case { .. }
+            | NodeKind::Include { .. }
+            | NodeKind::Code(_)
+            | NodeKind::Filter { .. }
+            | NodeKind::Text { .. }
+            | NodeKind::MixinBlock
+            | NodeKind::YieldBlock
+            | NodeKind::Extends { .. }
+            | NodeKind::RawInclude { .. }
+            | NodeKind::Comment { .. }
+            | NodeKind::Doctype(_) => {}
+        }
+        for child in pug::children(node) {
+            self.node(child);
         }
     }
 
@@ -214,6 +208,7 @@ mod tests {
         let text = "section#main(\n  data-a=\"1\"\n)\n  .card\n    p hi\n";
         assert_eq!(names(&document_symbols(text)), ["section#main[.card]"]);
         assert_eq!(names(&document_symbols("form(id=`signup`)\nform(id=\"a\" , method=\"post\")\n")), ["form#signup", "form#a"]);
+        assert_eq!(names(&document_symbols("nav#top\n  //\n    #[span#old x]\n")), ["nav#top"], "commented out");
     }
 
     #[test]

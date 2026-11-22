@@ -33,3 +33,4 @@ mod slim;
 mod util;
 
 pub use lsp::serve;
+pub use util::THREAD_STACK;

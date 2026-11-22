@@ -4,118 +4,112 @@
 
 use super::lexer::{is_js_whitespace, js_trim};
 use super::parser::{self, Alternate, Attr, AttrValue, Block, Code, Node, NodeKind, Tag};
-use super::{children, code, nodes, offset};
+use super::{children, code, nodes, offset, walk};
 use crate::attributes::{Attribute, Element, Value};
 use crate::util::{coded, error, LineIndex};
 use std::collections::HashMap;
 use std::ops::Range;
+use std::rc::Rc;
 use tower_lsp_server::ls_types::Diagnostic;
 
 /// `void-elements` 3.1.0, the tags pug-code-gen closes itself, outside an XML doctype.
 const VOID_ELEMENTS: [&str; 14] =
     ["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"];
-/// The tags of a template Pug accepts and that outputs HTML; `#{}` tag names and mixin calls are left out.
+/// The tags of a template Pug accepts and that outputs HTML; `#{}` tag names and mixin calls are left out, and so are the
+/// tags in a `//` comment, which render inside `<!-- -->`.
 pub(crate) fn markup(text: &str) -> Vec<Element> {
     let Ok(tree) = parser::parse(text) else { return Vec::new() };
-    if is_xml(&tree) {
+    tags(text, &LineIndex::new(text), &tree)
+}
+
+/// `markup` of the template `text` whose tree is `tree`.
+pub(crate) fn tags(text: &str, index: &LineIndex, tree: &Block) -> Vec<Element> {
+    if is_xml(tree) {
         return Vec::new();
     }
-    let index = LineIndex::new(text);
     let element = |node: &Node| match &node.kind {
-        NodeKind::Tag(tag) if !tag.interpolated => Some(element(text, &index, node, tag)),
+        NodeKind::Tag(tag) if !tag.interpolated => Some(element(text, index, node, tag)),
         _ => None,
     };
-    nodes(&tree).into_iter().filter_map(element).collect()
+    walk(tree, |node| !matches!(node.kind, NodeKind::BlockComment { .. })).into_iter().filter_map(element).collect()
 }
 
-/// Each tag's start and the range its descendant tags start in, from Pug's tree: an inline `#[a …]` holds only what is
-/// inside its brackets, and `a: button` holds the button though both share a line.
-pub(crate) fn contents(text: &str) -> Vec<(usize, Range<usize>)> {
-    let Ok(tree) = parser::parse(text) else { return Vec::new() };
-    let index = LineIndex::new(text);
-    let tag_start = |node: &Node| match &node.kind {
-        NodeKind::Tag(tag) if !tag.interpolated => Some(offset(&index, node.line, node.column)),
-        _ => None,
-    };
-    let content = |node: &Node| {
-        let NodeKind::Tag(tag) = &node.kind else { return None };
-        let at = tag_start(node)?;
-        let last = nodes(&tag.block).into_iter().filter_map(tag_start).max()?;
-        Some((at, at + 1..last + 1))
-    };
-    nodes(&tree).into_iter().filter_map(content).collect()
-}
-
-/// Where Pug's tree puts each tag: in which tags and in which branches of control flow.
+/// Where Pug's tree puts each tag of `markup`: in which tags and in which branches of control flow.
 #[derive(Default)]
 pub(crate) struct Ancestry {
     /// By the offset each tag starts at.
-    tags: HashMap<usize, Around>,
+    tags: HashMap<usize, Placed>,
     /// Where each node starts that decides whether, or how often, what is in it or after it renders, in document order.
     flow: Vec<usize>,
 }
 
-#[derive(Default, Clone)]
-struct Around {
-    /// The names of the tags around, in lower case.
-    tags: Vec<String>,
+struct Placed {
+    /// In lower case.
+    name: String,
+    /// Where the tag around it starts.
+    parent: Option<usize>,
     /// The control flow around, as where it starts and which of its branches.
-    branches: Vec<(usize, usize)>,
+    branches: Rc<Vec<(usize, usize)>>,
 }
 
 impl Ancestry {
+    /// Where the tags around the one starting at `at` start, the nearest first.
+    pub(crate) fn enclosing(&self, at: usize) -> impl Iterator<Item = usize> + '_ {
+        std::iter::successors(self.tags.get(&at).and_then(|placed| placed.parent), |parent| self.tags.get(parent)?.parent)
+    }
+
     /// Whether the tag starting at `at` is inside a `name` tag.
     pub(crate) fn inside(&self, at: usize, name: &str) -> bool {
-        self.tags.get(&at).is_some_and(|around| around.tags.iter().any(|tag| tag == name))
+        self.enclosing(at).any(|parent| self.tags.get(&parent).is_some_and(|placed| placed.name == name))
     }
 
     /// Whether one of the tags starting at `first` and `second` (later) may render without the other: they are in
     /// different branches, or control flow starts between them.
     pub(crate) fn separated(&self, first: usize, second: usize) -> bool {
-        let branches = |at| self.tags.get(&at).map(|around| &around.branches);
+        let branches = |at| self.tags.get(&at).map(|placed| &placed.branches);
         branches(first).is_none() || branches(first) != branches(second) || self.flow.iter().any(|&at| first < at && at < second)
     }
 }
 
-/// The ancestry of the tags of a template Pug accepts.
-pub(crate) fn ancestry(text: &str) -> Ancestry {
-    let Ok(tree) = parser::parse(text) else { return Ancestry::default() };
-    let index = LineIndex::new(text);
+/// The ancestry of the tags of the template whose tree is `tree`.
+pub(crate) fn ancestry(index: &LineIndex, tree: &Block) -> Ancestry {
     let mut found = Ancestry::default();
-    tree.nodes.iter().for_each(|node| visit(&index, node, &Around::default(), &mut found));
+    visit_all(index, &tree.nodes, None, &Rc::new(Vec::new()), &mut found);
     found
 }
 
-fn visit(index: &LineIndex, node: &Node, around: &Around, found: &mut Ancestry) {
+/// Places the tags in `node`, which is inside the tag starting at `parent` and in `branches`.
+fn visit(index: &LineIndex, node: &Node, parent: Option<usize>, branches: &Rc<Vec<(usize, usize)>>, found: &mut Ancestry) {
     let start = offset(index, node.line, node.column);
     let in_branch = |branch: usize| {
-        let mut inner = around.clone();
-        inner.branches.push((start, branch));
-        inner
+        let mut inner = branches.as_ref().clone();
+        inner.push((start, branch));
+        Rc::new(inner)
     };
-    let each = |nodes: &[Node], inner: &Around, found: &mut Ancestry| nodes.iter().for_each(|child| visit(index, child, inner, found));
     match &node.kind {
         NodeKind::Tag(tag) => {
-            let mut inner = around.clone();
+            let mut parent = parent;
             if !tag.interpolated {
-                found.tags.insert(start, around.clone());
-                inner.tags.push(tag.name.to_ascii_lowercase());
+                found.tags.insert(start, Placed { name: tag.name.to_ascii_lowercase(), parent, branches: branches.clone() });
+                parent = Some(start);
             }
-            each(&tag.block.nodes, &inner, found);
+            visit_all(index, &tag.block.nodes, parent, branches, found);
         }
         NodeKind::Conditional(conditional) => {
             found.flow.push(start);
-            each(&conditional.consequent.nodes, &in_branch(0), found);
+            visit_all(index, &conditional.consequent.nodes, parent, &in_branch(0), found);
             match &conditional.alternate {
-                Some(Alternate::ElseIf(node)) => visit(index, node, &in_branch(1), found),
-                Some(Alternate::Else(block)) => each(&block.nodes, &in_branch(1), found),
+                Some(Alternate::ElseIf(node)) => visit(index, node, parent, &in_branch(1), found),
+                Some(Alternate::Else(block)) => visit_all(index, &block.nodes, parent, &in_branch(1), found),
                 None => {}
             }
         }
         NodeKind::Each { block, alternate, .. } => {
             found.flow.push(start);
-            each(&block.nodes, &in_branch(0), found);
-            alternate.iter().for_each(|block| each(&block.nodes, &in_branch(1), found));
+            visit_all(index, &block.nodes, parent, &in_branch(0), found);
+            if let Some(block) = alternate {
+                visit_all(index, &block.nodes, parent, &in_branch(1), found);
+            }
         }
         NodeKind::EachOf { .. }
         | NodeKind::While { .. }
@@ -128,15 +122,37 @@ fn visit(index: &LineIndex, node: &Node, around: &Around, found: &mut Ancestry) 
         | NodeKind::Code(Code { buffer: false, .. }) => {
             found.flow.push(start);
             let inner = in_branch(0);
-            children(node).into_iter().for_each(|child| visit(index, child, &inner, found));
+            for child in children(node) {
+                visit(index, child, parent, &inner, found);
+            }
         }
-        _ => children(node).into_iter().for_each(|child| visit(index, child, around, found)),
+        // Its tags render inside `<!-- -->`.
+        NodeKind::BlockComment { .. } => {}
+        NodeKind::Code(Code { buffer: true, .. })
+        | NodeKind::Text { .. }
+        | NodeKind::YieldBlock
+        | NodeKind::Extends { .. }
+        | NodeKind::Include { .. }
+        | NodeKind::RawInclude { .. }
+        | NodeKind::Filter { .. }
+        | NodeKind::Comment { .. }
+        | NodeKind::Doctype(_) => {
+            for child in children(node) {
+                visit(index, child, parent, branches, found);
+            }
+        }
+    }
+}
+
+fn visit_all(index: &LineIndex, nodes: &[Node], parent: Option<usize>, branches: &Rc<Vec<(usize, usize)>>, found: &mut Ancestry) {
+    for node in nodes {
+        visit(index, node, parent, branches, found);
     }
 }
 
 /// pug-code-gen's `SELF_CLOSING_CONTENT`, the first one in the template: a tag closed with `/` (whatever its name, `#{}` too)
 /// or a void element outside XML mode that holds anything but blank text. A `doctype` sets XML mode from where it is on.
-pub(crate) fn void_children(text: &str, tree: &Block) -> Option<Diagnostic> {
+pub(crate) fn void_children(index: &LineIndex, tree: &Block) -> Option<Diagnostic> {
     let has_content = |tag: &Tag| {
         tag.block.nodes.iter().any(|node| !matches!(&node.kind, NodeKind::Text { val, .. } if val.chars().all(is_js_whitespace)))
     };
@@ -155,8 +171,7 @@ pub(crate) fn void_children(text: &str, tree: &Block) -> Option<Diagnostic> {
         }
         _ => None,
     })?;
-    let index = LineIndex::new(text);
-    let start = offset(&index, node.line, node.column);
+    let start = offset(index, node.line, node.column);
     // pug-code-gen names the tag by its `name`, which an interpolated one doesn't have.
     let (name, written) = if tag.interpolated { ("undefined", "#{}".len() + tag.name.len()) } else { (tag.name.as_str(), tag.name.len()) };
     let message = format!("{name} is a self closing element: <{name}/> but contains nested content.");
@@ -244,9 +259,9 @@ fn own_text(text: &str, index: &LineIndex, tag: &Tag) -> Option<Range<usize>> {
     let [node] = tag.block.nodes.as_slice() else { return None };
     let NodeKind::Text { val, html: false } = &node.kind else { return None };
     let start = offset(index, node.line, node.column);
-    // The token starts at the space or `|` before the text.
-    let found = text[start..].split('\n').next()?.find(val.as_str())?;
-    Some(start + found..start + found + val.len())
+    // The token starts at the space or `|` before the text, on its line.
+    let found = text[start..].find(val.as_str())?;
+    (!text[start..start + found].contains('\n')).then_some(start + found..start + found + val.len())
 }
 
 /// Where a tag's first attribute list starts, or where one would go: past the name and the `#id` and `.class` after it.
@@ -334,6 +349,14 @@ mod tests {
     }
 
     #[test]
+    fn tags_in_a_comment_render_inside_it() {
+        assert!(markup("//\n  #[img(src=x)] #[a#x]\n").is_empty());
+        let text = "//\n  #[a#x]\np#x\n";
+        let ancestry = ancestry(&LineIndex::new(text), &parser::parse(text).unwrap());
+        assert!(ancestry.separated(text.find("a#x").unwrap(), text.find("p#x").unwrap()), "not placed");
+    }
+
+    #[test]
     fn templates_pug_rejects_or_xml_have_no_elements() {
         assert!(markup("p\n    a\n  b\n").is_empty());
         assert!(markup("doctype xml\nimg\n").is_empty());
@@ -354,13 +377,17 @@ mod tests {
     fn content_in_a_void_element_is_reported_once_as_pug_does() {
         let found = |text: &str| {
             let tree = parser::parse(text).unwrap();
-            void_children(text, &tree).map(|d| (d.range.start.line, d.range.start.character, d.range.end.character, d.message))
+            void_children(&LineIndex::new(text), &tree)
+                .map(|d| (d.range.start.line, d.range.start.character, d.range.end.character, d.message))
         };
         let message = "img is a self closing element: <img/> but contains nested content.".to_string();
         assert_eq!(found("p\n  img x\n  br\n    | y\n"), Some((1, 2, 5, message.clone())));
         assert_eq!(found("img= src\n"), Some((0, 0, 3, message.clone())));
         assert_eq!(found("mixin m\n  img\n    p\n"), Some((1, 2, 5, message.clone())));
-        assert_eq!(found("each x of xs\n  img= x\n"), Some((1, 2, 5, message)));
+        assert_eq!(found("each x of xs\n  img= x\n"), Some((1, 2, 5, message.clone())));
+        // pug-code-gen compiles the `#[...]` tags in a `//` comment's text; its other lines are text.
+        assert_eq!(found("//\n  #[img x]\n"), Some((1, 4, 7, message)));
+        assert_eq!(found("//\n  img x\n"), None);
         assert_eq!(found("foo/\n  p\n").map(|d| d.3), Some("foo is a self closing element: <foo/> but contains nested content.".into()));
         let undefined = "undefined is a self closing element: <undefined/> but contains nested content.".to_string();
         assert_eq!(found("#{t}/\n  p\n"), Some((0, 0, 4, undefined)), "an explicit `/` whatever the name");
@@ -390,7 +417,7 @@ mod tests {
     #[test]
     fn ancestry_follows_the_tree() {
         let text = "svg: a x\np#x\nblock_item\np#x\nif x\n  #a\nelse\n  #b\ntemplate: #t\n";
-        let found = ancestry(text);
+        let found = ancestry(&LineIndex::new(text), &parser::parse(text).unwrap());
         let at = |needle: &str| text.find(needle).unwrap();
         assert!(found.inside(at("a x"), "svg") && !found.inside(at("p#x"), "svg"));
         assert!(found.inside(at("#t"), "template"));
