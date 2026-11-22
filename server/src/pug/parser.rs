@@ -1330,8 +1330,15 @@ mod tests {
     #[test]
     fn oracle_cases() {
         let cases: Vec<Value> = serde_json::from_str(include_str!("../../../test/oracle/pug_cases.json")).unwrap();
-        let mismatches: Vec<String> = cases.iter().filter_map(disagreement).collect();
+        let mismatches: Vec<String> = cases.iter().filter(|case| recorded_for_this_platform(case)).filter_map(disagreement).collect();
         assert!(mismatches.is_empty(), "{} of {} cases differ:\n{}", mismatches.len(), cases.len(), mismatches.join("\n"));
+    }
+
+    /// The cases are recorded on POSIX, where `\` in an `include` path isn't a separator; on Windows Pug answers
+    /// differently, which `has_extension`'s own test covers.
+    fn recorded_for_this_platform(case: &Value) -> bool {
+        let source = case["source"].as_str().unwrap_or_default();
+        !(cfg!(windows) && source.starts_with("include ") && source.contains('\\'))
     }
 
     /// Pug's own test templates, recorded by `node test/oracle/pug.js` into the file `PUG_ORACLE_RESULTS` names.
