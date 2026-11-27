@@ -215,11 +215,21 @@ const railsRuns = (dir) => {
   }
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-// The run has printed; a moment for the server to take its output.
-const routesLoaded = async (dir, runs) => {
-  for (let waited = 0; waited < 10000 && railsRuns(dir) < runs; waited += 50)
-    await sleep(50);
-  await sleep(300);
+// The server logs once it has taken a run's routes.
+const routeLoads = (notes, dir) =>
+  notes.filter(
+    (n) =>
+      n.method === "window/logMessage" &&
+      n.params.message.startsWith("routes: loaded") &&
+      n.params.message.includes(path.basename(dir)),
+  ).length;
+const routesLoaded = async (notes, dir, loads) => {
+  for (
+    let waited = 0;
+    waited < 10000 && routeLoads(notes, dir) < loads;
+    waited += 25
+  )
+    await sleep(25);
 };
 const useRoutes = { routes: { ruby: "sh" } };
 
@@ -274,7 +284,7 @@ fakeRails(root);
 const { send, notes, exited } = startServer();
 // The server reads the routes through `bin/rails runner` again when a routes file changes.
 const reloadRoutes = async (dir, routes) => {
-  const before = railsRuns(dir);
+  const before = routeLoads(notes, dir);
   fs.writeFileSync(path.join(dir, "routes.json"), JSON.stringify(routes));
   await send(
     "workspace/didChangeWatchedFiles",
@@ -285,7 +295,7 @@ const reloadRoutes = async (dir, routes) => {
     },
     true,
   );
-  await routesLoaded(dir, before + 1);
+  await routesLoaded(notes, dir, before + 1);
 };
 const rel = (p) => p.replace(fileUri(root), "");
 let failures = 0;
@@ -3155,7 +3165,7 @@ const check = (label, actual, expected) => {
   });
   await multi.send("initialized", {}, true);
   for (const { dir, page, text } of apps) {
-    await routesLoaded(dir, 1);
+    await routesLoaded(multi.notes, dir, 1);
     await multi.send(
       "textDocument/didOpen",
       { textDocument: { uri: page, languageId: "erb", version: 1, text } },
@@ -3230,6 +3240,7 @@ const check = (label, actual, expected) => {
       erb: { diagnostics: { enabled: false }, format: { enabled: false } },
       haml: { format: { enabled: false } },
       pug: { format: { enabled: false } },
+      routes: { enabled: false },
     },
   });
   await off.send("initialized", {}, true);
@@ -3285,7 +3296,10 @@ const check = (label, actual, expected) => {
     processId: null,
     rootUri: fileUri(root),
     capabilities: {},
-    initializationOptions: { erb: { format: { alignComments: true } } },
+    initializationOptions: {
+      erb: { format: { alignComments: true } },
+      routes: { enabled: false },
+    },
   });
   await aligned.send("initialized", {}, true);
   const commentUri = fileUri(path.join(views, "users", "comment.html.erb"));
@@ -3808,7 +3822,7 @@ const check = (label, actual, expected) => {
     [{ name: "users", verb: "GET", path: "/users" }],
   ]);
   const loading = await routeServer(loaded.dir, loaded.uri, useRoutes);
-  await routesLoaded(loaded.dir, 1);
+  await routesLoaded(loading.notes, loaded.dir, 1);
   const completion = await loading.send("textDocument/completion", {
     textDocument: { uri: loaded.uri },
     position: { line: 1, character: 11 },
@@ -3914,9 +3928,8 @@ const check = (label, actual, expected) => {
       capabilities,
       initializationOptions: { ...useRoutes, ...initializationOptions },
     });
-    const runs = railsRuns(fixRoot);
     await srv.send("initialized", {}, true);
-    await routesLoaded(fixRoot, runs + 1);
+    await routesLoaded(srv.notes, fixRoot, 1);
     const text = fixViewText;
     const didOpen = {
       textDocument: { uri: fixViewUri, languageId: "erb", version: 1, text },
@@ -4464,6 +4477,7 @@ const check = (label, actual, expected) => {
   await watching.send("initialize", {
     processId: null,
     rootUri: fileUri(root),
+    initializationOptions: { routes: { enabled: false } },
     capabilities: {
       workspace: { didChangeWatchedFiles: { dynamicRegistration: true } },
       textDocument: { synchronization: { dynamicRegistration: true } },
@@ -4548,6 +4562,7 @@ const check = (label, actual, expected) => {
   await dynamic.send("initialize", {
     processId: null,
     rootUri: fileUri(root),
+    initializationOptions: { routes: { enabled: false } },
     capabilities: {
       textDocument: {
         formatting: { dynamicRegistration: true },
