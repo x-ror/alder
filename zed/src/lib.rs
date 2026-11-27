@@ -7,6 +7,7 @@ use zed_extension_api::{
 const SERVER: &str = "alder-ls";
 const REPOSITORY: &str = "x-ror/alder";
 const DOWNLOAD_DIR_PREFIX: &str = "alder-ls-";
+const PARTIAL_SUFFIX: &str = ".partial";
 const SETUP_HINT: &str = "put `alder-ls` on your PATH or set `lsp.alder-ls.binary.path` in your Zed settings";
 
 #[derive(Debug, PartialEq)]
@@ -44,7 +45,7 @@ fn downloaded_dirs() -> impl Iterator<Item = String> {
 }
 
 fn find_downloaded(binary: &str) -> Option<String> {
-    downloaded_dirs().map(|dir| format!("{dir}/{binary}")).find(|path| is_file(path))
+    downloaded_dirs().filter(|dir| !dir.ends_with(PARTIAL_SUFFIX)).map(|dir| format!("{dir}/{binary}")).find(|path| is_file(path))
 }
 
 fn install_latest(language_server_id: &LanguageServerId, asset: &ReleaseAsset) -> Result<String> {
@@ -65,11 +66,19 @@ fn install_latest(language_server_id: &LanguageServerId, asset: &ReleaseAsset) -
         .ok_or_else(|| format!("release {} of {REPOSITORY} has no {} download; {SETUP_HINT}", release.version, asset.name))?;
 
     zed::set_language_server_installation_status(language_server_id, &LanguageServerInstallationStatus::Downloading);
-    let unpacked = zed::download_file(&download.download_url, &version_dir, asset.file_type)
-        .and_then(|()| zed::make_file_executable(&binary_path))
-        .and_then(|()| if is_file(&binary_path) { Ok(()) } else { Err(format!("{} does not contain {}", asset.name, asset.binary)) });
+    // Unpacked beside its final place and renamed, so an interrupted download is never taken for an installed server.
+    let partial_dir = format!("{version_dir}{PARTIAL_SUFFIX}");
+    let partial_binary = format!("{partial_dir}/{}", asset.binary);
+    fs::remove_dir_all(&partial_dir).ok();
+    let unpacked = zed::download_file(&download.download_url, &partial_dir, asset.file_type)
+        .and_then(|()| if is_file(&partial_binary) { Ok(()) } else { Err(format!("{} does not contain {}", asset.name, asset.binary)) })
+        .and_then(|()| zed::make_file_executable(&partial_binary))
+        .and_then(|()| {
+            fs::remove_dir_all(&version_dir).ok();
+            fs::rename(&partial_dir, &version_dir).map_err(|err| err.to_string())
+        });
     if let Err(err) = unpacked {
-        fs::remove_dir_all(&version_dir).ok();
+        fs::remove_dir_all(&partial_dir).ok();
         return Err(format!("failed to install {SERVER} {}: {err}", release.version));
     }
 
