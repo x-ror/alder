@@ -14,7 +14,7 @@ use crate::report::{self, Finding, Format, Severity};
 use crate::rules::file::ConfigFile;
 use crate::rules::resolve::{resolve, Configs, ResolvedRules};
 use crate::util;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write as _;
 use std::io::{BufWriter, Read, Write};
 use std::path::{Component, Path, PathBuf};
@@ -367,7 +367,7 @@ fn check_file(
     }
     let doc = Doc { lang, text, plain_erb: false, percent_lines: false, version: 0 };
     let source = Source { shown: path, path, text: &doc.text };
-    for d in diagnostics_in(&uri, &doc, &rules, projects, &[], includers) {
+    for d in diagnostics_in(&uri, &doc, &rules, projects, &[], includers, &HashMap::new()) {
         let severity = d.severity.unwrap_or(DiagnosticSeverity::ERROR);
         checked.rendered.add(output, &source, (Severity::of(severity), util::code(&d), &d.message), d.range);
         // Lower numbers are more severe.

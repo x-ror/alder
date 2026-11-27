@@ -128,8 +128,8 @@ fn manifest_insertions(source: &str, identifier: &str, stem: &str) -> Option<Vec
 
 /// The file of the controller `identifier`, when it can be edited with confidence: one file registers it and its class is read
 /// whole, as the lints on its targets and methods read it.
-pub fn editable_controller(current: &Path, identifier: &str) -> Option<PathBuf> {
-    stimulus_controller::controller(current, identifier)?;
+pub fn editable_controller(current: &Path, identifier: &str, open: &HashMap<PathBuf, String>) -> Option<PathBuf> {
+    stimulus_controller::controller(current, identifier, open)?;
     let [file]: [PathBuf; 1] = stimulus::resolve(current, identifier).try_into().ok()?;
     Some(file)
 }
@@ -538,9 +538,9 @@ mod tests {
             (&format!("{javascript}/odd_controller.js"), &format!("{HEADER}  static targets = names\n}}\n")),
         ]);
         let view = root.join("app/views/x/index.html.erb");
-        assert_eq!(editable_controller(&view, "search"), Some(root.join(javascript).join("search_controller.js")));
-        assert_eq!(editable_controller(&view, "odd"), None);
-        assert_eq!(editable_controller(&view, "missing"), None);
+        assert_eq!(editable_controller(&view, "search", &HashMap::new()), Some(root.join(javascript).join("search_controller.js")));
+        assert_eq!(editable_controller(&view, "odd", &HashMap::new()), None);
+        assert_eq!(editable_controller(&view, "missing", &HashMap::new()), None);
         std::fs::remove_dir_all(root).unwrap();
     }
 }

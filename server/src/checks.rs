@@ -65,11 +65,12 @@ impl Doc {
 #[cfg(test)]
 pub(crate) fn diagnostics(uri: &Uri, doc: &Doc, options: &crate::options::Options) -> Vec<Diagnostic> {
     let rules = crate::rules::resolve::resolve(uri, doc.lang, options, &mut Default::default());
-    diagnostics_in(uri, doc, &rules, &mut Projects::new(), &[], &Default::default())
+    diagnostics_in(uri, doc, &rules, &mut Projects::new(), &[], &Default::default(), &HashMap::new())
 }
 
 /// `diagnostics`, taking the template's project from `projects` when a run already loaded it. `routes` are the app's, empty
-/// when it has not sent them; `includers` the Pug templates that include others.
+/// when it has not sent them; `includers` the Pug templates that include others; `open` the unsaved text of open files, which
+/// a Stimulus controller is read from before its saved file.
 pub(crate) fn diagnostics_in(
     uri: &Uri,
     doc: &Doc,
@@ -77,6 +78,7 @@ pub(crate) fn diagnostics_in(
     projects: &mut Projects,
     routes: &[routes::Route],
     includers: &pug::refs::Includers,
+    open: &HashMap<PathBuf, String>,
 ) -> Vec<Diagnostic> {
     // Thor templates (`*.html.erb.tt`, `*.haml.tt`) mix the generator's ERB with the template's own tags or
     // lines, and their partials live outside app/views, so no check applies.
@@ -122,7 +124,8 @@ pub(crate) fn diagnostics_in(
         out.extend(nested_interactive::diagnostics(doc.lang, &doc.text, &markup, &helpers, None));
     }
     if let (Some(path), Some(views_root), Some(tree)) = (&path, &views_root, &tree) {
-        out.extend(view_diagnostics(doc, rules, path, views_root, tree, &[markup.as_slice(), helpers.as_slice()].concat(), &ruby));
+        out.extend(view_diagnostics(doc, path, views_root, tree, &ruby));
+        out.extend(stimulus_diagnostics(doc, rules, path, &[markup.as_slice(), helpers.as_slice()].concat(), open));
     }
     if let (Some(path), Some(project), Some(_), Some(tree)) = (&path, project, &views_root, &tree) {
         out.extend(reference_diagnostics(doc, rules, path, project, routes, &ruby, tree));
@@ -194,16 +197,8 @@ fn view_lints_root(rules: &ResolvedRules, project: &Project, path: &Path) -> Opt
     applies.then_some(views_root)
 }
 
-/// The view lints; `elements` are the template's markup and helper elements.
-fn view_diagnostics(
-    doc: &Doc,
-    rules: &ResolvedRules,
-    path: &Path,
-    views_root: &Path,
-    tree: &RubyTree,
-    elements: &[attributes::Element],
-    ruby: &RubyContext,
-) -> Vec<Diagnostic> {
+/// The view lints.
+fn view_diagnostics(doc: &Doc, path: &Path, views_root: &Path, tree: &RubyTree, ruby: &RubyContext) -> Vec<Diagnostic> {
     let in_layouts = path.strip_prefix(views_root).is_ok_and(|relative| relative.starts_with(LAYOUTS_FOLDER));
     let view = view_lints::View {
         lang: doc.lang,
@@ -214,15 +209,26 @@ fn view_diagnostics(
     let mut out = output_lints::diagnostics(doc.lang, &doc.text, tree.compiled, &tree.root);
     out.extend(view_lints::diagnostics(&doc.text, &view, tree.compiled, &tree.root));
     out.extend(unsafe_output::diagnostics(doc.lang, &doc.text, tree.compiled, &tree.root));
-    if attribute_lints::LINTS.iter().any(|code| rules.reports(code)) {
-        let registered = || rules.reports(attribute_lints::UNKNOWN_CONTROLLER).then(|| stimulus::registered(path)).flatten();
-        let controller = |identifier: &str| {
-            let wanted = rules.reports(attribute_lints::UNKNOWN_TARGET_OR_ACTION);
-            wanted.then(|| stimulus_controller::controller(path, identifier)).flatten()
-        };
-        out.extend(attribute_lints::diagnostics(doc.lang, &doc.text, elements, registered, controller));
-    }
     out
+}
+
+/// The Stimulus lints on the template's markup and helper `elements`; controllers in `open` are read from their unsaved text.
+fn stimulus_diagnostics(
+    doc: &Doc,
+    rules: &ResolvedRules,
+    path: &Path,
+    elements: &[attributes::Element],
+    open: &HashMap<PathBuf, String>,
+) -> Vec<Diagnostic> {
+    if !attribute_lints::LINTS.iter().any(|code| rules.reports(code)) {
+        return Vec::new();
+    }
+    let registered = || rules.reports(attribute_lints::UNKNOWN_CONTROLLER).then(|| stimulus::registered(path)).flatten();
+    let controller = |identifier: &str| {
+        let wanted = rules.reports(attribute_lints::UNKNOWN_TARGET_OR_ACTION);
+        wanted.then(|| stimulus_controller::controller(path, identifier, open)).flatten()
+    };
+    attribute_lints::diagnostics(doc.lang, &doc.text, elements, registered, controller)
 }
 
 /// The lints on what the template refers to: translation keys and route helpers.
@@ -935,7 +941,7 @@ mod tests {
             let uri = util::file_uri(root.join(file)).unwrap();
             let doc = Doc { lang: TemplateLang::Erb, text: text.into(), plain_erb: false, percent_lines: false, version: 0 };
             let rules = crate::rules::resolve::resolve(&uri, doc.lang, options, &mut Default::default());
-            let found = diagnostics_in(&uri, &doc, &rules, &mut Projects::new(), routes, &Default::default());
+            let found = diagnostics_in(&uri, &doc, &rules, &mut Projects::new(), routes, &Default::default(), &HashMap::new());
             found.iter().filter_map(|d| util::code(d).map(String::from)).collect::<Vec<_>>()
         };
         let view = "app/views/users/index.html.erb";
