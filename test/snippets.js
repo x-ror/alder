@@ -34,3 +34,24 @@ for (const file of fs.readdirSync(dir).filter((f) => f.endsWith(".json"))) {
   }
   console.log(`${file}: ${seen.size} snippets ok`);
 }
+
+// Zed picks a snippet file by the lowercased language name, and ours are symlinks into snippets/: both break silently.
+const zedDir = path.join(import.meta.dirname, "../zed");
+const zed = Bun.TOML.parse(
+  fs.readFileSync(path.join(zedDir, "extension.toml"), "utf8"),
+);
+const zedLanguages = new Set(
+  zed.language_servers["alder-ls"].languages.map((l) => l.toLowerCase()),
+);
+for (const file of zed.snippets) {
+  assert(
+    zedLanguages.has(path.basename(file, ".json")),
+    `zed ${file}: no Zed language of that name`,
+  );
+  assert.equal(
+    path.dirname(fs.realpathSync(path.join(zedDir, file))),
+    fs.realpathSync(dir),
+    `zed ${file}: not a link into snippets/`,
+  );
+}
+console.log(`zed: ${zed.snippets.length} snippet files ok`);

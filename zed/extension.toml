@@ -1,0 +1,41 @@
+id = "alder"
+name = "Alder"
+description = "Rails view tooling for ERB, Haml, Slim, Pug and Liquid: errors as you type, safe formatting, and Rails-aware go to partial, completion and hover for components, routes, ivars and i18n."
+version = "0.1.0"
+schema_version = 1
+authors = ["x-ror"]
+repository = "https://github.com/x-ror/alder"
+snippets = [
+  "./snippets/erb.json",
+  "./snippets/html+erb.json",
+  "./snippets/haml.json",
+  "./snippets/slim.json",
+  "./snippets/pug.json",
+]
+
+[language_servers.alder-ls]
+name = "Alder"
+languages = [
+  "ERB",
+  "HTML+ERB",
+  "JS+ERB",
+  "YAML+ERB",
+  "Haml",
+  "Slim",
+  "Pug",
+  "Liquid",
+  "Ruby",
+]
+# Only .jbuilder/.builder files and controllers matter, so Ruby users enable it in `languages.Ruby.language_servers`.
+opt_in_languages = ["Ruby"]
+
+[language_servers.alder-ls.language_ids]
+"ERB" = "erb"
+"HTML+ERB" = "erb"
+"JS+ERB" = "erb-js"
+"YAML+ERB" = "erb-yaml"
+"Haml" = "haml"
+"Slim" = "slim"
+"Pug" = "jade"
+"Liquid" = "liquid"
+"Ruby" = "ruby"
