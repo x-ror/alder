@@ -58,9 +58,9 @@ The indentation width isn't a setting of its own: it comes from the editor's tab
 
 ## Rails
 
-| Setting                | Default | Description                                                                                                                                                                                                          |
-| ---------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `alder.routes.enabled` | `true`  | Read the app's routes with `bin/rails runner` (boots the app once, and again when config/routes.rb or config/routes/*.rb changes) for completion, hover and go to definition of `*_path` / `*_url` helpers in views. |
+| Setting                | Default | Description                                                                                                                                                                                                                                                                                                                                                                            |
+| ---------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `alder.routes.enabled` | `true`  | The language server reads the app's routes with `bin/rails runner` (boots the app once per app, and again when config/routes.rb or config/routes/*.rb changes) for completion, hover and go to definition of `*_path` / `*_url` helpers in views, and for the `Rails/UnknownRoute` check. Only in a trusted workspace. A boot that fails is logged and leaves the routes as they were. |
 
 Routes are read in trusted workspaces only.
 

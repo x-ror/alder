@@ -20,7 +20,7 @@ write("app/views/users/_card.html.erb", "<p>card</p>\n");
 write("app/views/user_mailer/welcome.html.erb", "<p>Hi</p>\n");
 write("app/views/user_mailer/welcome.text.erb", "Hi\n");
 write("app/views/orders/show.html.erb", "<p>Order</p>\n");
-// Stands in for `bin/rails runner routes.rb`: the client only needs its marker and JSON.
+// Stands in for `bin/rails runner`: the server only needs its marker and JSON.
 write(
   "bin/rails",
   'puts "booted", "__ALDER_ROUTES__", \'[{"name":"users","verb":"GET","path":"/users(.:format)","action":"users#index","source":"config/routes.rb:2"}]\'\n',

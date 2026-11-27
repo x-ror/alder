@@ -2,11 +2,7 @@
 import * as vscode from "vscode";
 import path from "path";
 import fs from "fs";
-import {
-  LanguageClient,
-  State,
-  TransportKind,
-} from "vscode-languageclient/node";
+import { LanguageClient, TransportKind } from "vscode-languageclient/node";
 
 import { SECTION, settings } from "./workspace.js";
 
@@ -14,8 +10,6 @@ import { SECTION, settings } from "./workspace.js";
 let client;
 /** @type {vscode.LogOutputChannel | undefined} */
 let output;
-// A restarted server has lost what was sent to the previous one.
-const startListeners = new Set();
 // stop() hands concurrent callers one shared promise, so overlapping restarts would each start a server.
 let queue = Promise.resolve();
 
@@ -77,6 +71,11 @@ function initializationOptions(config) {
       disabledDiagnostics: config.get("pug.disabledDiagnostics", []),
       ...switches("pug"),
     },
+    // Booting the app runs its own code: only in a trusted workspace.
+    routes: {
+      enabled: config.get("routes.enabled", true) && vscode.workspace.isTrusted,
+      ruby: config.get("commands.ruby", "ruby"),
+    },
   };
 }
 
@@ -91,6 +90,8 @@ const SERVER_SETTINGS = [
   "liquid.disabledDiagnostics",
   "pug.disabledDiagnostics",
   "erb.format.alignComments",
+  "routes.enabled",
+  "commands.ruby",
   ...["erb", "haml", "slim", "pug"].flatMap((lang) => [
     `${lang}.diagnostics.enabled`,
     `${lang}.format.enabled`,
@@ -163,11 +164,6 @@ async function doStart(context) {
     },
   );
   client = started;
-  // Also after the client restarts a crashed server by itself, which doesn't go through doStart.
-  started.onDidChangeState(({ newState }) => {
-    if (newState === State.Running)
-      for (const listener of startListeners) listener();
-  });
   try {
     await started.start();
   } catch (e) {
@@ -198,15 +194,6 @@ const restartClient = (context) =>
     await doStart(context);
   });
 
-const onServerStarted = (listener) => {
-  startListeners.add(listener);
-  return { dispose: () => startListeners.delete(listener) };
-};
-
-/** Send a notification to the running server; dropped while it is stopped (start listeners resend state). */
-const notifyServer = (method, params) =>
-  client?.isRunning() ? client.sendNotification(method, params) : undefined;
-
 /** Starts the server, restarting it on the restart command or a change to a setting it reads; returns its log. */
 function registerServer(context) {
   output = vscode.window.createOutputChannel("Alder", { log: true });
@@ -219,8 +206,11 @@ function registerServer(context) {
       if (SERVER_SETTINGS.some((s) => e.affectsConfiguration(s)))
         void restartClient(context);
     }),
+    vscode.workspace.onDidGrantWorkspaceTrust(
+      () => void restartClient(context),
+    ),
   );
   void startClient(context);
 }
 
-export { registerServer, log, stopClient, onServerStarted, notifyServer };
+export { registerServer, log, stopClient };

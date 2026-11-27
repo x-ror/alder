@@ -19,7 +19,7 @@ use crate::rails::render_call::HamlPipes;
 use crate::rails::view_lints::{remove_local_edit, UNUSED_BLOCK_ARGUMENT, UNUSED_STRICT_LOCAL};
 use crate::rails::{
     assets, controller_classes, controllers, helper_defs, i18n, ivars, model_columns, partials, paths, project, render_refs, routes,
-    stimulus, unknown_route, view_roots,
+    routes_load, stimulus, unknown_route, view_roots,
 };
 use crate::rules::file::{ConfigFile, FILE_NAME};
 use crate::rules::resolve::{resolve, Configs, ResolvedRules};
@@ -48,9 +48,6 @@ type AppHelpers = DashMap<PathBuf, Option<(String, String)>>;
 const DIAGNOSTICS_DEBOUNCE: Duration = Duration::from_millis(200);
 
 const SERVER_NAME: &str = "alder-ls";
-
-/// The client's notification with the app's routes.
-const ROUTES_NOTIFICATION: &str = "alder/routes";
 
 const FORMATTING_REGISTRATION: &str = "formatting";
 const RANGE_FORMATTING_REGISTRATION: &str = "range-formatting";
@@ -123,6 +120,7 @@ pub async fn serve() {
         view_roots: Arc::default(),
         includers: Arc::default(),
         routes: Arc::default(),
+        route_loads: Arc::default(),
         options: Arc::default(),
         resolved: Arc::default(),
         config_reports: Arc::default(),
@@ -132,11 +130,12 @@ pub async fn serve() {
         semantic_refresh: OnceLock::new(),
         file_operations: OnceLock::new(),
         publishes: Arc::default(),
-        next_publish: AtomicU64::new(0),
+        next_publish: Arc::default(),
     })
-    .custom_method(ROUTES_NOTIFICATION, Backend::set_routes)
     .finish();
     Server::new(stdin, stdout, socket).serve(service).await;
+    // `exit` without `shutdown` ends the loop too.
+    routes_load::stop().await;
 }
 
 struct Backend {
@@ -163,8 +162,9 @@ struct Backend {
     view_roots: Arc<view_roots::Cache>,
     /// Which Pug templates include or extend which, per app.
     includers: Arc<pug_refs::Includers>,
-    /// Routes per Rails root, as the client last sent them.
+    /// Routes per Rails root, as `bin/rails runner` last printed them.
     routes: Arc<DashMap<PathBuf, Arc<Vec<routes::Route>>>>,
+    route_loads: Arc<routes_load::Loads>,
     // Set once in `initialize`; the client restarts the server when these settings change.
     options: Arc<OnceLock<Options>>,
     /// What applied to each open document at its latest diagnostics run, for the handlers that read the Slim engines.
@@ -189,7 +189,89 @@ struct Backend {
     local_callers: DashMap<(PathBuf, String), usize>,
     /// The latest diagnostics run per open document: runs finish in any order, and only the latest may publish.
     publishes: Arc<DashMap<Uri, u64>>,
-    next_publish: AtomicU64,
+    next_publish: Arc<AtomicU64>,
+}
+
+/// What a diagnostics run reads, owned so the run can outlive the request that started it.
+#[derive(Clone)]
+struct Publisher {
+    client: Client,
+    docs: Arc<DashMap<Uri, Doc>>,
+    files: Arc<DashMap<Uri, String>>,
+    publishes: Arc<DashMap<Uri, u64>>,
+    next_publish: Arc<AtomicU64>,
+    options: Arc<OnceLock<Options>>,
+    view_roots: Arc<view_roots::Cache>,
+    includers: Arc<pug_refs::Includers>,
+    resolved: Arc<DashMap<PathBuf, Arc<ResolvedRules>>>,
+    config_reports: Arc<ConfigReports>,
+    routes: Arc<DashMap<PathBuf, Arc<Vec<routes::Route>>>>,
+    watching: Option<Watching>,
+    refresh: bool,
+}
+
+impl Publisher {
+    /// Publish the document's diagnostics after `delay`, unless a later call for it (an edit, a reopen, a file
+    /// change on disk) supersedes this one. They are computed on a copy, off the server task: holding the `docs`
+    /// guard would block the next `did_change`.
+    fn publish_later(&self, uri: Uri, delay: Duration) {
+        // Unique across closes and reopens, which may restart a document's versions.
+        let run = self.next_publish.fetch_add(1, Ordering::Relaxed);
+        self.publishes.insert(uri.clone(), run);
+        let Self {
+            client,
+            docs,
+            files,
+            publishes,
+            options,
+            view_roots,
+            includers,
+            resolved,
+            config_reports,
+            routes: app_routes,
+            watching,
+            refresh,
+            ..
+        } = self.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(delay).await;
+            let latest = || publishes.get(&uri).is_some_and(|latest| *latest == run);
+            let Some(doc) = docs.get(&uri).filter(|_| latest()).map(|doc| doc.clone()) else { return };
+            let (checked, version) = (uri.clone(), doc.version);
+            let open_files = file_texts(&files).filter(|(path, _)| stimulus::is_controller_script(path)).collect();
+            let started = config_reports.generation();
+            let Ok((diags, rules)) = off_server_task(move || {
+                let mut projects = Projects::new();
+                if let Some(path) = util::file_path(&checked) {
+                    Project::memoized(&mut projects, &path, Some(&view_roots));
+                }
+                let rules = resolve(&checked, doc.lang, options.get_or_init(Options::default), &mut Configs::new());
+                let routes = util::file_path(&checked).map(|path| routes_of(&app_routes, &path)).unwrap_or_default();
+                (diagnostics_in(&checked, &doc, &rules, &mut projects, &routes, &includers, &open_files), rules)
+            })
+            .await
+            else {
+                return;
+            };
+            config_reports.report(&client, rules.files(), started, watching.as_ref()).await;
+            if latest() {
+                let engines = rules.extra_engines().to_vec();
+                let before = util::file_path(&uri).and_then(|path| resolved.insert(path, Arc::new(rules)));
+                // Tokens computed from the engines of an earlier run are stale.
+                if refresh && before.is_some_and(|before| before.extra_engines() != engines) {
+                    let _ = client.semantic_tokens_refresh().await;
+                }
+                client.publish_diagnostics(uri, diags, Some(version)).await;
+            }
+        });
+    }
+
+    fn publish_open(&self) {
+        let open: Vec<Uri> = self.docs.iter().map(|d| d.key().clone()).collect();
+        for uri in open {
+            self.publish_later(uri, Duration::ZERO);
+        }
+    }
 }
 
 impl LanguageServer for Backend {
@@ -300,10 +382,14 @@ impl LanguageServer for Backend {
         if dynamic.text_sync {
             self.register(fix_target_sync(), "Syncing locale files and Stimulus controllers").await;
         }
+        for folder in self.roots.get().into_iter().flatten().filter(|folder| has_rails_bin(folder)) {
+            self.load_routes(folder.clone(), Duration::ZERO);
+        }
         self.client.log_message(MessageType::INFO, format!("{SERVER_NAME} ready")).await;
     }
 
     async fn shutdown(&self) -> Result<()> {
+        routes_load::stop().await;
         Ok(())
     }
 
@@ -335,6 +421,7 @@ impl LanguageServer for Backend {
         );
         self.local_callers.clear();
         self.warm_caches(&p.text_document.uri);
+        self.load_routes_of_app_of(&p.text_document.uri);
         self.publish_later(p.text_document.uri, Duration::ZERO);
     }
 
@@ -379,6 +466,11 @@ impl LanguageServer for Backend {
         if may_change_helpers(&events) {
             self.app_helpers.clear();
             unknown_route::clear_cache();
+        }
+        for root in events.iter().filter_map(|(path, _)| routes_file_root(path)).collect::<std::collections::BTreeSet<_>>() {
+            if self.route_loads.known(&root) {
+                self.load_routes(root, routes_load::CHANGE_DEBOUNCE);
+            }
         }
         update_pug_includers(&self.includers, &events);
         self.templates.retain(|root, _| !stale(root, &events, false));
@@ -1098,56 +1190,26 @@ impl Backend {
         }
     }
 
-    /// Publish the document's diagnostics after `delay`, unless a later call for it (an edit, a reopen, a file
-    /// change on disk) supersedes this one. They are computed on a copy, off the server task: holding the `docs`
-    /// guard would block the next `did_change`.
+    fn publisher(&self) -> Publisher {
+        Publisher {
+            client: self.client.clone(),
+            docs: Arc::clone(&self.docs),
+            files: Arc::clone(&self.files),
+            publishes: Arc::clone(&self.publishes),
+            next_publish: Arc::clone(&self.next_publish),
+            options: Arc::clone(&self.options),
+            view_roots: Arc::clone(&self.view_roots),
+            includers: Arc::clone(&self.includers),
+            resolved: Arc::clone(&self.resolved),
+            config_reports: Arc::clone(&self.config_reports),
+            routes: Arc::clone(&self.routes),
+            watching: self.dynamic_watching.get().cloned().flatten(),
+            refresh: self.semantic_refresh.get() == Some(&true),
+        }
+    }
+
     fn publish_later(&self, uri: Uri, delay: Duration) {
-        // Unique across closes and reopens, which may restart a document's versions.
-        let run = self.next_publish.fetch_add(1, Ordering::Relaxed);
-        self.publishes.insert(uri.clone(), run);
-        let (client, docs, files, publishes, options, view_roots, includers) = (
-            self.client.clone(),
-            Arc::clone(&self.docs),
-            Arc::clone(&self.files),
-            Arc::clone(&self.publishes),
-            Arc::clone(&self.options),
-            Arc::clone(&self.view_roots),
-            Arc::clone(&self.includers),
-        );
-        let (resolved, config_reports, app_routes) =
-            (Arc::clone(&self.resolved), Arc::clone(&self.config_reports), Arc::clone(&self.routes));
-        let (watching, refresh) = (self.dynamic_watching.get().cloned().flatten(), self.semantic_refresh.get() == Some(&true));
-        tokio::spawn(async move {
-            tokio::time::sleep(delay).await;
-            let latest = || publishes.get(&uri).is_some_and(|latest| *latest == run);
-            let Some(doc) = docs.get(&uri).filter(|_| latest()).map(|doc| doc.clone()) else { return };
-            let (checked, version) = (uri.clone(), doc.version);
-            let open_files = file_texts(&files).filter(|(path, _)| stimulus::is_controller_script(path)).collect();
-            let started = config_reports.generation();
-            let Ok((diags, rules)) = off_server_task(move || {
-                let mut projects = Projects::new();
-                if let Some(path) = util::file_path(&checked) {
-                    Project::memoized(&mut projects, &path, Some(&view_roots));
-                }
-                let rules = resolve(&checked, doc.lang, options.get_or_init(Options::default), &mut Configs::new());
-                let routes = util::file_path(&checked).map(|path| routes_of(&app_routes, &path)).unwrap_or_default();
-                (diagnostics_in(&checked, &doc, &rules, &mut projects, &routes, &includers, &open_files), rules)
-            })
-            .await
-            else {
-                return;
-            };
-            config_reports.report(&client, rules.files(), started, watching.as_ref()).await;
-            if latest() {
-                let engines = rules.extra_engines().to_vec();
-                let before = util::file_path(&uri).and_then(|path| resolved.insert(path, Arc::new(rules)));
-                // Tokens computed from the engines of an earlier run are stale.
-                if refresh && before.is_some_and(|before| before.extra_engines() != engines) {
-                    let _ = client.semantic_tokens_refresh().await;
-                }
-                client.publish_diagnostics(uri, diags, Some(version)).await;
-            }
-        });
+        self.publisher().publish_later(uri, delay);
     }
 
     /// The project of `path` sharing the view roots kept in the cache.
@@ -1225,19 +1287,47 @@ impl Backend {
         self.locales.entry(dir.clone()).or_insert_with(|| Arc::new(i18n::locale_files(&dir))).clone()
     }
 
-    /// `alder/routes`: `{ root, routes }` from the client's `bin/rails runner`.
-    async fn set_routes(&self, params: serde_json::Value) {
-        let Some(root) = params.get("root").and_then(serde_json::Value::as_str).map(PathBuf::from) else { return };
-        let parsed = routes::parse(&root, params.get("routes").unwrap_or(&serde_json::Value::Null));
-        self.routes.insert(root, Arc::new(parsed));
-        // `Rails/UnknownRoute` reads them.
-        let open: Vec<Uri> = self.docs.iter().map(|d| d.key().clone()).collect();
-        for uri in open {
-            self.publish_later(uri, Duration::ZERO);
+    /// Reads the routes of the Rails app at `root` with `bin/rails runner` after `delay`, off the server task. A failure
+    /// is logged and leaves the routes as they were.
+    fn load_routes(&self, root: PathBuf, delay: Duration) {
+        if !self.options().routes_enabled() {
+            return;
+        }
+        let ticket = self.route_loads.ask(&root);
+        let (loads, publisher, ruby) = (Arc::clone(&self.route_loads), self.publisher(), self.options().ruby().to_string());
+        tokio::spawn(async move {
+            let loaded = root.clone();
+            let handle = |outcome: std::result::Result<Vec<routes::Route>, String>| match outcome {
+                // `Rails/UnknownRoute` reads them.
+                Ok(routes) => {
+                    publisher.routes.insert(loaded.clone(), Arc::new(routes));
+                    publisher.publish_open();
+                }
+                Err(reason) => {
+                    let (client, message) =
+                        (publisher.client.clone(), format!("routes: bin/rails runner failed in {}: {reason}", loaded.display()));
+                    tokio::spawn(async move { client.log_message(MessageType::WARNING, message).await });
+                }
+            };
+            let run = move |root: &Path| routes_load::load(root, &ruby);
+            routes_load::load_after(&loads, &root, ticket, delay, run, handle).await;
+        });
+    }
+
+    /// Loads the routes of the app `uri` belongs to the first time one of its views opens, when the app is inside a
+    /// workspace folder: booting runs the app's own code, which a file opened on its own mustn't do.
+    fn load_routes_of_app_of(&self, uri: &Uri) {
+        if self.without_rails(uri) {
+            return;
+        }
+        let Some(root) = util::file_path(uri).and_then(|path| paths::rails_root(&path)) else { return };
+        let in_workspace = self.roots.get().is_some_and(|folders| folders.iter().any(|folder| root.starts_with(folder)));
+        if in_workspace && !self.route_loads.known(&root) && has_rails_bin(&root) {
+            self.load_routes(root, Duration::ZERO);
         }
     }
 
-    /// Routes of the Rails app `current` belongs to, empty until the client has sent them.
+    /// Routes of the Rails app `current` belongs to, empty until they are loaded.
     fn routes_for(&self, current: &Path) -> Arc<Vec<routes::Route>> {
         routes_of(&self.routes, current)
     }
@@ -1482,7 +1572,18 @@ fn may_change_helpers(events: &[(PathBuf, FileChangeType)]) -> bool {
     events.iter().any(|(path, _)| path.components().any(|part| relevant(part.as_os_str())))
 }
 
-/// The routes the client sent for the Rails app `current` belongs to; none until it has.
+fn has_rails_bin(root: &Path) -> bool {
+    root.join("bin").join("rails").is_file()
+}
+
+/// The Rails root a `config/routes.rb` or `config/routes/**` path belongs to.
+fn routes_file_root(path: &Path) -> Option<PathBuf> {
+    let config = path.ancestors().skip(1).find(|dir| dir.file_name().is_some_and(|name| name == "config"))?;
+    let inside = path.strip_prefix(config).ok()?.components().next()?;
+    (inside.as_os_str() == "routes.rb" || inside.as_os_str() == "routes").then(|| config.parent().map(Path::to_path_buf))?
+}
+
+/// The routes loaded for the Rails app `current` belongs to; none until they are.
 fn routes_of(routes: &DashMap<PathBuf, Arc<Vec<routes::Route>>>, current: &Path) -> Arc<Vec<routes::Route>> {
     let root = paths::rails_root(current);
     root.and_then(|root| routes.get(&root).map(|r| Arc::clone(&r))).unwrap_or_default()
@@ -1730,6 +1831,17 @@ fn line_edits(text: &str, formatted: &str, lines: std::ops::RangeInclusive<usize
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn routes_files_name_their_app() {
+        let root = |path: &str| routes_file_root(Path::new(path));
+        assert_eq!(root("/r/config/routes.rb"), Some(PathBuf::from("/r")));
+        assert_eq!(root("/r/config/routes/admin/api.rb"), Some(PathBuf::from("/r")));
+        assert_eq!(root("/r/config/routes"), Some(PathBuf::from("/r")));
+        assert_eq!(root("/r/config/routes_helper.rb"), None);
+        assert_eq!(root("/r/config/environments/routes.rb"), None);
+        assert_eq!(root("/r/app/routes.rb"), None);
+    }
 
     #[test]
     fn stimulus_controllers_are_dropped_when_app_javascript_or_the_importmap_changes() {

@@ -969,7 +969,7 @@
         "alder.routes.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Read the app's routes with `bin/rails runner` (boots the app once, and again when config/routes.rb or config/routes/*.rb changes) for completion, hover and go to definition of `*_path` / `*_url` helpers in views."
+          "description": "The language server reads the app's routes with `bin/rails runner` (boots the app once per app, and again when config/routes.rb or config/routes/*.rb changes) for completion, hover and go to definition of `*_path` / `*_url` helpers in views, and for the `Rails/UnknownRoute` check. Only in a trusted workspace. A boot that fails is logged and leaves the routes as they were."
         },
         "alder.server.enabled": {
           "type": "boolean",

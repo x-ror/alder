@@ -88,8 +88,10 @@ The engine settings of the [settings reference](/alder/guides/settings/), withou
 | `<slim\|erb\|haml\|jbuilder\|liquid\|pug>.disabledDiagnostics`     | string[] | `[]`    |
 | `<erb\|haml\|slim\|pug>.diagnostics.enabled`, `<…>.format.enabled` | boolean  | `true`  |
 | `erb.format.alignComments`                                         | boolean  | `false` |
+| `routes.enabled`                                                   | boolean  | `true`  |
+| `routes.ruby`                                                      | string   | `ruby`  |
 
-The server reads them once at startup: run `editor: restart language server` after changing them. A `.alder.toml` in the project works unchanged and wins over these options; see the [rules reference](/alder/reference/rules/#configuration).
+The server reads them once at startup: run `editor: restart language server` after changing them. `routes.enabled` lets the server run `ruby bin/rails runner` in your Rails app to read its routes, for the `Rails/UnknownRoute` check and route helper completion; `routes.ruby` names the Ruby to run. A `.alder.toml` in the project works unchanged and wins over these options; see the [rules reference](/alder/reference/rules/#configuration).
 
 Semantic tokens are off by default in Zed. To use them, set `"semantic_tokens": "combined"` (or `"full"`) in Zed's settings.
 
@@ -115,7 +117,6 @@ The VS Code extension implements these itself, so Zed doesn't have them:
 
 - The [commands](/alder/guides/commands/): toggle and wrap, extract partial, switch to related file, preview and compiled source, the converters.
 - Tag auto-closing in ERB.
-- Route awareness. The VS Code extension reads the routes and hands them to the server, so in Zed the `Rails/UnknownRoute` check and the completion, hover and go to definition of `*_path` and `*_url` helpers are missing.
 
 ## Troubleshooting
 

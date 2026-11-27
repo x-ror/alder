@@ -1,4 +1,4 @@
-//! `initializationOptions`, from the `alder.{slim,erb,haml,jbuilder,liquid,pug}.*` settings.
+//! `initializationOptions`, from the `alder.{slim,erb,haml,jbuilder,liquid,pug,routes}.*` settings.
 
 use crate::lang::TemplateLang;
 
@@ -25,6 +25,10 @@ pub(crate) struct Options {
     pub align_erb_comments: bool,
     /// `syncsFixTargets`: the client sends the open locale files and Stimulus controllers the quick fixes edit.
     pub syncs_fix_targets: bool,
+    /// `routes.enabled` is false: no `bin/rails runner`.
+    routes_off: bool,
+    /// `routes.ruby`: the Ruby that runs `bin/rails`.
+    ruby: Option<String>,
 }
 
 impl Options {
@@ -78,7 +82,25 @@ impl Options {
                 None => ignored.push(format!("syncsFixTargets: expected a boolean, got {value}")),
             }
         }
+        match init.and_then(|v| v.get("routes")?.get("enabled")) {
+            Some(serde_json::Value::Bool(enabled)) => options.routes_off = !enabled,
+            Some(value) => ignored.push(format!("routes.enabled: expected a boolean, got {value}")),
+            None => {}
+        }
+        match init.and_then(|v| v.get("routes")?.get("ruby")) {
+            Some(serde_json::Value::String(ruby)) if !ruby.is_empty() => options.ruby = Some(ruby.clone()),
+            Some(serde_json::Value::String(_)) | None => {}
+            Some(value) => ignored.push(format!("routes.ruby: expected a string, got {value}")),
+        }
         (options, ignored)
+    }
+
+    pub(crate) fn routes_enabled(&self) -> bool {
+        !self.routes_off
+    }
+
+    pub(crate) fn ruby(&self) -> &str {
+        self.ruby.as_deref().unwrap_or("ruby")
     }
 
     pub(crate) fn diagnostics_enabled(&self, lang: TemplateLang) -> bool {
@@ -116,6 +138,18 @@ mod tests {
         let (none, ignored) = Options::from_init(None);
         assert!(ignored.is_empty() && none.extra_engines.is_empty() && none.format_enabled(TemplateLang::Slim));
         assert!(SECTIONS.iter().flat_map(|(_, langs)| *langs).all(|&lang| none.disabled(lang).is_empty()));
+    }
+
+    #[test]
+    fn routes_loading_is_on_by_default_and_takes_a_ruby() {
+        let (none, _) = Options::from_init(None);
+        assert!(none.routes_enabled() && none.ruby() == "ruby");
+        let init = serde_json::json!({ "routes": { "enabled": false, "ruby": "/opt/ruby/bin/ruby" } });
+        let (options, ignored) = Options::from_init(Some(&init));
+        assert!(!options.routes_enabled() && options.ruby() == "/opt/ruby/bin/ruby" && ignored.is_empty());
+        let (bad, ignored) = Options::from_init(Some(&serde_json::json!({ "routes": { "enabled": "no", "ruby": 3 } })));
+        assert!(bad.routes_enabled() && bad.ruby() == "ruby");
+        assert_eq!(ignored.len(), 2, "{ignored:?}");
     }
 
     #[test]

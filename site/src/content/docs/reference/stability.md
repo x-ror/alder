@@ -19,7 +19,7 @@ These may change in any release:
 - The text of diagnostic messages, including the message part of a `text` line. Match on the rule, not the words.
 - Which cases a rule reports, within its documented purpose: fixing false positives or catching more of the same problem is a fix.
 - `--verbose` output.
-- The language server protocol between the extension and its server: `initializationOptions`, custom requests and notifications such as `alder/routes`, and `Diagnostic.data`. The server ships inside the extension, and other editors are not supported yet.
+- The language server protocol between the extension and its server: `initializationOptions` and `Diagnostic.data`. The server ships inside the extension, and other editors are not supported yet.
 - Experimental features: anything a page labels experimental.
 
 ## Rules in minor versions

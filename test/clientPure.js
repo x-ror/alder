@@ -16,7 +16,6 @@ import {
   doubledErbClose,
   HTML_TAGS,
 } from "../src/autoClose.js";
-import { routesFromOutput, routesFromRun } from "../src/routes.js";
 import { viewsRoot, viewDirOf } from "../src/views.js";
 import { engineOf, isTemplateLanguage, isErb } from "../src/languages.js";
 import {
@@ -278,14 +277,6 @@ const ordersController =
 assert.strictEqual(actionLine(ordersController, "show"), 3);
 assert.strictEqual(actionLine(ordersController, "edit"), -1);
 
-// routesFromOutput
-assert.deepStrictEqual(
-  routesFromOutput('Booting\r\n\r\n__ALDER_ROUTES__\r\n[{"name":"users"}]\r\n'),
-  [{ name: "users" }],
-);
-assert.strictEqual(routesFromOutput("Puma starting\n"), undefined);
-assert.throws(() => routesFromOutput("__ALDER_ROUTES__\n{oops"));
-
 // previewPartners
 const previews = (dir) => [
   `/r/test/components/previews/${dir}card_component_preview.rb`,
@@ -312,17 +303,6 @@ for (const file of [
 ]) {
   assert.deepStrictEqual(previewPartners(file), [], file);
 }
-
-// routesFromRun
-const routesOut = '__ALDER_ROUTES__\n[{"name":"users"}]\n';
-assert.deepStrictEqual(routesFromRun({ code: 0, stdout: routesOut }), [
-  { name: "users" },
-]);
-assert.strictEqual(routesFromRun({ code: 1, stdout: routesOut }), undefined);
-assert.strictEqual(
-  routesFromRun({ code: 0, stdout: "__ALDER_ROUTES__\n{oops" }),
-  undefined,
-);
 
 // engineOf
 assert.strictEqual(engineOf("erb-js"), "erb");

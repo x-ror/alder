@@ -18,6 +18,7 @@ pub mod project;
 pub mod render_call;
 pub mod render_refs;
 pub mod routes;
+pub mod routes_load;
 pub mod schema;
 pub mod slots;
 pub mod stimulus;

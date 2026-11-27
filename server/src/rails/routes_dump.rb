@@ -1,4 +1,4 @@
-# Routes for the extension's route helpers: `bin/rails runner routes.rb` prints a marker line, then JSON.
+# Routes for the server's route helpers: `bin/rails runner routes_dump.rb` prints a marker line, then JSON.
 # The marker separates the JSON from whatever the app's initializers print.
 require "json"
 
