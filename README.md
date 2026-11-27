@@ -9,7 +9,7 @@
 [![build](https://github.com/x-ror/alder/actions/workflows/build.yml/badge.svg)](https://github.com/x-ror/alder/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Rails view tooling for VS Code: one extension for ERB, Haml and Slim.** It highlights your templates, finds errors as you type, formats them, and understands your Rails app: partials, components, helpers, routes, instance variables, translations and Stimulus controllers. Pug and Liquid templates get a smaller share, without the Rails features.
+**Rails view tooling for VS Code and Zed: one extension for ERB, Haml and Slim.** It highlights your templates, finds errors as you type, formats them, and understands your Rails app: partials, components, helpers, routes, instance variables, translations and Stimulus controllers. Pug and Liquid templates get a smaller share, without the Rails features.
 
 Built for Rails developers who work in `app/views` every day, and for teams that want the same template checks and formatting in the editor and in CI.
 
@@ -27,12 +27,16 @@ Built for Rails developers who work in `app/views` every day, and for teams that
 
 Requires VS Code 1.100 or newer, on Linux (x64, arm64), macOS (Apple silicon, Intel) or Windows (x64).
 
+### Zed
+
+Install **Alder** from Zed's Extensions page once it is published; until then, use _Install Dev Extension_ and pick the `zed/` directory of this repository (needs Rust via rustup). Zed gets the language server and snippets, not highlighting or the VS Code commands: install the extensions for your template languages too (Ruby, Haml, Slim, Pug, Liquid). See [Zed](https://x-ror.github.io/alder/guides/zed/) for settings and what differs.
+
 ## Documentation
 
 The full documentation is at [x-ror.github.io/alder](https://x-ror.github.io/alder/):
 
 - [Getting started](https://x-ror.github.io/alder/getting-started/)
-- Guides: [errors as you type](https://x-ror.github.io/alder/guides/checks/), [Rails navigation and completion](https://x-ror.github.io/alder/guides/rails-navigation/), [file types](https://x-ror.github.io/alder/guides/file-types/), [formatting](https://x-ror.github.io/alder/guides/formatting/), [commands](https://x-ror.github.io/alder/guides/commands/), [command line for CI](https://x-ror.github.io/alder/guides/command-line/), [settings](https://x-ror.github.io/alder/guides/settings/), [supported syntax](https://x-ror.github.io/alder/guides/syntax/), [compatibility](https://x-ror.github.io/alder/guides/compatibility/) and [troubleshooting](https://x-ror.github.io/alder/guides/troubleshooting/)
+- Guides: [errors as you type](https://x-ror.github.io/alder/guides/checks/), [Rails navigation and completion](https://x-ror.github.io/alder/guides/rails-navigation/), [file types](https://x-ror.github.io/alder/guides/file-types/), [formatting](https://x-ror.github.io/alder/guides/formatting/), [commands](https://x-ror.github.io/alder/guides/commands/), [command line for CI](https://x-ror.github.io/alder/guides/command-line/), [settings](https://x-ror.github.io/alder/guides/settings/), [Zed](https://x-ror.github.io/alder/guides/zed/), [supported syntax](https://x-ror.github.io/alder/guides/syntax/), [compatibility](https://x-ror.github.io/alder/guides/compatibility/) and [troubleshooting](https://x-ror.github.io/alder/guides/troubleshooting/)
 - [Diagnostics reference](https://x-ror.github.io/alder/reference/diagnostics/): every check, with its code
 - [Rules and `.alder.toml`](https://x-ror.github.io/alder/reference/rules/#configuration): turn checks off per project, folder or file; it wins over the VS Code settings
 - [Changelog](https://x-ror.github.io/alder/changelog/)

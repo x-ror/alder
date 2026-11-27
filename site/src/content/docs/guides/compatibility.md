@@ -9,6 +9,10 @@ sidebar:
 
 Ruby LSP and this extension both register the `erb` language id and work side by side: Ruby LSP for `.rb` files, this extension for templates. If both add diagnostics, completion or formatting to ERB, see [Troubleshooting](/alder/guides/troubleshooting/#other-extensions-for-the-same-languages).
 
+## Zed
+
+In Zed, Alder runs next to the extensions that provide the languages and next to Ruby LSP; see [Zed](/alder/guides/zed/).
+
 ## Other Haml or Slim extensions
 
 VS Code picks one grammar per language, so disable the other extension to avoid surprises (see [Troubleshooting](/alder/guides/troubleshooting/)). To let another extension format, turn off `alder.<lang>.format.enabled`.

@@ -1,17 +1,21 @@
 ---
 title: Getting started
-description: Install Alder, open a Rails view and, if you want, turn on format on save.
+description: Install Alder in VS Code or Zed, open a Rails view and, if you want, turn on format on save.
 sidebar:
   order: 1
 ---
 
-Alder is one VS Code extension for Rails views in ERB, Haml and Slim. It highlights your templates, finds errors as you type, formats them, and understands your Rails app: partials, components, helpers, routes, instance variables, translations and Stimulus controllers. Pug and Liquid templates get checks, navigation and editing help without the Rails features; see [File types](/alder/guides/file-types/).
+Alder is one extension for Rails views in ERB, Haml and Slim. It highlights your templates, finds errors as you type, formats them, and understands your Rails app: partials, components, helpers, routes, instance variables, translations and Stimulus controllers. Pug and Liquid templates get checks, navigation and editing help without the Rails features; see [File types](/alder/guides/file-types/). It runs in VS Code and, with fewer features, in Zed.
 
 ## Install
 
 Install **Alder** from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=x-ror.alder) or from [Open VSX](https://open-vsx.org/extension/x-ror/alder).
 
 There are no gems to install. The checks and the formatter are a language server written in Rust and bundled with the extension.
+
+### Zed
+
+Install **Alder** from Zed's Extensions page once it is published; until then, choose _Install Dev Extension_ there and pick the repository's `zed/` directory (this needs Rust installed with rustup). Alder doesn't highlight in Zed: install the extensions for your template languages (Ruby for ERB, Haml, Slim, Pug, Liquid), and the language server starts for the ones you have. See [Zed](/alder/guides/zed/) for the server binary, settings and what differs from VS Code.
 
 ## Open a view
 
@@ -39,7 +43,7 @@ Multi-root workspaces and monorepos work side by side: each file resolves partia
 
 ## Requirements
 
-- VS Code 1.100 or newer.
+- VS Code 1.100 or newer, or Zed with the extensions for your template languages.
 - Linux (x64, arm64), macOS (Apple silicon, Intel) or Windows (x64).
 - Ruby only for _Preview Rendered HTML_, _Show Compiled Ruby Source_ and the converters, which call Ruby gems you install only if you use them. Everything else works without Ruby. See [Commands](/alder/guides/commands/).
 
@@ -49,3 +53,4 @@ Multi-root workspaces and monorepos work side by side: each file resolves partia
 - [Rails navigation and completion](/alder/guides/rails-navigation/)
 - [Command line for CI](/alder/guides/command-line/)
 - [Settings](/alder/guides/settings/)
+- [Zed](/alder/guides/zed/)

@@ -15,6 +15,8 @@ All settings live under `alder.` and can be set per user or per workspace. For e
 }
 ```
 
+In Zed the engine settings go under `initialization_options`; see [Zed](/alder/guides/zed/#settings).
+
 A `.alder.toml` in the project sets the diagnostics, formatting and Slim engine settings below too, and wins over them where it says something; see the [rules reference](/alder/reference/rules/#configuration).
 
 Editor settings for one template language use its language id, such as `[erb]`, `[haml]`, `[slim]` or `[erb-js]`; [File types](/alder/guides/file-types/) lists the ids.

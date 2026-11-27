@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Zed extension (`zed/`, extension id `alder`): the language server for Zed with its snippets. Diagnostics, formatting, navigation, completion, hover, references, renames and code actions work as in VS Code; the commands, tag auto-closing and route awareness stay in the VS Code extension. Highlighting comes from Zed's Ruby, Haml, Slim, Pug and Liquid extensions. The server comes from `PATH` or from the release's `alder-ls-<platform>` archive, so the download works from the first release that carries them. See [Zed](https://x-ror.github.io/alder/guides/zed/).
+
 ## 1.1.3
 
 No changes. The first release published from CI to the Marketplace, Open VSX and npm under the Alder name.
