@@ -80,7 +80,7 @@ Views in a folder without a controller (`shared/`, `layouts/`) get the instance 
 = link_to "Edit", edit_user_path(@user)
 ```
 
-Routes are read with `bin/rails runner`, in trusted workspaces only. Turn this off with [`alder.routes.enabled`](/alder/guides/settings/#rails).
+The language server reads the routes by running `ruby bin/rails runner` in the app, which runs the app's own code. VS Code does so only in a trusted workspace, and Zed only starts the server in a trusted worktree; other clients have no such gate. `alder.commands.ruby` (`routes.ruby` in `initializationOptions`) picks the Ruby; on Windows it must be a real `ruby.exe` when Ruby is installed through a `.bat` or `.cmd` shim. It boots the app once, when a view of it opens, and again when `config/routes.rb` or `config/routes/**` changes; a run that fails or takes over 60 seconds is logged and the helpers go without routes. Turn this off with [`alder.routes.enabled`](/alder/guides/settings/#rails), or `routes.enabled: false` in the `initializationOptions` of any other client (`lsp.alder-ls.initialization_options` in Zed).
 
 ## Translations
 

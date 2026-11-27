@@ -58,9 +58,9 @@ The indentation width isn't a setting of its own: it comes from the editor's tab
 
 ## Rails
 
-| Setting                | Default | Description                                                                                                                                                                                                          |
-| ---------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `alder.routes.enabled` | `true`  | Read the app's routes with `bin/rails runner` (boots the app once, and again when config/routes.rb or config/routes/*.rb changes) for completion, hover and go to definition of `*_path` / `*_url` helpers in views. |
+| Setting                | Default | Description                                                                                                                                                                                                                                                                                                                                                                            |
+| ---------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `alder.routes.enabled` | `true`  | The language server reads the app's routes with `bin/rails runner` (boots the app once per app, and again when config/routes.rb or config/routes/*.rb changes) for completion, hover and go to definition of `*_path` / `*_url` helpers in views, and for the `Rails/UnknownRoute` check. Only in a trusted workspace. A boot that fails is logged and leaves the routes as they were. |
 
 Routes are read in trusted workspaces only.
 
@@ -83,14 +83,14 @@ Routes are read in trusted workspaces only.
 
 ## Ruby tools
 
-| Setting                    | Default       | Description                                                                                                                                                                 |
-| -------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `alder.commands.slimrb`    | `"slimrb"`    | Executable used to render Slim (gem install slim).                                                                                                                          |
-| `alder.commands.haml`      | `"haml"`      | Executable used to render Haml (gem install haml).                                                                                                                          |
-| `alder.commands.html2haml` | `"html2haml"` | Executable for ERB → Haml (gem install html2haml).                                                                                                                          |
-| `alder.commands.haml2slim` | `"haml2slim"` | Executable for Haml → Slim (gem install haml2slim).                                                                                                                         |
-| `alder.commands.erb2slim`  | `"erb2slim"`  | Executable for ERB → Slim (gem install html2slim).                                                                                                                          |
-| `alder.commands.ruby`      | `"ruby"`      | Ruby used to preview and compile ERB through Erubi (gem install erubi; stdlib ERB without it) and for Haml → ERB through the haml_to_erb library (gem install haml_to_erb). |
+| Setting                    | Default       | Description                                                                                                                                                                                                                                                                                               |
+| -------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `alder.commands.slimrb`    | `"slimrb"`    | Executable used to render Slim (gem install slim).                                                                                                                                                                                                                                                        |
+| `alder.commands.haml`      | `"haml"`      | Executable used to render Haml (gem install haml).                                                                                                                                                                                                                                                        |
+| `alder.commands.html2haml` | `"html2haml"` | Executable for ERB → Haml (gem install html2haml).                                                                                                                                                                                                                                                        |
+| `alder.commands.haml2slim` | `"haml2slim"` | Executable for Haml → Slim (gem install haml2slim).                                                                                                                                                                                                                                                       |
+| `alder.commands.erb2slim`  | `"erb2slim"`  | Executable for ERB → Slim (gem install html2slim).                                                                                                                                                                                                                                                        |
+| `alder.commands.ruby`      | `"ruby"`      | Ruby used to preview and compile ERB through Erubi (gem install erubi; stdlib ERB without it) and for Haml → ERB through the haml_to_erb library (gem install haml_to_erb). Also the Ruby that runs `bin/rails runner` for the routes; on Windows it must be a real `ruby.exe`, not a `.bat`/`.cmd` shim. |
 
 These are the executables that preview, _Show Compiled Ruby Source_ and the converters call; see [Commands](/alder/guides/commands/#ruby-gems).
 

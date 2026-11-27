@@ -195,6 +195,44 @@ fs.mkdirSync(path.dirname(enginePartial), { recursive: true });
 fs.writeFileSync(enginePartial, "<article></article>\n");
 const engineUri = fileUri(path.join(views, "users", "engine.html.erb"));
 
+// Stands in for `bin/rails runner` in a temp app, run as `sh bin/rails ...`: prints routes.json, counts runs in runs.log.
+const fakeRails = (dir, routes = [], body) => {
+  fs.mkdirSync(path.join(dir, "bin"), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, "bin", "rails"),
+    body ??
+      "echo booted\necho __ALDER_ROUTES__\ncat routes.json\necho run >> runs.log\n",
+  );
+  fs.writeFileSync(path.join(dir, "routes.json"), JSON.stringify(routes));
+};
+const railsRuns = (dir) => {
+  try {
+    return (
+      fs.readFileSync(path.join(dir, "runs.log"), "utf8").split("\n").length - 1
+    );
+  } catch {
+    return 0;
+  }
+};
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// The server logs once it has taken a run's routes.
+const routeLoads = (notes, dir) =>
+  notes.filter(
+    (n) =>
+      n.method === "window/logMessage" &&
+      n.params.message.startsWith("routes: loaded") &&
+      n.params.message.includes(path.basename(dir)),
+  ).length;
+const routesLoaded = async (notes, dir, loads) => {
+  for (
+    let waited = 0;
+    waited < 10000 && routeLoads(notes, dir) < loads;
+    waited += 25
+  )
+    await sleep(25);
+};
+const useRoutes = { routes: { ruby: "sh" } };
+
 const startServer = () => {
   const proc = cp.spawn(bin);
   let id = 0,
@@ -239,9 +277,26 @@ const startServer = () => {
       proc.stdin.write(`Content-Length: ${Buffer.byteLength(s)}\r\n\r\n${s}`);
       if (isNote) res();
     });
-  return { send, notes, registrations };
+  const exited = new Promise((resolve) => proc.on("exit", resolve));
+  return { send, notes, registrations, exited };
 };
-const { send, notes } = startServer();
+fakeRails(root);
+const { send, notes, exited } = startServer();
+// The server reads the routes through `bin/rails runner` again when a routes file changes.
+const reloadRoutes = async (dir, routes) => {
+  const before = routeLoads(notes, dir);
+  fs.writeFileSync(path.join(dir, "routes.json"), JSON.stringify(routes));
+  await send(
+    "workspace/didChangeWatchedFiles",
+    {
+      changes: [
+        { uri: fileUri(path.join(dir, "config", "routes.rb")), type: 2 },
+      ],
+    },
+    true,
+  );
+  await routesLoaded(notes, dir, before + 1);
+};
 const rel = (p) => p.replace(fileUri(root), "");
 let failures = 0;
 const check = (label, actual, expected) => {
@@ -260,6 +315,7 @@ const check = (label, actual, expected) => {
         extraEngines: ["mjml"],
         disabledDiagnostics: ["Syntax/ExplicitEnd"],
       },
+      ...useRoutes,
     },
   });
   await send("initialized", {}, true);
@@ -2410,28 +2466,21 @@ const check = (label, actual, expected) => {
       ["icon", "icon?"],
     ],
   );
-  await send(
-    "alder/routes",
+  await reloadRoutes(root, [
     {
-      root,
-      routes: [
-        {
-          name: "users",
-          verb: "GET",
-          path: "/users(.:format)",
-          action: "users#index",
-          source: "config/routes.rb:2",
-        },
-        {
-          name: "",
-          verb: "POST",
-          path: "/users(.:format)",
-          action: "users#create",
-        },
-      ],
+      name: "users",
+      verb: "GET",
+      path: "/users(.:format)",
+      action: "users#index",
+      source: "config/routes.rb:2",
     },
-    true,
-  );
+    {
+      name: "",
+      verb: "POST",
+      path: "/users(.:format)",
+      action: "users#create",
+    },
+  ]);
   await send(
     "textDocument/didChange",
     {
@@ -2471,8 +2520,7 @@ const check = (label, actual, expected) => {
     [
       await waitForCodes(unknownRouteUri, ["0:Rails/UnknownRoute"]),
       await (async () => {
-        const sendRoutes = (routes) =>
-          send("alder/routes", { root, routes }, true);
+        const sendRoutes = (routes) => reloadRoutes(root, routes);
         const users = { name: "users", verb: "GET", path: "/users(.:format)" };
         await sendRoutes([users, { name: "usrs", verb: "GET", path: "/usrs" }]);
         const codes = await waitForCodes(unknownRouteUri, []);
@@ -3094,8 +3142,20 @@ const check = (label, actual, expected) => {
     const text = `<%= render "shared/card" %>\n<%= t("greet.hello") %>\n<%= ${route}_p %>\n<%= ${route}_path %>\n<%= t("greet.on") %>\n`;
     return { name, dir, route, page, text };
   });
+  for (const { dir, route } of apps) {
+    fakeRails(dir, [
+      {
+        name: route,
+        verb: "GET",
+        path: `/${route}(.:format)`,
+        action: `${route}#index`,
+        source: "config/routes.rb:2",
+      },
+    ]);
+  }
   await multi.send("initialize", {
     processId: null,
+    initializationOptions: useRoutes,
     rootUri: fileUri(apps[0].dir),
     workspaceFolders: apps.map(({ name, dir }) => ({
       name,
@@ -3104,17 +3164,8 @@ const check = (label, actual, expected) => {
     capabilities: {},
   });
   await multi.send("initialized", {}, true);
-  for (const { dir, route, page, text } of apps) {
-    const routes = [
-      {
-        name: route,
-        verb: "GET",
-        path: `/${route}(.:format)`,
-        action: `${route}#index`,
-        source: "config/routes.rb:2",
-      },
-    ];
-    await multi.send("alder/routes", { root: dir, routes }, true);
+  for (const { dir, page, text } of apps) {
+    await routesLoaded(multi.notes, dir, 1);
     await multi.send(
       "textDocument/didOpen",
       { textDocument: { uri: page, languageId: "erb", version: 1, text } },
@@ -3189,6 +3240,7 @@ const check = (label, actual, expected) => {
       erb: { diagnostics: { enabled: false }, format: { enabled: false } },
       haml: { format: { enabled: false } },
       pug: { format: { enabled: false } },
+      routes: { enabled: false },
     },
   });
   await off.send("initialized", {}, true);
@@ -3244,7 +3296,10 @@ const check = (label, actual, expected) => {
     processId: null,
     rootUri: fileUri(root),
     capabilities: {},
-    initializationOptions: { erb: { format: { alignComments: true } } },
+    initializationOptions: {
+      erb: { format: { alignComments: true } },
+      routes: { enabled: false },
+    },
   });
   await aligned.send("initialized", {}, true);
   const commentUri = fileUri(path.join(views, "users", "comment.html.erb"));
@@ -3710,6 +3765,115 @@ const check = (label, actual, expected) => {
     ),
     [path.join(oddDir, "_note.html.erb")],
   );
+  // The server reads the routes itself, so a client that only starts it (Zed) gets them too.
+  const routeApp = (name, rails) => {
+    const dir = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), `alder-${name}-`)),
+    );
+    fs.mkdirSync(path.join(dir, "app/views/users"), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "Gemfile.lock"),
+      "GEM\n  specs:\n    actionview (7.1.3)\n",
+    );
+    fs.mkdirSync(path.join(dir, "config"));
+    fs.writeFileSync(path.join(dir, "config/application.rb"), "");
+    fakeRails(dir, ...rails);
+    const view = path.join(dir, "app/views/users/index.html.erb");
+    fs.writeFileSync(view, "<%= usrs_path(1) %>\n<%= users_p %>\n");
+    return { dir, uri: fileUri(view) };
+  };
+  const routeServer = async (dir, uri, initializationOptions) => {
+    const srv = startServer();
+    await srv.send("initialize", {
+      processId: null,
+      rootUri: fileUri(dir),
+      capabilities: {},
+      initializationOptions,
+    });
+    await srv.send("initialized", {}, true);
+    await srv.send(
+      "textDocument/didOpen",
+      {
+        textDocument: {
+          uri,
+          languageId: "erb",
+          version: 1,
+          text: fs.readFileSync(fileURLToPath(uri), "utf8"),
+        },
+      },
+      true,
+    );
+    return srv;
+  };
+  const diagnosticCodes = (srv, uri) =>
+    srv.notes
+      .filter(
+        (n) =>
+          n.method === "textDocument/publishDiagnostics" &&
+          n.params.uri === uri,
+      )
+      .at(-1)
+      ?.params.diagnostics.map((d) => d.code);
+  const logged = (srv) =>
+    srv.notes
+      .filter((n) => n.method === "window/logMessage")
+      .map((n) => n.params);
+  const loaded = routeApp("routes-ok", [
+    [{ name: "users", verb: "GET", path: "/users" }],
+  ]);
+  const loading = await routeServer(loaded.dir, loaded.uri, useRoutes);
+  await routesLoaded(loading.notes, loaded.dir, 1);
+  const completion = await loading.send("textDocument/completion", {
+    textDocument: { uri: loaded.uri },
+    position: { line: 1, character: 11 },
+  });
+  check(
+    "routes: loaded by the server, no notification",
+    [
+      railsRuns(loaded.dir),
+      completion.result?.map((i) => i.label),
+      diagnosticCodes(loading, loaded.uri),
+    ],
+    [1, ["users_path"], ["Rails/UnknownRoute"]],
+  );
+  const failing = routeApp("routes-fail", [
+    [],
+    "echo 'boom: no database' >&2\nexit 1\n",
+  ]);
+  const failed = await routeServer(failing.dir, failing.uri, useRoutes);
+  const warning = async () => {
+    for (let waited = 0; waited < 10000; waited += 50) {
+      const found = logged(failed).find((m) => m.type === 2);
+      if (found) return found.message;
+      await sleep(50);
+    }
+  };
+  const failure = await warning();
+  const failedSymbols = await failed.send("textDocument/documentSymbol", {
+    textDocument: { uri: failing.uri },
+  });
+  check(
+    "routes: a failing bin/rails is logged once and nothing else changes",
+    [
+      failure?.includes("boom: no database"),
+      logged(failed).filter((m) => m.type === 2).length,
+      Array.isArray(failedSymbols.result),
+    ],
+    [true, 1, true],
+  );
+  const routesOff = routeApp("routes-off", [
+    [{ name: "users", verb: "GET", path: "/users" }],
+  ]);
+  const disabled = await routeServer(routesOff.dir, routesOff.uri, {
+    routes: { ...useRoutes.routes, enabled: false },
+  });
+  await sleep(600);
+  check(
+    "routes: routes.enabled false never runs bin/rails",
+    [railsRuns(routesOff.dir), diagnosticCodes(disabled, routesOff.uri)],
+    [0, []],
+  );
+
   // Quick fixes of the rules that know the answer, from the diagnostics the server publishes: their `data` comes back.
   const fixRoot = fs.realpathSync(
     fs.mkdtempSync(path.join(os.tmpdir(), "alder-fixes-")),
@@ -3723,6 +3887,10 @@ const check = (label, actual, expected) => {
     'application.register("hello", HelloController)',
     "",
   ];
+  fakeRails(
+    fixRoot,
+    ["users", "user"].map((name) => ({ name, verb: "GET", path: `/${name}` })),
+  );
   const fixFiles = {
     "Gemfile.lock": "GEM\n  specs:\n    actionview (7.1.3)\n",
     "config/application.rb": "",
@@ -3758,15 +3926,10 @@ const check = (label, actual, expected) => {
       processId: null,
       rootUri: fileUri(fixRoot),
       capabilities,
-      initializationOptions,
+      initializationOptions: { ...useRoutes, ...initializationOptions },
     });
     await srv.send("initialized", {}, true);
-    const routes = ["users", "user"].map((name) => ({
-      name,
-      verb: "GET",
-      path: `/${name}`,
-    }));
-    await srv.send("alder/routes", { root: fixRoot, routes }, true);
+    await routesLoaded(srv.notes, fixRoot, 1);
     const text = fixViewText;
     const didOpen = {
       textDocument: { uri: fixViewUri, languageId: "erb", version: 1, text },
@@ -4314,6 +4477,7 @@ const check = (label, actual, expected) => {
   await watching.send("initialize", {
     processId: null,
     rootUri: fileUri(root),
+    initializationOptions: { routes: { enabled: false } },
     capabilities: {
       workspace: { didChangeWatchedFiles: { dynamicRegistration: true } },
       textDocument: { synchronization: { dynamicRegistration: true } },
@@ -4398,6 +4562,7 @@ const check = (label, actual, expected) => {
   await dynamic.send("initialize", {
     processId: null,
     rootUri: fileUri(root),
+    initializationOptions: { routes: { enabled: false } },
     capabilities: {
       textDocument: {
         formatting: { dynamicRegistration: true },
@@ -4423,7 +4588,14 @@ const check = (label, actual, expected) => {
   await aligned.send("exit", {}, true);
   await send("shutdown", {});
   await send("exit", {}, true);
-  fs.rmSync(root, { recursive: true, force: true });
+  await Promise.race([exited, sleep(3000)]);
+  // A just-stopped process can still hold the folder for a moment on Windows.
+  fs.rmSync(root, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 200,
+  });
   console.log(failures ? `${failures} check(s) failed` : "all checks passed");
   process.exit(failures ? 1 : 0);
 })();

@@ -702,7 +702,7 @@
         "alder.commands.ruby": {
           "type": "string",
           "default": "ruby",
-          "description": "Ruby used to preview and compile ERB through Erubi (gem install erubi; stdlib ERB without it) and for Haml → ERB through the haml_to_erb library (gem install haml_to_erb)."
+          "description": "Ruby used to preview and compile ERB through Erubi (gem install erubi; stdlib ERB without it) and for Haml → ERB through the haml_to_erb library (gem install haml_to_erb). Also the Ruby that runs `bin/rails runner` for the routes; on Windows it must be a real `ruby.exe`, not a `.bat`/`.cmd` shim."
         },
         "alder.erb.autoCloseTags": {
           "type": "boolean",
@@ -969,7 +969,7 @@
         "alder.routes.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Read the app's routes with `bin/rails runner` (boots the app once, and again when config/routes.rb or config/routes/*.rb changes) for completion, hover and go to definition of `*_path` / `*_url` helpers in views."
+          "description": "The language server reads the app's routes with `bin/rails runner` (boots the app once per app, and again when config/routes.rb or config/routes/*.rb changes) for completion, hover and go to definition of `*_path` / `*_url` helpers in views, and for the `Rails/UnknownRoute` check. Only in a trusted workspace. A boot that fails is logged and leaves the routes as they were."
         },
         "alder.server.enabled": {
           "type": "boolean",
