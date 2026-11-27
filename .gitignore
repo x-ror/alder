@@ -9,3 +9,6 @@ dist/
 .astro/
 .impeccable/review/
 .impeccable/questions/
+zed/target/
+zed/extension.wasm
+zed/grammars/

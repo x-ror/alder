@@ -67,11 +67,19 @@ pub fn controller(current: &Path, identifier: &str) -> Option<Arc<Members>> {
     found
 }
 
+/// The members `source`, a text of the controller `file` that may be unsaved, declares and inherits; `None` when that can't be told.
+pub fn members_in(file: &Path, source: &str) -> Option<Members> {
+    parse(file, source, MAX_PARENTS)
+}
+
 /// The members `file` declares and inherits from the controllers it extends; `None` when that can't be told.
 fn read(file: &Path, parents_left: usize) -> Option<Members> {
-    let source = std::fs::read_to_string(file).ok()?;
-    let code = blank(&source, false);
-    let skeleton = blank(&source, true);
+    parse(file, &std::fs::read_to_string(file).ok()?, parents_left)
+}
+
+fn parse(file: &Path, source: &str, parents_left: usize) -> Option<Members> {
+    let code = blank(source, false);
+    let skeleton = blank(source, true);
     if UNREADABLE.is_match(&skeleton) || passes_this(&skeleton) {
         return None;
     }

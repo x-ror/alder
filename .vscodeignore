@@ -20,3 +20,4 @@ test/**
 .gitignore
 CLAUDE.md
 bun.lock
+zed/**

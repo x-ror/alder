@@ -4,7 +4,9 @@
 use super::paths::app_root;
 use super::stimulus::{self, CONTROLLERS_DIR, SCRIPT_EXTENSIONS};
 use super::stimulus_controller::{self, blank, matching_brace, CLASS, TARGETS_DECLARATION, TARGETS_LIST};
+use crate::util::open_or_read;
 use regex::Regex;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
@@ -45,9 +47,10 @@ pub struct ManifestEdit {
     pub insertions: Vec<Insertion>,
 }
 
-/// The new controller for `identifier` in `current`'s app. None where the lint doesn't report names (controllers loaded from
-/// elsewhere, a library or a computed name) and for an identifier no file name can spell.
-pub fn new_controller(current: &Path, identifier: &str) -> Option<NewController> {
+/// The new controller for `identifier` in `current`'s app, its manifest lines for the manifest's `open` text when it has unsaved
+/// edits. None where the lint doesn't report names (controllers loaded from elsewhere, a library or a computed name) and for an
+/// identifier no file name can spell.
+pub fn new_controller(current: &Path, identifier: &str, open: &HashMap<PathBuf, String>) -> Option<NewController> {
     stimulus::registered(current)?;
     let stem = file_stem(identifier)?;
     let dir = app_root(current)?.join(CONTROLLERS_DIR);
@@ -57,7 +60,7 @@ pub fn new_controller(current: &Path, identifier: &str) -> Option<NewController>
         return None;
     }
     let listing = MANIFESTS.iter().map(|name| dir.join(name)).find_map(|file| {
-        let source = std::fs::read_to_string(&file).ok()?;
+        let source = open_or_read(open.get(&file).cloned(), &file)?;
         (source.contains(".register(") && !LOADING.is_match(&source)).then_some((file, source))
     });
     // A controller its manifest lists but this can't add to would never load.
@@ -464,13 +467,17 @@ mod tests {
             (&format!("{javascript}/index.js"), MANIFEST),
         ]);
         let view = root.join("app/views/x/index.html.erb");
-        let new = new_controller(&view, "date-picker").unwrap();
+        let new = new_controller(&view, "date-picker", &HashMap::new()).unwrap();
         assert_eq!(new.file, root.join(javascript).join("date_picker_controller.js"));
         let manifest = new.manifest.unwrap();
         assert_eq!(manifest.file, root.join(javascript).join("index.js"));
         assert_eq!(manifest.insertions.len(), 2);
-        assert!(new_controller(&view, "hello").is_none(), "the file exists");
-        assert!(new_controller(&view, "Bad").is_none());
+        let unsaved = HashMap::from([(manifest.file.clone(), format!("// x\n{MANIFEST}"))]);
+        let shifted = new_controller(&view, "date-picker", &unsaved).unwrap().manifest.unwrap();
+        let offsets = |edit: &ManifestEdit| edit.insertions.iter().map(|(offset, _)| *offset).collect::<Vec<_>>();
+        assert_eq!(offsets(&shifted), offsets(&manifest).iter().map(|offset| offset + "// x\n".len()).collect::<Vec<_>>(), "unsaved text");
+        assert!(new_controller(&view, "hello", &HashMap::new()).is_none(), "the file exists");
+        assert!(new_controller(&view, "Bad", &HashMap::new()).is_none());
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -485,7 +492,7 @@ mod tests {
             (&format!("{javascript}/c_controller.js"), HEADER),
             (&format!("{javascript}/index.ts"), eager),
         ]);
-        let new = new_controller(&root.join("app/views/x/index.html.erb"), "admin--users").unwrap();
+        let new = new_controller(&root.join("app/views/x/index.html.erb"), "admin--users", &HashMap::new()).unwrap();
         assert_eq!(new.file, root.join(javascript).join("admin/users_controller.ts"));
         assert!(new.manifest.is_none());
         std::fs::remove_dir_all(root).unwrap();
@@ -501,10 +508,10 @@ mod tests {
             (&format!("{javascript}/index.js"), multiline),
         ]);
         let view = root.join("app/views/x/index.html.erb");
-        assert!(new_controller(&view, "x").is_none(), "a call over several lines");
+        assert!(new_controller(&view, "x", &HashMap::new()).is_none(), "a call over several lines");
         std::fs::write(root.join(javascript).join("index.js"), MANIFEST).unwrap();
-        assert!(new_controller(&view, "3d-viewer").is_none(), "no class name");
-        assert!(new_controller(&view, "x").is_some());
+        assert!(new_controller(&view, "3d-viewer", &HashMap::new()).is_none(), "no class name");
+        assert!(new_controller(&view, "x", &HashMap::new()).is_some());
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -515,10 +522,10 @@ mod tests {
             ("app/javascript/controllers/a_controller.js", HEADER),
             ("config/importmap.rb", "pin_all_from \"app/components\", under: \"controllers\"\n"),
         ]);
-        assert!(new_controller(&root.join("app/views/x/index.html.erb"), "x").is_none());
+        assert!(new_controller(&root.join("app/views/x/index.html.erb"), "x", &HashMap::new()).is_none());
         std::fs::remove_dir_all(root).unwrap();
         let root = app(&[("app/views/x/index.html.erb", "")]);
-        assert!(new_controller(&root.join("app/views/x/index.html.erb"), "x").is_none(), "no controllers folder");
+        assert!(new_controller(&root.join("app/views/x/index.html.erb"), "x", &HashMap::new()).is_none(), "no controllers folder");
         std::fs::remove_dir_all(root).unwrap();
     }
 

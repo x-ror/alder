@@ -3955,6 +3955,97 @@ const check = (label, actual, expected) => {
       [["Add `id`", false, { [view]: ['8:4-8:4  id=""'] }]],
     ],
   );
+  // An open locale file's unsaved text is what the key is added to, until it is closed.
+  const enUri = fileUri(path.join(fixRoot, "config/locales/en.yml"));
+  const headingEdit = async () =>
+    edited(await withFiles.actions("Rails/MissingTranslation", 2))[0][2][
+      "config/locales/en.yml"
+    ];
+  await withFiles.srv.send(
+    "textDocument/didOpen",
+    {
+      textDocument: {
+        uri: enUri,
+        languageId: "yaml",
+        version: 1,
+        text: fs.readFileSync(fileURLToPath(enUri), "utf8"),
+      },
+    },
+    true,
+  );
+  await withFiles.srv.send(
+    "textDocument/didChange",
+    {
+      textDocument: { uri: enUri, version: 2 },
+      contentChanges: [
+        {
+          range: {
+            start: { line: 0, character: 0 },
+            end: { line: 0, character: 0 },
+          },
+          text: "# unsaved\n",
+        },
+      ],
+    },
+    true,
+  );
+  const unsavedEdit = await headingEdit();
+  await withFiles.srv.send(
+    "textDocument/didClose",
+    { textDocument: { uri: enUri } },
+    true,
+  );
+  check(
+    "quick fix: a key goes into the open locale file's unsaved text, then the saved one once closed",
+    [unsavedEdit, await headingEdit()],
+    [
+      [`4:${titleEnd}-4:${titleEnd} \n      heading: ""`],
+      [`3:${titleEnd}-3:${titleEnd} \n      heading: ""`],
+    ],
+  );
+  // The diagnostics read the saved controller: members typed since aren't offered again.
+  const helloUri = fileUri(path.join(fixRoot, hello));
+  const insert = (line, character, text) => ({
+    range: { start: { line, character }, end: { line, character } },
+    text,
+  });
+  await withFiles.srv.send(
+    "textDocument/didOpen",
+    {
+      textDocument: {
+        uri: helloUri,
+        languageId: "javascript",
+        version: 1,
+        text: helloController,
+      },
+    },
+    true,
+  );
+  await withFiles.srv.send(
+    "textDocument/didChange",
+    {
+      textDocument: { uri: helloUri, version: 2 },
+      contentChanges: [
+        insert(7, 0, "\n  rotate() {\n  }\n"),
+        insert(3, 26, ', "output"'),
+      ],
+    },
+    true,
+  );
+  const typedFixes = [
+    await withFiles.actions("Stimulus/UnknownTargetOrAction", 5, 0),
+    await withFiles.actions("Stimulus/UnknownTargetOrAction", 5, 1),
+  ];
+  await withFiles.srv.send(
+    "textDocument/didClose",
+    { textDocument: { uri: helloUri } },
+    true,
+  );
+  check(
+    "quick fixes: no target or method the unsaved controller already has",
+    typedFixes,
+    [[], []],
+  );
   await withFiles.srv.send("shutdown", {});
   await withFiles.srv.send("exit", {}, true);
   // A client that can't create files is offered no file to create.
@@ -3969,6 +4060,209 @@ const check = (label, actual, expected) => {
   await withoutFiles.srv.send("shutdown", {});
   await withoutFiles.srv.send("exit", {}, true);
   fs.rmSync(fixRoot, { recursive: true, force: true });
+  // A client may send any request for a file it opened that is no template, or one it never opened.
+  const modelUri = fileUri(path.join(root, "app", "models", "report.rb"));
+  await send(
+    "textDocument/didOpen",
+    {
+      textDocument: {
+        uri: modelUri,
+        languageId: "ruby",
+        version: 1,
+        text: "class Report < ApplicationRecord\nend\n",
+      },
+    },
+    true,
+  );
+  // One set of params for every request below; each reads its own fields.
+  const anywhere = {
+    position: { line: 0, character: 6 },
+    range: {
+      start: { line: 0, character: 0 },
+      end: { line: 1, character: 0 },
+    },
+    options: { tabSize: 2, insertSpaces: true },
+    context: {
+      diagnostics: [],
+      includeDeclaration: true,
+      triggerKind: 1,
+      isRetrigger: false,
+    },
+    newName: "x",
+  };
+  const answers = async (u, methods) =>
+    Promise.all(
+      methods.map(async (method) => {
+        const { result, error } = await send(method, {
+          textDocument: { uri: u },
+          ...anywhere,
+        });
+        return `${method} ${JSON.stringify(error ?? result)}`;
+      }),
+    );
+  const everyRequest = [
+    "textDocument/definition",
+    "textDocument/hover",
+    "textDocument/references",
+    "textDocument/completion",
+    "textDocument/signatureHelp",
+    "textDocument/prepareRename",
+    "textDocument/rename",
+    "textDocument/linkedEditingRange",
+    "textDocument/documentLink",
+    "textDocument/documentSymbol",
+    "textDocument/foldingRange",
+    "textDocument/semanticTokens/full",
+    "textDocument/codeAction",
+    "textDocument/formatting",
+    "textDocument/rangeFormatting",
+  ];
+  const nothing = (methods) => methods.map((method) => `${method} null`);
+  check(
+    "untracked: an open model and a file never opened get nothing",
+    [
+      await answers(modelUri, everyRequest),
+      await answers(fileUri(path.join(root, "app", "models", "x.rb")), [
+        "textDocument/definition",
+        "textDocument/hover",
+        "textDocument/references",
+        "textDocument/documentLink",
+      ]),
+    ],
+    [
+      nothing(everyRequest),
+      nothing([
+        "textDocument/definition",
+        "textDocument/hover",
+        "textDocument/references",
+        "textDocument/documentLink",
+      ]),
+    ],
+  );
+  const partialJbuilderUri = fileUri(
+    path.join(views, "users", "_user.json.jbuilder"),
+  );
+  const percentUri = fileUri(path.join(views, "users", "percent.html.erb"));
+  for (const [u, languageId, body] of [
+    [partialJbuilderUri, "ruby", "json.name user.name\n"],
+    [percentUri, "erb-percent", "% if x\n<div>\n<p>a</p>\n</div>\n% end\n"],
+  ]) {
+    await send(
+      "textDocument/didOpen",
+      { textDocument: { uri: u, languageId, version: 1, text: body } },
+      true,
+    );
+  }
+  const formatting = [
+    "textDocument/formatting",
+    "textDocument/rangeFormatting",
+  ];
+  check(
+    "formatting: nothing for Liquid, Jbuilder and erb-percent",
+    [
+      await answers(liquidUri, formatting),
+      await answers(partialJbuilderUri, formatting),
+      await answers(percentUri, formatting),
+    ],
+    [nothing(formatting), nothing(formatting), nothing(formatting)],
+  );
+  // `initialized` is a notification: the registrations arrive after it, and "ready" is logged after the last.
+  const registered = async (srv) => {
+    const ready = () =>
+      srv.notes.some(
+        (n) =>
+          n.method === "window/logMessage" &&
+          n.params.message.endsWith(" ready"),
+      );
+    for (let i = 0; i < 80 && !ready(); i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    return srv.registrations;
+  };
+  const watching = startServer();
+  await watching.send("initialize", {
+    processId: null,
+    rootUri: fileUri(root),
+    capabilities: {
+      workspace: { didChangeWatchedFiles: { dynamicRegistration: true } },
+      textDocument: { synchronization: { dynamicRegistration: true } },
+    },
+  });
+  await watching.send("initialized", {}, true);
+  const watched = await registered(watching);
+  const globs = watched[0]?.registerOptions.watchers.map((w) => w.globPattern);
+  check(
+    "watchers and fix target sync are registered by the server",
+    [
+      watched.map((r) => r.method),
+      [
+        "**/app/views/**",
+        "**/config/locales/**",
+        "**/config/routes.rb",
+        "**/app/javascript/**",
+        "**/Gemfile.lock",
+        "**/.alder.toml",
+        "**/app",
+      ].filter((glob) => !globs?.includes(glob)),
+      watched[1]?.registerOptions.documentSelector[0],
+      watched[2]?.registerOptions.syncKind,
+    ],
+    [
+      [
+        "workspace/didChangeWatchedFiles",
+        "textDocument/didOpen",
+        "textDocument/didChange",
+        "textDocument/didClose",
+      ],
+      [],
+      { scheme: "file", language: "yaml", pattern: "**/config/locales/**" },
+      2,
+    ],
+  );
+  const laterUri = fileUri(path.join(views, "users", "watched.html.erb"));
+  await watching.send(
+    "textDocument/didOpen",
+    {
+      textDocument: {
+        uri: laterUri,
+        languageId: "erb",
+        version: 1,
+        text: '<%= render "users/later" %>\n',
+      },
+    },
+    true,
+  );
+  const laterCodes = () =>
+    watching.notes
+      .filter(
+        (n) =>
+          n.method === "textDocument/publishDiagnostics" &&
+          n.params.uri === laterUri,
+      )
+      .at(-1)
+      ?.params.diagnostics.map((d) => d.code);
+  const waitForLater = async (done) => {
+    for (let i = 0; i < 80 && !done(laterCodes()); i++) {
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    return laterCodes();
+  };
+  const unresolved = await waitForLater((codes) => codes?.length);
+  const laterPartial = path.join(views, "users", "_later.html.erb");
+  fs.writeFileSync(laterPartial, "<p></p>\n");
+  await watching.send(
+    "workspace/didChangeWatchedFiles",
+    { changes: [{ uri: fileUri(laterPartial), type: 1 }] },
+    true,
+  );
+  check(
+    "a watched-file event lets a created partial resolve",
+    [unresolved, await waitForLater((codes) => codes?.length === 0)],
+    [["Rails/MissingPartial"], []],
+  );
+  fs.unlinkSync(laterPartial);
+  await watching.send("shutdown", {});
+  await watching.send("exit", {}, true);
   const dynamic = startServer();
   await dynamic.send("initialize", {
     processId: null,
@@ -3981,17 +4275,14 @@ const check = (label, actual, expected) => {
     },
   });
   await dynamic.send("initialized", {}, true);
-  // `initialized` is a notification: the registrations arrive after it.
-  for (let i = 0; i < 40 && dynamic.registrations.length < 2; i++) {
-    await new Promise((r) => setTimeout(r, 25));
-  }
   const registeredLanguages = Object.fromEntries(
-    dynamic.registrations.map((r) => [
+    (await registered(dynamic)).map((r) => [
       r.method,
-      r.registerOptions.documentSelector.map((s) => s.language),
+      r.registerOptions.documentSelector?.map((s) => s.language),
     ]),
   );
-  check("dynamic formatting registration", registeredLanguages, {
+  // Neither watchers nor syncing for a client that takes no such registration.
+  check("dynamic formatting registration only", registeredLanguages, {
     "textDocument/formatting": ["erb", "haml", "slim", "skim", "jade"],
     "textDocument/rangeFormatting": ["erb", "haml"],
   });
@@ -4005,7 +4296,9 @@ const check = (label, actual, expected) => {
   console.log(failures ? `${failures} check(s) failed` : "all checks passed");
   process.exit(failures ? 1 : 0);
 })();
+// The suite takes about 6 s locally; CI's Windows and macOS runners are slower.
+const SUITE_TIMEOUT_MS = 20_000;
 setTimeout(() => {
   console.error("timeout");
   process.exit(1);
-}, 8000);
+}, SUITE_TIMEOUT_MS);

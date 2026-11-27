@@ -3,6 +3,8 @@
 set -e
 
 fmt=$(git diff --cached --name-only --diff-filter=ACMR -- '*.js' '*.md' '*.json' '*.yml' '*.yaml' '*.toml')
+# bun fmt refuses a symlink named explicitly; its target is checked as its own file.
+fmt=$(for f in $fmt; do [ -L "$f" ] || echo "$f"; done)
 rs=$(git diff --cached --name-only --diff-filter=ACMR -- 'server/*.rs')
 [ -z "$fmt$rs" ] && exit 0
 

@@ -60,6 +60,8 @@ Run _Developer: Inspect Editor Tokens and Scopes_ on a token. Scopes ending in `
 - _Alder: Restart Language Server_ restarts it.
 - _Developer: Show Running Extensions_ lists every extension active for the window.
 
+In Zed, see [Zed](/alder/guides/zed/#troubleshooting).
+
 ## Report a problem
 
 Found a bug or missing a Rails feature? [Open an issue on GitHub](https://github.com/x-ror/alder/issues).

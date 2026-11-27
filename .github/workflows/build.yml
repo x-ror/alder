@@ -33,10 +33,17 @@ jobs:
         with: { components: "rustfmt, clippy" }
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          workspaces: server
+          workspaces: |
+            server
+            zed
           lookup-only: ${{ startsWith(github.ref, 'refs/tags/') }} # zizmor: ignore[cache-poisoning] off for tag builds
       - run: cargo fmt --manifest-path server/Cargo.toml --check
       - run: cargo clippy --manifest-path server/Cargo.toml --all-targets -- -D warnings
+      - run: cargo fmt --manifest-path zed/Cargo.toml --check
+      - run: cargo clippy --manifest-path zed/Cargo.toml --all-targets -- -D warnings
+      - run: cargo test --manifest-path zed/Cargo.toml
+      # Zed compiles the extension for this target when it is installed.
+      - run: rustup target add wasm32-wasip2 && cargo build --manifest-path zed/Cargo.toml --release --target wasm32-wasip2
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with: { no-cache: "${{ startsWith(github.ref, 'refs/tags/') }}" } # zizmor: ignore[cache-poisoning] off for tag builds
       - run: bun install --frozen-lockfile
@@ -178,12 +185,26 @@ jobs:
           done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: vsix, path: "*.vsix" }
+      # The bare language server per platform, for editors that download it (the Zed extension); names are a contract.
+      - name: Archive the standalone language servers
+        run: |
+          for d in .pkg/server-*; do
+            plat=${d#.pkg/server-}
+            chmod 755 $d/*
+            if [ "$plat" = win32-x64 ]; then
+              (cd $d && zip -q "$GITHUB_WORKSPACE/alder-ls-$plat.zip" alder-ls.exe)
+            else
+              tar -czf alder-ls-$plat.tar.gz -C $d alder-ls
+            fi
+          done
+          # Every platform the server matrix builds: a renamed artifact must not drop one.
+          test "$(ls alder-ls-*.tar.gz alder-ls-*.zip | wc -l)" -eq 5
       - if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         # A tag with a pre-release suffix (v1.0.0-rc.1) is a GitHub pre-release.
         with:
           {
-            files: "*.vsix",
+            files: "*.vsix\nalder-ls-*.tar.gz\nalder-ls-*.zip",
             prerelease: "${{ contains(github.ref_name, '-') }}",
           }
 
