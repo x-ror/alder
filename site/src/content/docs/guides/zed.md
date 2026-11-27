@@ -91,7 +91,7 @@ The engine settings of the [settings reference](/alder/guides/settings/), withou
 | `routes.enabled`                                                   | boolean  | `true`  |
 | `routes.ruby`                                                      | string   | `ruby`  |
 
-The server reads them once at startup: run `editor: restart language server` after changing them. `routes.enabled` lets the server run `ruby bin/rails runner` in your Rails app to read its routes, for the `Rails/UnknownRoute` check and route helper completion; `routes.ruby` names the Ruby to run. A `.alder.toml` in the project works unchanged and wins over these options; see the [rules reference](/alder/reference/rules/#configuration).
+The server reads them once at startup: run `editor: restart language server` after changing them. `routes.enabled` lets the server boot your Rails app with `ruby bin/rails runner` to read its routes, for the `Rails/UnknownRoute` check and route helper completion. That runs the app's own code, once when a view opens and again when `config/routes.rb` or `config/routes/**` changes. Zed starts language servers only in trusted worktrees, so this happens only in a worktree you trusted; set `"routes": { "enabled": false }` under `lsp.alder-ls.initialization_options` to turn it off. `routes.ruby` names the Ruby to run; on Windows it must be a real `ruby.exe` when Ruby is installed through a `.bat` or `.cmd` shim. A `.alder.toml` in the project works unchanged and wins over these options; see the [rules reference](/alder/reference/rules/#configuration).
 
 Semantic tokens are off by default in Zed. To use them, set `"semantic_tokens": "combined"` (or `"full"`) in Zed's settings.
 

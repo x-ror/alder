@@ -702,7 +702,7 @@
         "alder.commands.ruby": {
           "type": "string",
           "default": "ruby",
-          "description": "Ruby used to preview and compile ERB through Erubi (gem install erubi; stdlib ERB without it) and for Haml → ERB through the haml_to_erb library (gem install haml_to_erb)."
+          "description": "Ruby used to preview and compile ERB through Erubi (gem install erubi; stdlib ERB without it) and for Haml → ERB through the haml_to_erb library (gem install haml_to_erb). Also the Ruby that runs `bin/rails runner` for the routes; on Windows it must be a real `ruby.exe`, not a `.bat`/`.cmd` shim."
         },
         "alder.erb.autoCloseTags": {
           "type": "boolean",
