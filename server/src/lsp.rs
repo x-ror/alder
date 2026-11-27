@@ -1078,7 +1078,7 @@ impl Backend {
 
     /// Lints the open templates again when `path` is a Stimulus controller, whose members they are checked against.
     fn relint_for_stimulus_controller(&self, path: Option<&Path>) {
-        if !path.is_some_and(is_stimulus_controller) {
+        if !path.is_some_and(stimulus::is_controller_script) {
             return;
         }
         let open: Vec<Uri> = self.docs.iter().map(|d| d.key().clone()).collect();
@@ -1111,7 +1111,7 @@ impl Backend {
             let latest = || publishes.get(&uri).is_some_and(|latest| *latest == run);
             let Some(doc) = docs.get(&uri).filter(|_| latest()).map(|doc| doc.clone()) else { return };
             let (checked, version) = (uri.clone(), doc.version);
-            let open_files = file_texts(&files).collect();
+            let open_files = file_texts(&files).filter(|(path, _)| stimulus::is_controller_script(path)).collect();
             let started = config_reports.generation();
             let Ok((diags, rules)) = off_server_task(move || {
                 let mut projects = Projects::new();
@@ -1258,11 +1258,6 @@ impl Backend {
 
 fn file_texts(files: &DashMap<Uri, String>) -> impl Iterator<Item = (PathBuf, String)> + '_ {
     files.iter().filter_map(|f| Some((util::file_path(f.key())?, f.value().clone())))
-}
-
-fn is_stimulus_controller(path: &Path) -> bool {
-    let is_script = path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| stimulus::SCRIPT_EXTENSIONS.contains(&ext));
-    is_script && path.ancestors().any(|dir| dir.ends_with(stimulus::CONTROLLERS_DIR))
 }
 
 /// tower-lsp polls every handler in one task, so a scan of the whole app here would hold up all other requests.

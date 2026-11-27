@@ -174,10 +174,10 @@ fn create_controller(path: &Path, d: &Diagnostic, can_create: bool, open: &HashM
 /// confidence and its text, which may be unsaved, doesn't have the member yet.
 fn add_member(path: &Path, d: &Diagnostic, open: &HashMap<PathBuf, String>) -> Option<CodeAction> {
     let (controller, name) = (data_str(d, "controller")?, data_str(d, "name")?);
-    let file = stimulus_edit::editable_controller(path, controller)?;
+    let file = stimulus_edit::editable_controller(path, controller, open)?;
     let source = util::open_or_read(open.get(&file).cloned(), &file)?;
-    // The diagnostic reads the saved file: a member typed since would be added a second time.
-    let members = stimulus_controller::members_in(&file, &source)?;
+    // The client's diagnostic may predate the latest unsaved edit: a member typed since would be added a second time.
+    let members = stimulus_controller::members_in(&file, &source, open)?;
     let shown = paths::rails_relative(&file, path);
     let (title, insertions) = match data_str(d, "kind")? {
         "target" if !members.targets.iter().any(|target| target == name) => {

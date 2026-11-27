@@ -3,6 +3,7 @@
 
 use crate::rails::paths::app_root;
 use crate::rails::stimulus::{self, CONTROLLERS_DIR, SCRIPT_EXTENSIONS};
+use crate::util;
 use dashmap::DashMap;
 use regex::Regex;
 use std::collections::HashMap;
@@ -61,28 +62,30 @@ pub fn clear_cache() {
 pub fn controller(current: &Path, identifier: &str, open: &HashMap<PathBuf, String>) -> Option<Arc<Members>> {
     let [file]: [PathBuf; 1] = stimulus::resolve(current, identifier).try_into().ok()?;
     stimulus::registered(current)?;
-    if let Some(source) = open.get(&file) {
-        return members_in(&file, source).map(Arc::new);
+    // A cached controller may have read an open base controller from disk.
+    if open.keys().any(|path| stimulus::is_controller_script(path)) {
+        return read(&file, MAX_PARENTS, open).map(Arc::new);
     }
     if let Some(found) = MEMBERS.get(&file) {
         return found.clone();
     }
-    let found = read(&file, MAX_PARENTS).map(Arc::new);
+    let found = read(&file, MAX_PARENTS, open).map(Arc::new);
     MEMBERS.insert(file, found.clone());
     found
 }
 
 /// The members `source`, a text of the controller `file` that may be unsaved, declares and inherits; `None` when that can't be told.
-pub fn members_in(file: &Path, source: &str) -> Option<Members> {
-    parse(file, source, MAX_PARENTS)
+pub fn members_in(file: &Path, source: &str, open: &HashMap<PathBuf, String>) -> Option<Members> {
+    parse(file, source, MAX_PARENTS, open)
 }
 
-/// The members `file` declares and inherits from the controllers it extends; `None` when that can't be told.
-fn read(file: &Path, parents_left: usize) -> Option<Members> {
-    parse(file, &std::fs::read_to_string(file).ok()?, parents_left)
+/// The members `file` declares and inherits from the controllers it extends, from its text in `open` or the saved file; `None`
+/// when that can't be told.
+fn read(file: &Path, parents_left: usize, open: &HashMap<PathBuf, String>) -> Option<Members> {
+    parse(file, &util::open_or_read(open.get(file).cloned(), file)?, parents_left, open)
 }
 
-fn parse(file: &Path, source: &str, parents_left: usize) -> Option<Members> {
+fn parse(file: &Path, source: &str, parents_left: usize, open: &HashMap<PathBuf, String>) -> Option<Members> {
     let code = blank(source, false);
     let skeleton = blank(source, true);
     if UNREADABLE.is_match(&skeleton) || passes_this(&skeleton) {
@@ -91,8 +94,8 @@ fn parse(file: &Path, source: &str, parents_left: usize) -> Option<Members> {
     let mut classes = CLASS.captures_iter(&skeleton);
     let (Some(class), None) = (classes.next(), classes.next()) else { return None };
     let parent = parent_of(class.get(1)?.as_str())?;
-    let open = class.get(0)?.end() - "{".len();
-    let body = &skeleton[open + "{".len()..matching_brace(&skeleton, open)?];
+    let brace = class.get(0)?.end() - "{".len();
+    let body = &skeleton[brace + "{".len()..matching_brace(&skeleton, brace)?];
     let mut methods = member_names(body)?;
     if methods.iter().any(|name| name == "targets") && !TARGETS_DECLARATION.is_match(&skeleton) {
         return None;
@@ -100,7 +103,7 @@ fn parse(file: &Path, source: &str, parents_left: usize) -> Option<Members> {
     methods.extend(ASSIGNED.captures_iter(&skeleton).map(|assigned| assigned[1].to_string()));
     let mut members = Members { targets: declared_targets(&code, &skeleton)?, methods };
     if parent != "Controller" || !STIMULUS_IMPORT.is_match(&code) {
-        let inherited = read(&imported_file(&code, &parent, file)?, parents_left.checked_sub(1)?)?;
+        let inherited = read(&imported_file(&code, &parent, file)?, parents_left.checked_sub(1)?, open)?;
         members.targets.extend(inherited.targets);
         members.methods.extend(inherited.methods);
     }
@@ -350,7 +353,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("search_controller.js");
         std::fs::write(&file, source).unwrap();
-        let found = read(&file, MAX_PARENTS);
+        let found = read(&file, MAX_PARENTS, &HashMap::new());
         std::fs::remove_dir_all(&dir).unwrap();
         found.map(|found| (found.targets, found.methods))
     }
@@ -484,6 +487,11 @@ export default class extends Controller {
         let unsaved = format!("{stimulus}export default class extends Controller {{\n  reset() {{}}\n}}");
         let open = HashMap::from([(controllers.join("search_controller.js"), unsaved)]);
         assert!(controller(&view, "search", &open).unwrap().has_method("reset"), "the unsaved text wins");
+        let base = format!("{stimulus}export default class extends Controller {{\n  static targets = [\"unsaved\"]\n  fresh() {{}}\n}}");
+        let open = HashMap::from([(controllers.join("application_controller.js"), base)]);
+        let inherited = controller(&view, "search", &open).unwrap();
+        assert!(inherited.has_method("fresh") && !inherited.has_method("close") && inherited.targets.contains(&"unsaved".to_string()));
+        assert!(controller(&view, "search", &HashMap::new()).unwrap().has_method("close"), "the saved base once it closes");
         assert!(!controller(&view, "search", &HashMap::new()).unwrap().has_method("reset"), "the saved file is read again once it closes");
         assert!(controller(&view, "admin--users", &HashMap::new()).unwrap().has_method("close"));
         assert!(controller(&view, "lonely", &HashMap::new()).is_none(), "a base controller from a package");

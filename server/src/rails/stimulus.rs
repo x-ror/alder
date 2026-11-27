@@ -405,9 +405,18 @@ fn scan_registered(current: &Path) -> Option<Registered> {
     Some(Registered { names, controllers: controllers_dir, engines })
 }
 
+pub(crate) fn is_script(path: &Path) -> bool {
+    path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| SCRIPT_EXTENSIONS.contains(&ext))
+}
+
+/// Whether `path` is a script in a controllers folder.
+pub(crate) fn is_controller_script(path: &Path) -> bool {
+    is_script(path) && path.ancestors().any(|dir| dir.ends_with(CONTROLLERS_DIR))
+}
+
 fn is_loader_file(entry: &walkdir::DirEntry) -> bool {
     let path = entry.path();
-    let is_script = path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| SCRIPT_EXTENSIONS.contains(&ext));
+    let is_script = is_script(path);
     let name = entry.file_name().to_str().unwrap_or_default();
     (entry.file_type().is_file() || entry.path_is_symlink() && path.is_file())
         && is_script

@@ -4021,6 +4021,13 @@ const check = (label, actual, expected) => {
     },
     true,
   );
+  // What the client holds when it asks for fixes before the server's lint of the edit arrives.
+  const staleDiagnostics = withFiles
+    .published()
+    .filter(
+      (d) =>
+        d.code === "Stimulus/UnknownTargetOrAction" && d.range.start.line === 5,
+    );
   await withFiles.srv.send(
     "textDocument/didChange",
     {
@@ -4031,6 +4038,20 @@ const check = (label, actual, expected) => {
       ],
     },
     true,
+  );
+  const typedFixes = [];
+  for (const diagnostic of staleDiagnostics) {
+    const { result } = await withFiles.srv.send("textDocument/codeAction", {
+      textDocument: { uri: fixViewUri },
+      range: diagnostic.range,
+      context: { diagnostics: [diagnostic] },
+    });
+    typedFixes.push(result.filter((a) => a.kind === "quickfix"));
+  }
+  check(
+    "quick fixes: no target or method the unsaved controller already has, for diagnostics older than the edit",
+    [staleDiagnostics.length, typedFixes],
+    [2, [[], []]],
   );
   // The template's warnings on line 5, once the server has published `count` of them.
   const unknownMembers = async (count) => {
