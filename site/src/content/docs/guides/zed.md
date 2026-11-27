@@ -83,6 +83,8 @@ Semantic tokens are off by default in Zed. To use them, set `"semantic_tokens": 
 
 Everything the language server does works in Zed: diagnostics, formatting and format on save, go to definition (partials, components, helpers), completion, hover, signature help, references, rename of strict locals, partial renames that update `render` calls when you rename the file, document links, folding, document symbols and quick fixes. See [Rails navigation and completion](/alder/guides/rails-navigation/) and [Errors as you type](/alder/guides/checks/).
 
+Quick fixes that edit a locale file or a Stimulus controller are computed from the file on disk in Zed, so save that file before you apply one.
+
 Zed formats with the first language server that offers formatting, which for a language can be another server than Alder. To format with Alder, name it as the formatter for that language:
 
 ```json
