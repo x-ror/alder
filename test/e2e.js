@@ -3752,12 +3752,13 @@ const check = (label, actual, expected) => {
   const fixViewUri = fileUri(fixView);
   const inFixRoot = (uri) =>
     path.relative(fixRoot, fileURLToPath(uri)).replaceAll(path.sep, "/");
-  const fixServer = async (capabilities) => {
+  const fixServer = async (capabilities, initializationOptions) => {
     const srv = startServer();
     await srv.send("initialize", {
       processId: null,
       rootUri: fileUri(fixRoot),
       capabilities,
+      initializationOptions,
     });
     await srv.send("initialized", {}, true);
     const routes = ["users", "user"].map((name) => ({
@@ -3817,14 +3818,15 @@ const check = (label, actual, expected) => {
     ]);
   const view = "app/views/users/index.html.erb";
   const hello = "app/javascript/controllers/hello_controller.js";
-  const withFiles = await fixServer({
+  const canCreate = {
     workspace: {
       workspaceEdit: {
         documentChanges: true,
         resourceOperations: ["create", "rename", "delete"],
       },
     },
-  });
+  };
+  const withFiles = await fixServer(canCreate, { syncsFixTargets: true });
   check("quick fixes: the diagnostics come with data", withFiles.flagged, 11);
   check(
     "quick fix: replace a route helper",
@@ -4081,6 +4083,68 @@ const check = (label, actual, expected) => {
   );
   await withFiles.srv.send("shutdown", {});
   await withFiles.srv.send("exit", {}, true);
+  // A client that declares no sync of fix targets is trusted with a kind of file once it has opened one of that kind.
+  const unsynced = await fixServer(canCreate);
+  const titles = async (code, line, nth) =>
+    (await unsynced.actions(code, line, nth)).map((a) => a.title);
+  const openFile = (uri, languageId, text) =>
+    unsynced.srv.send(
+      "textDocument/didOpen",
+      { textDocument: { uri, languageId, version: 1, text } },
+      true,
+    );
+  const fixesNow = async () => [
+    await titles("Rails/MissingTranslation", 2),
+    await titles("Stimulus/UnknownController", 3),
+    await titles("Stimulus/UnknownTargetOrAction", 4, 0),
+  ];
+  check(
+    "quick fixes: no edit of an existing file from a client that may not sync it",
+    await fixesNow(),
+    [[], ["Use `hello`"], ["Use `name`"]],
+  );
+  await openFile(
+    fileUri(path.join(fixRoot, "config/locales/fr.yml")),
+    "yaml",
+    "fr:\n",
+  );
+  check(
+    "quick fixes: a YAML didOpen shows the client syncs locale files",
+    await fixesNow(),
+    [
+      ["Add `users.index.heading` to config/locales/en.yml"],
+      ["Use `hello`"],
+      ["Use `name`"],
+    ],
+  );
+  await openFile(
+    fileUri(path.join(fixRoot, "app/javascript/application.js")),
+    "javascript",
+    "",
+  );
+  check(
+    "quick fixes: a script didOpen shows the client syncs controllers",
+    await fixesNow(),
+    [
+      ["Add `users.index.heading` to config/locales/en.yml"],
+      ["Use `hello`", "Create app/javascript/controllers/helo_controller.js"],
+      ["Use `name`", `Add \`nme\` to static targets in ${hello}`],
+    ],
+  );
+  await unsynced.srv.send("shutdown", {});
+  await unsynced.srv.send("exit", {}, true);
+  // Creating files edits nothing that exists, so it needs no sync.
+  fs.rmSync(path.join(fixRoot, "app/javascript/controllers/index.js"));
+  const creating = await fixServer(canCreate);
+  check(
+    "quick fixes: files are created for a client that may not sync",
+    (await creating.actions("Stimulus/UnknownController", 3)).map(
+      (a) => a.title,
+    ),
+    ["Use `hello`", "Create app/javascript/controllers/helo_controller.js"],
+  );
+  await creating.srv.send("shutdown", {});
+  await creating.srv.send("exit", {}, true);
   // A client that can't create files is offered no file to create.
   const withoutFiles = await fixServer({});
   check(
@@ -4172,6 +4236,40 @@ const check = (label, actual, expected) => {
       ]),
     ],
   );
+  // Zed opts YAML, JavaScript and TypeScript in for the fix targets: they are synced, and nothing else is done for them.
+  const optedIn = [
+    ["config/locales/en.yml", "yaml", "en:\n  a: b\n"],
+    [
+      "app/javascript/controllers/x_controller.js",
+      "javascript",
+      "export default class {}\n",
+    ],
+    [
+      "app/javascript/controllers/y_controller.ts",
+      "typescript",
+      "export default class {}\n",
+    ],
+  ];
+  for (const [name, languageId, body] of optedIn) {
+    const u = fileUri(path.join(root, name));
+    await send(
+      "textDocument/didOpen",
+      { textDocument: { uri: u, languageId, version: 1, text: body } },
+      true,
+    );
+    check(
+      `untracked: an open ${languageId} file gets nothing`,
+      [
+        await answers(u, everyRequest),
+        notes.filter(
+          (n) =>
+            n.method === "textDocument/publishDiagnostics" &&
+            n.params.uri === u,
+        ).length,
+      ],
+      [nothing(everyRequest), 0],
+    );
+  }
   const partialJbuilderUri = fileUri(
     path.join(views, "users", "_user.json.jbuilder"),
   );

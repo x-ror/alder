@@ -50,6 +50,8 @@ function initializationOptions(config) {
     format: { enabled: config.get(`${lang}.format.enabled`, true), ...format },
   });
   return {
+    // vscode-languageclient honours the server's dynamic registrations that sync the files its quick fixes edit.
+    syncsFixTargets: true,
     slim: {
       extraEngines: config.get("slim.extraEngines", []),
       disabledDiagnostics: config.get("slim.disabledDiagnostics", []),
