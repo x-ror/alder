@@ -9,12 +9,9 @@ import {
 } from "vscode-languageclient/node";
 
 import { SECTION, settings } from "./workspace.js";
-import { withoutDirtyEdits } from "./codeActions.js";
 
 /** @type {LanguageClient | undefined} */
 let client;
-/** @type {vscode.FileSystemWatcher[] | undefined} */
-let watchers;
 /** @type {vscode.LogOutputChannel | undefined} */
 let output;
 // A restarted server has lost what was sent to the previous one.
@@ -127,25 +124,6 @@ async function doStart(context) {
   const command = findServer(context);
   log(`starting language server: ${command}`);
 
-  // The server caches app/views listings, parsed locales (and the config that sets their default locale and sources), the helpers and routes files that define route helpers and the Stimulus controllers app/javascript registers, and a changed Gemfile.lock or .ruby-version changes its framework gates and the Ruby grammar, and a .alder.toml changes which rules apply, and a Pug file changes what the templates that include or extend it find; these events invalidate them. The folder globs
-  // catch deleting/renaming a whole app/ or config/ tree, which VS Code reports as one event for the folder.
-  // Created once: restarts reuse them instead of piling up live watchers.
-  if (!watchers) {
-    watchers = [
-      "**/app/views/**",
-      "**/config/locales/**",
-      "**/config/{application.rb,environments/*.rb,initializers/**,routes.rb,routes/**}",
-      "**/app/{helpers,controllers}/**",
-      "**/app/javascript/**",
-      "**/config/importmap.rb",
-      "**/Gemfile.lock",
-      "**/.ruby-version",
-      "**/.alder.toml",
-      "**/*.{pug,jade}",
-      "**/{app,config,app/views,config/locales}",
-    ].map((glob) => vscode.workspace.createFileSystemWatcher(glob));
-    context.subscriptions.push(...watchers);
-  }
   const started = new LanguageClient(
     SECTION,
     "Alder Language Server",
@@ -178,20 +156,8 @@ async function doStart(context) {
       outputChannel: output,
       // Our catch below reports the failure; returning false stops the client from also showing its own.
       initializationFailedHandler: () => false,
+      // The server registers its own file watchers, and syncs the locale files and Stimulus controllers its fixes edit.
       initializationOptions: initializationOptions(config),
-      synchronize: { fileEvents: watchers },
-      middleware: {
-        // File fixes are computed from disk: not offered over a file with unsaved edits, which the server never sees.
-        provideCodeActions: async (document, range, context, token, next) => {
-          const actions = await next(document, range, context, token);
-          const dirty = new Set(
-            vscode.workspace.textDocuments
-              .filter(({ isDirty }) => isDirty)
-              .map(({ uri }) => uri.toString()),
-          );
-          return withoutDirtyEdits(actions, dirty, document.uri.toString());
-        },
-      },
     },
   );
   client = started;

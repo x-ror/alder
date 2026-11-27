@@ -216,6 +216,29 @@ const checks = {
     );
   },
 
+  async "an include created on disk reaches the server through its watchers"() {
+    const dir = "app/assets/templates/users";
+    const rel = `${dir}/watched.jst.pug`;
+    const include = path.join(app, dir, "later.pug");
+    fs.writeFileSync(path.join(app, rel), "p\n  include later\n");
+    const missing = (editor) =>
+      vscode.languages
+        .getDiagnostics(editor.document.uri)
+        .some((d) => (d.code?.value ?? d.code) === "Syntax/PugMissingFile");
+    try {
+      const editor = await open(rel);
+      await until("the missing include", () => missing(editor));
+      fs.writeFileSync(include, "p\n");
+      await until("the include found", () => !missing(editor));
+    } finally {
+      await vscode.commands.executeCommand(
+        "workbench.action.closeActiveEditor",
+      );
+      fs.rmSync(include, { force: true });
+      fs.rmSync(path.join(app, rel), { force: true });
+    }
+  },
+
   async "erb.diagnostics.enabled off clears diagnostics"() {
     const editor = await open("app/views/users/index.html.erb");
     const served = () =>

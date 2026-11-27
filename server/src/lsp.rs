@@ -60,11 +60,47 @@ const FORMATTING_LANGUAGES: [&str; 5] = ["erb", "haml", "slim", "skim", "jade"];
 /// above it, by any amount, nests under it, so a range re-indented without the lines around it can change the nesting.
 const RANGE_FORMATTING_LANGUAGES: [&str; 2] = ["erb", "haml"];
 
-/// Which formatting requests the client takes dynamic registrations for.
+/// What the caches read: views and locales, the config that sets the default locale, translation sources and routes, the
+/// helpers and controllers that define route helpers, the Stimulus controllers app/javascript registers, the lockfile and
+/// .ruby-version that gate frameworks and the Ruby grammar, the rules' config and the Pug templates others include.
+/// One flat glob each: clients differ on `**` inside `{…}`.
+const WATCHED_FILES: [&str; 20] = [
+    "**/app/views/**",
+    "**/config/locales/**",
+    "**/config/application.rb",
+    "**/config/environments/*.rb",
+    "**/config/initializers/**",
+    "**/config/routes.rb",
+    "**/config/routes/**",
+    "**/app/helpers/**",
+    "**/app/controllers/**",
+    "**/app/javascript/**",
+    "**/config/importmap.rb",
+    "**/Gemfile.lock",
+    "**/.ruby-version",
+    "**/.alder.toml",
+    "**/*.pug",
+    "**/*.jade",
+    // Deleting or renaming a whole tree is one event for the folder, which the globs above don't match.
+    "**/app",
+    "**/config",
+    "**/app/views",
+    "**/config/locales",
+];
+
+/// The files besides templates that quick fixes edit, synced so their edits are computed from unsaved text. Filtered by
+/// language too: a document the client already syncs by its own selector (`.js.erb`) would get each change twice.
+const FIX_TARGETS: [(&str, &[&str]); 2] = [
+    ("**/config/locales/**", &["yaml"]),
+    ("**/javascript/controllers/**", &["javascript", "typescript", "javascriptreact", "typescriptreact"]),
+];
+
+/// Which requests and notifications the client takes dynamic registrations for.
 #[derive(Clone, Copy, Default)]
-struct DynamicFormatting {
+struct Dynamic {
     formatting: bool,
     range_formatting: bool,
+    text_sync: bool,
 }
 
 /// Runs the language server on stdin/stdout until the client exits.
@@ -75,6 +111,7 @@ pub async fn serve() {
         client,
         docs: Arc::default(),
         controllers: DashMap::new(),
+        files: DashMap::new(),
         templates: Arc::default(),
         locales: Arc::default(),
         cache_generation: Arc::default(),
@@ -88,7 +125,7 @@ pub async fn serve() {
         resolved: Arc::default(),
         config_reports: Arc::default(),
         roots: OnceLock::new(),
-        dynamic_formatting: OnceLock::new(),
+        dynamic: OnceLock::new(),
         dynamic_watching: OnceLock::new(),
         semantic_refresh: OnceLock::new(),
         file_operations: OnceLock::new(),
@@ -105,6 +142,8 @@ struct Backend {
     docs: Arc<DashMap<Uri, Doc>>,
     /// Open controllers, for navigation to their views only; no other request reads them.
     controllers: DashMap<Uri, String>,
+    /// Other open files: the `FIX_TARGETS`, and any other file the client sends, whose unsaved text edits to them start from.
+    files: DashMap<Uri, String>,
     /// Files under each app/views root, for render completion.
     templates: Arc<DashMap<PathBuf, Arc<Vec<PathBuf>>>>,
     /// Parsed locale files per config/locales directory.
@@ -129,8 +168,9 @@ struct Backend {
     roots: OnceLock<Vec<PathBuf>>,
     /// Formatting is registered per template language when the client supports dynamic registration:
     /// a static capability would cover every language, including ones the formatter does nothing for.
-    dynamic_formatting: OnceLock<DynamicFormatting>,
-    /// The client takes `workspace/didChangeWatchedFiles` registrations, for config files outside the workspace folders.
+    dynamic: OnceLock<Dynamic>,
+    /// The client takes `workspace/didChangeWatchedFiles` registrations: `WATCHED_FILES`, and config files outside the
+    /// workspace folders.
     dynamic_watching: OnceLock<Option<Watching>>,
     /// The client takes `workspace/semanticTokens/refresh`.
     semantic_refresh: OnceLock<bool>,
@@ -159,9 +199,10 @@ impl LanguageServer for Backend {
         let folders = params.workspace_folders.unwrap_or_default().into_iter().map(|f| f.uri);
         let _ = self.roots.set(folders.chain(root_uri).filter_map(|u| util::file_path(&u)).collect());
         let text_document = params.capabilities.text_document.as_ref();
-        let _ = self.dynamic_formatting.set(DynamicFormatting {
+        let _ = self.dynamic.set(Dynamic {
             formatting: text_document.and_then(|t| t.formatting.as_ref()).and_then(|f| f.dynamic_registration).unwrap_or(false),
             range_formatting: text_document.and_then(|t| t.range_formatting.as_ref()).and_then(|f| f.dynamic_registration).unwrap_or(false),
+            text_sync: text_document.and_then(|t| t.synchronization.as_ref()).and_then(|s| s.dynamic_registration).unwrap_or(false),
         });
         let workspace = params.capabilities.workspace.unwrap_or_default();
         let watching = workspace.did_change_watched_files.unwrap_or_default();
@@ -231,7 +272,7 @@ impl LanguageServer for Backend {
     }
 
     async fn initialized(&self, _: InitializedParams) {
-        let dynamic = self.dynamic_formatting.get().copied().unwrap_or_default();
+        let dynamic = self.dynamic.get().copied().unwrap_or_default();
         let registration = |id: &str, method: &str, languages: &[&str]| Registration {
             id: id.into(),
             method: method.into(),
@@ -246,10 +287,12 @@ impl LanguageServer for Backend {
         if dynamic.range_formatting {
             registrations.push(registration(RANGE_FORMATTING_REGISTRATION, "textDocument/rangeFormatting", &RANGE_FORMATTING_LANGUAGES));
         }
-        if !registrations.is_empty() {
-            if let Err(e) = self.client.register_capability(registrations).await {
-                self.client.log_message(MessageType::WARNING, format!("Formatting not registered: {e}")).await;
-            }
+        self.register(registrations, "Formatting").await;
+        if self.dynamic_watching.get().is_some_and(Option::is_some) {
+            self.register(vec![workspace_watchers()], "File watching").await;
+        }
+        if dynamic.text_sync {
+            self.register(fix_target_sync(), "Syncing locale files and Stimulus controllers").await;
         }
         self.client.log_message(MessageType::INFO, format!("{SERVER_NAME} ready")).await;
     }
@@ -262,6 +305,8 @@ impl LanguageServer for Backend {
         let Some(lang) = TemplateLang::from_uri_or_id(&p.text_document.uri, Some(&p.text_document.language_id)) else {
             if util::file_path(&p.text_document.uri).is_some_and(|path| controller_classes::controller_path(&path).is_some()) {
                 self.controllers.insert(p.text_document.uri, p.text_document.text);
+            } else {
+                self.files.insert(p.text_document.uri, p.text_document.text);
             }
             return;
         };
@@ -282,7 +327,7 @@ impl LanguageServer for Backend {
 
     async fn did_change(&self, p: DidChangeTextDocumentParams) {
         let version = p.text_document.version;
-        if let Some(mut text) = self.controllers.get_mut(&p.text_document.uri) {
+        if let Some(mut text) = self.controllers.get_mut(&p.text_document.uri).or_else(|| self.files.get_mut(&p.text_document.uri)) {
             for change in p.content_changes {
                 util::apply_change(&mut text, change);
             }
@@ -332,7 +377,7 @@ impl LanguageServer for Backend {
     }
 
     async fn did_close(&self, p: DidCloseTextDocumentParams) {
-        if self.controllers.remove(&p.text_document.uri).is_some() {
+        if self.controllers.remove(&p.text_document.uri).is_some() || self.files.remove(&p.text_document.uri).is_some() {
             return;
         }
         self.publishes.remove(&p.text_document.uri);
@@ -357,7 +402,7 @@ impl LanguageServer for Backend {
             let target = found.and_then(|r| pug_refs::target(&path, &r));
             return Ok(locations_response(target.into_iter().filter_map(file_location).collect()));
         }
-        if self.without_rails(&uri) {
+        if self.without_rails(&uri) || !self.keeps(&uri) {
             return Ok(None);
         }
         let Some(path) = util::file_path(&uri) else { return Ok(None) };
@@ -438,7 +483,7 @@ impl LanguageServer for Backend {
             }
             return Ok(Some(links));
         }
-        if self.without_rails(&uri) {
+        if self.without_rails(&uri) || !self.keeps(&uri) {
             return Ok(None);
         }
         let Some(path) = util::file_path(&uri) else { return Ok(None) };
@@ -482,14 +527,11 @@ impl LanguageServer for Backend {
             let found = util::position_to_offset(&doc.text, pos).and_then(|at| pug_refs::ref_at(&doc.text, at));
             return Ok(found.and_then(|r| markdown_hover(pug_refs::hover(&path, &r))));
         }
-        if self.without_rails(&uri) {
-            return Ok(None);
-        }
+        let Some(doc) = self.template_doc(&uri) else { return Ok(None) };
         let file = match util::file_path(&uri) {
             Some(path) => Some((self.project_of(&path).await?, path)),
             None => None,
         };
-        let Some(doc) = self.template_doc(&uri) else { return Ok(None) };
         let engines = &self.engines(&uri);
         if doc.lang == TemplateLang::Slim {
             let parsed = slim::parser::parse(&doc.text, engines);
@@ -766,7 +808,7 @@ impl LanguageServer for Backend {
     async fn references(&self, p: ReferenceParams) -> Result<Option<Vec<Location>>> {
         let uri = p.text_document_position.text_document.uri;
         let pos = p.text_document_position.position;
-        if self.without_rails(&uri) {
+        if self.without_rails(&uri) || !self.docs.contains_key(&uri) {
             return Ok(None);
         }
         let Some(path) = util::file_path(&uri) else { return Ok(None) };
@@ -985,6 +1027,11 @@ impl Backend {
         self.docs.get(uri).is_some_and(|doc| !doc.lang.uses_rails())
     }
 
+    /// A template or controller the server answers for; requests for other files get nothing, before any disk read.
+    fn keeps(&self, uri: &Uri) -> bool {
+        self.docs.contains_key(uri) || self.controllers.contains_key(uri)
+    }
+
     /// The path and a copy of the open `lang` file at `uri`.
     fn file_doc(&self, uri: &Uri, lang: TemplateLang) -> Option<(PathBuf, Doc)> {
         let doc = self.docs.get(uri).filter(|doc| doc.lang == lang).map(|doc| doc.clone())?;
@@ -1167,9 +1214,19 @@ impl Backend {
     /// case and colon encoding (`c%3A` vs `C:`) from `util::file_uri`.
     fn open_texts(&self) -> HashMap<PathBuf, String> {
         let templates = self.docs.iter().filter_map(|d| Some((util::file_path(d.key())?, d.text.clone())));
-        // Partial and i18n references also scan controllers; their unsaved text is the current one.
-        let controllers = self.controllers.iter().filter_map(|c| Some((util::file_path(c.key())?, c.value().clone())));
-        templates.chain(controllers).collect()
+        // Partial and i18n references also scan controllers, and fixes edit locale files and Stimulus controllers.
+        let others = self.controllers.iter().chain(self.files.iter()).filter_map(|c| Some((util::file_path(c.key())?, c.value().clone())));
+        templates.chain(others).collect()
+    }
+
+    /// Sends `registrations`, logging what `what` names as not registered when the client refuses them.
+    async fn register(&self, registrations: Vec<Registration>, what: &str) {
+        if registrations.is_empty() {
+            return;
+        }
+        if let Err(e) = self.client.register_capability(registrations).await {
+            self.client.log_message(MessageType::WARNING, format!("{what} not registered: {e}")).await;
+        }
     }
 }
 
@@ -1201,6 +1258,39 @@ fn views_listing(templates: &DashMap<PathBuf, Arc<Vec<PathBuf>>>, views: &Path, 
     fill(templates, views, generation, || Arc::new(paths::files_under(views, usize::MAX)))
 }
 
+/// One watcher per glob in `WATCHED_FILES`, in every workspace folder.
+fn workspace_watchers() -> Registration {
+    let watchers: Vec<serde_json::Value> = WATCHED_FILES.iter().map(|glob| serde_json::json!({ "globPattern": glob })).collect();
+    Registration {
+        id: "watch-workspace".into(),
+        method: "workspace/didChangeWatchedFiles".into(),
+        register_options: Some(serde_json::json!({ "watchers": watchers })),
+    }
+}
+
+/// Open, change and close notifications for the `FIX_TARGETS`.
+fn fix_target_sync() -> Vec<Registration> {
+    let selector: Vec<serde_json::Value> = FIX_TARGETS
+        .iter()
+        .flat_map(|(pattern, languages)| {
+            languages.iter().map(move |language| serde_json::json!({ "scheme": "file", "language": language, "pattern": pattern }))
+        })
+        .collect();
+    let registration = |method: &str, options: serde_json::Value| Registration {
+        id: format!("sync-fix-targets-{method}"),
+        method: method.into(),
+        register_options: Some(options),
+    };
+    vec![
+        registration("textDocument/didOpen", serde_json::json!({ "documentSelector": selector })),
+        registration(
+            "textDocument/didChange",
+            serde_json::json!({ "documentSelector": selector, "syncKind": TextDocumentSyncKind::INCREMENTAL }),
+        ),
+        registration("textDocument/didClose", serde_json::json!({ "documentSelector": selector })),
+    ]
+}
+
 fn rename_filter(glob: &str, matches: FileOperationPatternKind) -> FileOperationFilter {
     FileOperationFilter {
         scheme: Some("file".into()),
@@ -1218,10 +1308,10 @@ fn file_name_of(path: &Path) -> String {
     path.file_name().map(|name| name.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
-/// How to watch a config file the client's own watchers don't cover.
+/// How to watch a config file the workspace watchers don't cover.
 #[derive(Clone)]
 struct Watching {
-    /// The workspace folders, which the client watches already.
+    /// The workspace folders, which `WATCHED_FILES` cover.
     roots: Vec<PathBuf>,
     /// The client takes `{ baseUri, pattern }` globs.
     relative: bool,
@@ -1247,7 +1337,7 @@ impl ConfigReports {
     }
 
     /// Reports the problems of `files` read by a run that began at `started`; with `watching`, also watches the files
-    /// that are outside those folders, which the client's own watchers don't cover.
+    /// that are outside those folders, which the workspace watchers don't cover.
     async fn report(&self, client: &Client, files: &[Arc<ConfigFile>], started: u64, watching: Option<&Watching>) {
         let _busy = self.busy.lock().await;
         if started != self.generation() {
@@ -1609,6 +1699,23 @@ mod tests {
         assert!(may_change_controllers(&event("/r/app", FileChangeType::DELETED)));
         assert!(!may_change_controllers(&event("/r/app/views/users/_card.erb", FileChangeType::CHANGED)));
         assert!(!may_change_controllers(&event("/r/app", FileChangeType::CHANGED)));
+    }
+
+    #[test]
+    fn workspace_watchers_are_flat_globs() {
+        for glob in WATCHED_FILES {
+            assert!(!glob.contains(['{', '}', '[']), "{glob}");
+        }
+    }
+
+    #[test]
+    fn fix_targets_are_not_in_a_language_the_vs_code_client_syncs() {
+        let manifest: serde_json::Value = serde_json::from_str(include_str!("../../package.json")).unwrap();
+        let synced: Vec<&str> =
+            manifest["contributes"]["languages"].as_array().unwrap().iter().filter_map(|language| language["id"].as_str()).collect();
+        for language in FIX_TARGETS.iter().flat_map(|(_, languages)| languages.iter()) {
+            assert!(!synced.contains(language) && *language != "jade", "{language}");
+        }
     }
 
     #[test]
