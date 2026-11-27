@@ -129,7 +129,7 @@ fn manifest_insertions(source: &str, identifier: &str, stem: &str) -> Option<Vec
 /// The file of the controller `identifier`, when it can be edited with confidence: one file registers it and its class is read
 /// whole, as the lints on its targets and methods read it.
 pub fn editable_controller(current: &Path, identifier: &str) -> Option<PathBuf> {
-    stimulus_controller::controller(current, identifier)?;
+    stimulus_controller::controller(current, identifier, &HashMap::new())?;
     let [file]: [PathBuf; 1] = stimulus::resolve(current, identifier).try_into().ok()?;
     Some(file)
 }

@@ -5,6 +5,7 @@ use crate::rails::paths::app_root;
 use crate::rails::stimulus::{self, CONTROLLERS_DIR, SCRIPT_EXTENSIONS};
 use dashmap::DashMap;
 use regex::Regex;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 
@@ -55,10 +56,14 @@ pub fn clear_cache() {
 }
 
 /// The members of the controller `identifier` in `current`'s app, when exactly one file registers it, the app registers its
-/// controllers where they can be seen, and the file can be read with confidence.
-pub fn controller(current: &Path, identifier: &str) -> Option<Arc<Members>> {
+/// controllers where they can be seen, and the file can be read with confidence. An open file in `open` is read from its
+/// unsaved text, never from the cache.
+pub fn controller(current: &Path, identifier: &str, open: &HashMap<PathBuf, String>) -> Option<Arc<Members>> {
     let [file]: [PathBuf; 1] = stimulus::resolve(current, identifier).try_into().ok()?;
     stimulus::registered(current)?;
+    if let Some(source) = open.get(&file) {
+        return members_in(&file, source).map(Arc::new);
+    }
     if let Some(found) = MEMBERS.get(&file) {
         return found.clone();
     }
@@ -473,16 +478,20 @@ export default class extends Controller {
         write("index.js", "import { application } from \"./application\"\napplication.register(\"x\", X)");
         std::fs::write(controllers.join("../application.js"), "export const application = Application.start()").unwrap();
 
-        let search = controller(&view, "search").unwrap();
+        let search = controller(&view, "search", &HashMap::new()).unwrap();
         assert_eq!(search.targets, ["query", "flash"]);
         assert!(search.has_method("go") && search.has_method("close") && search.has_method("connect") && !search.has_method("nope"));
-        assert!(controller(&view, "admin--users").unwrap().has_method("close"));
-        assert!(controller(&view, "lonely").is_none(), "a base controller from a package");
-        assert!(controller(&view, "loop").is_none(), "a controller that is its own base");
-        assert!(controller(&view, "missing").is_none());
+        let unsaved = format!("{stimulus}export default class extends Controller {{\n  reset() {{}}\n}}");
+        let open = HashMap::from([(controllers.join("search_controller.js"), unsaved)]);
+        assert!(controller(&view, "search", &open).unwrap().has_method("reset"), "the unsaved text wins");
+        assert!(!controller(&view, "search", &HashMap::new()).unwrap().has_method("reset"), "the saved file is read again once it closes");
+        assert!(controller(&view, "admin--users", &HashMap::new()).unwrap().has_method("close"));
+        assert!(controller(&view, "lonely", &HashMap::new()).is_none(), "a base controller from a package");
+        assert!(controller(&view, "loop", &HashMap::new()).is_none(), "a controller that is its own base");
+        assert!(controller(&view, "missing", &HashMap::new()).is_none());
         write("two_controller.js", &format!("{stimulus}export default class extends Controller {{}}"));
         write("two_controller.ts", &format!("{stimulus}export default class extends Controller {{}}"));
-        assert!(controller(&view, "two").is_none(), "two files register one name");
+        assert!(controller(&view, "two", &HashMap::new()).is_none(), "two files register one name");
         std::fs::remove_dir_all(&root).unwrap();
         let hidden = std::env::temp_dir().join(format!("alder-stimulus-hidden-{}", std::process::id()));
         std::fs::create_dir_all(hidden.join("app/javascript/controllers")).unwrap();
@@ -492,7 +501,10 @@ export default class extends Controller {
         )
         .unwrap();
         std::fs::write(hidden.join("app/javascript/loader.js"), "application.register(computed(), X)").unwrap();
-        assert!(controller(&hidden.join("app/views/users/index.html.erb"), "search").is_none(), "controllers registered unseen");
+        assert!(
+            controller(&hidden.join("app/views/users/index.html.erb"), "search", &HashMap::new()).is_none(),
+            "controllers registered unseen"
+        );
         std::fs::remove_dir_all(&hidden).unwrap();
     }
 }

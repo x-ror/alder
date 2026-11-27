@@ -3799,7 +3799,7 @@ const check = (label, actual, expected) => {
       });
       return result.filter((a) => a.kind === "quickfix");
     };
-    return { srv, actions, flagged: published().length };
+    return { srv, actions, published, flagged: published().length };
   };
   const spelled = (e) =>
     `${e.range.start.line}:${e.range.start.character}-${e.range.end.line}:${e.range.end.character} ${e.newText}`;
@@ -4003,7 +4003,7 @@ const check = (label, actual, expected) => {
       [`3:${titleEnd}-3:${titleEnd} \n      heading: ""`],
     ],
   );
-  // The diagnostics read the saved controller: members typed since aren't offered again.
+  // The unsaved controller is what the template is checked against.
   const helloUri = fileUri(path.join(fixRoot, hello));
   const insert = (line, character, text) => ({
     range: { start: { line, character }, end: { line, character } },
@@ -4032,19 +4032,31 @@ const check = (label, actual, expected) => {
     },
     true,
   );
-  const typedFixes = [
-    await withFiles.actions("Stimulus/UnknownTargetOrAction", 5, 0),
-    await withFiles.actions("Stimulus/UnknownTargetOrAction", 5, 1),
-  ];
+  // The template's warnings on line 5, once the server has published `count` of them.
+  const unknownMembers = async (count) => {
+    const found = () =>
+      withFiles
+        .published()
+        .filter(
+          (d) =>
+            d.code === "Stimulus/UnknownTargetOrAction" &&
+            d.range.start.line === 5,
+        ).length;
+    for (let waited = 0; waited < 3000 && found() !== count; waited += 50) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    return found();
+  };
+  const typed = await unknownMembers(0);
   await withFiles.srv.send(
     "textDocument/didClose",
     { textDocument: { uri: helloUri } },
     true,
   );
   check(
-    "quick fixes: no target or method the unsaved controller already has",
-    typedFixes,
-    [[], []],
+    "stimulus lint: the unsaved controller's members count, the saved file's once it closes",
+    [typed, await unknownMembers(2)],
+    [0, 2],
   );
   await withFiles.srv.send("shutdown", {});
   await withFiles.srv.send("exit", {}, true);

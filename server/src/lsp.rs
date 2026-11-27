@@ -111,7 +111,7 @@ pub async fn serve() {
         client,
         docs: Arc::default(),
         controllers: DashMap::new(),
-        files: DashMap::new(),
+        files: Arc::default(),
         templates: Arc::default(),
         locales: Arc::default(),
         cache_generation: Arc::default(),
@@ -143,7 +143,7 @@ struct Backend {
     /// Open controllers, for navigation to their views only; no other request reads them.
     controllers: DashMap<Uri, String>,
     /// Other open files: the `FIX_TARGETS`, and any other file the client sends, whose unsaved text edits to them start from.
-    files: DashMap<Uri, String>,
+    files: Arc<DashMap<Uri, String>>,
     /// Files under each app/views root, for render completion.
     templates: Arc<DashMap<PathBuf, Arc<Vec<PathBuf>>>>,
     /// Parsed locale files per config/locales directory.
@@ -303,10 +303,12 @@ impl LanguageServer for Backend {
 
     async fn did_open(&self, p: DidOpenTextDocumentParams) {
         let Some(lang) = TemplateLang::from_uri_or_id(&p.text_document.uri, Some(&p.text_document.language_id)) else {
-            if util::file_path(&p.text_document.uri).is_some_and(|path| controller_classes::controller_path(&path).is_some()) {
+            let path = util::file_path(&p.text_document.uri);
+            if path.as_deref().is_some_and(|path| controller_classes::controller_path(path).is_some()) {
                 self.controllers.insert(p.text_document.uri, p.text_document.text);
             } else {
                 self.files.insert(p.text_document.uri, p.text_document.text);
+                self.relint_for_stimulus_controller(path.as_deref());
             }
             return;
         };
@@ -331,6 +333,8 @@ impl LanguageServer for Backend {
             for change in p.content_changes {
                 util::apply_change(&mut text, change);
             }
+            drop(text);
+            self.relint_for_stimulus_controller(util::file_path(&p.text_document.uri).as_deref());
             return;
         }
         {
@@ -377,7 +381,11 @@ impl LanguageServer for Backend {
     }
 
     async fn did_close(&self, p: DidCloseTextDocumentParams) {
-        if self.controllers.remove(&p.text_document.uri).is_some() || self.files.remove(&p.text_document.uri).is_some() {
+        if self.controllers.remove(&p.text_document.uri).is_some() {
+            return;
+        }
+        if self.files.remove(&p.text_document.uri).is_some() {
+            self.relint_for_stimulus_controller(util::file_path(&p.text_document.uri).as_deref());
             return;
         }
         self.publishes.remove(&p.text_document.uri);
@@ -1068,6 +1076,17 @@ impl Backend {
         self.options.get_or_init(Options::default)
     }
 
+    /// Lints the open templates again when `path` is a Stimulus controller, whose members they are checked against.
+    fn relint_for_stimulus_controller(&self, path: Option<&Path>) {
+        if !path.is_some_and(is_stimulus_controller) {
+            return;
+        }
+        let open: Vec<Uri> = self.docs.iter().map(|d| d.key().clone()).collect();
+        for uri in open {
+            self.publish_later(uri, DIAGNOSTICS_DEBOUNCE);
+        }
+    }
+
     /// Publish the document's diagnostics after `delay`, unless a later call for it (an edit, a reopen, a file
     /// change on disk) supersedes this one. They are computed on a copy, off the server task: holding the `docs`
     /// guard would block the next `did_change`.
@@ -1075,9 +1094,10 @@ impl Backend {
         // Unique across closes and reopens, which may restart a document's versions.
         let run = self.next_publish.fetch_add(1, Ordering::Relaxed);
         self.publishes.insert(uri.clone(), run);
-        let (client, docs, publishes, options, view_roots, includers) = (
+        let (client, docs, files, publishes, options, view_roots, includers) = (
             self.client.clone(),
             Arc::clone(&self.docs),
+            Arc::clone(&self.files),
             Arc::clone(&self.publishes),
             Arc::clone(&self.options),
             Arc::clone(&self.view_roots),
@@ -1091,6 +1111,7 @@ impl Backend {
             let latest = || publishes.get(&uri).is_some_and(|latest| *latest == run);
             let Some(doc) = docs.get(&uri).filter(|_| latest()).map(|doc| doc.clone()) else { return };
             let (checked, version) = (uri.clone(), doc.version);
+            let open_files = file_texts(&files).collect();
             let started = config_reports.generation();
             let Ok((diags, rules)) = off_server_task(move || {
                 let mut projects = Projects::new();
@@ -1099,7 +1120,7 @@ impl Backend {
                 }
                 let rules = resolve(&checked, doc.lang, options.get_or_init(Options::default), &mut Configs::new());
                 let routes = util::file_path(&checked).map(|path| routes_of(&app_routes, &path)).unwrap_or_default();
-                (diagnostics_in(&checked, &doc, &rules, &mut projects, &routes, &includers), rules)
+                (diagnostics_in(&checked, &doc, &rules, &mut projects, &routes, &includers, &open_files), rules)
             })
             .await
             else {
@@ -1221,7 +1242,7 @@ impl Backend {
 
     /// The text of the open `files`, keyed by path like `open_texts`: the locale files and Stimulus controllers fixes edit.
     fn file_texts(&self) -> impl Iterator<Item = (PathBuf, String)> + '_ {
-        self.files.iter().filter_map(|f| Some((util::file_path(f.key())?, f.value().clone())))
+        file_texts(&self.files)
     }
 
     /// Sends `registrations`, logging what `what` names as not registered when the client refuses them.
@@ -1233,6 +1254,15 @@ impl Backend {
             self.client.log_message(MessageType::WARNING, format!("{what} not registered: {e}")).await;
         }
     }
+}
+
+fn file_texts(files: &DashMap<Uri, String>) -> impl Iterator<Item = (PathBuf, String)> + '_ {
+    files.iter().filter_map(|f| Some((util::file_path(f.key())?, f.value().clone())))
+}
+
+fn is_stimulus_controller(path: &Path) -> bool {
+    let is_script = path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| stimulus::SCRIPT_EXTENSIONS.contains(&ext));
+    is_script && path.ancestors().any(|dir| dir.ends_with(stimulus::CONTROLLERS_DIR))
 }
 
 /// tower-lsp polls every handler in one task, so a scan of the whole app here would hold up all other requests.
