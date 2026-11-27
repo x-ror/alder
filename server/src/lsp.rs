@@ -33,7 +33,7 @@ use haml::indent::LineRole;
 use std::cell::LazyCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tower_lsp_server::jsonrpc::Result;
@@ -90,10 +90,10 @@ const WATCHED_FILES: [&str; 20] = [
 
 /// The files besides templates that quick fixes edit, synced so their edits are computed from unsaved text. Filtered by
 /// language too: a document the client already syncs by its own selector (`.js.erb`) would get each change twice.
-const FIX_TARGETS: [(&str, &[&str]); 2] = [
-    ("**/config/locales/**", &["yaml"]),
-    ("**/javascript/controllers/**", &["javascript", "typescript", "javascriptreact", "typescriptreact"]),
-];
+const FIX_TARGETS: [(&str, &[&str]); 2] =
+    [("**/config/locales/**", &[LOCALE_LANGUAGE]), ("**/javascript/controllers/**", &SCRIPT_LANGUAGES)];
+const LOCALE_LANGUAGE: &str = "yaml";
+const SCRIPT_LANGUAGES: [&str; 4] = ["javascript", "typescript", "javascriptreact", "typescriptreact"];
 
 /// Which requests and notifications the client takes dynamic registrations for.
 #[derive(Clone, Copy, Default)]
@@ -112,6 +112,8 @@ pub async fn serve() {
         docs: Arc::default(),
         controllers: DashMap::new(),
         files: Arc::default(),
+        saw_locale_open: AtomicBool::new(false),
+        saw_script_open: AtomicBool::new(false),
         templates: Arc::default(),
         locales: Arc::default(),
         cache_generation: Arc::default(),
@@ -144,6 +146,10 @@ struct Backend {
     controllers: DashMap<Uri, String>,
     /// Other open files: the `FIX_TARGETS`, and any other file the client sends, whose unsaved text edits to them start from.
     files: Arc<DashMap<Uri, String>>,
+    /// A `didOpen` for a YAML or a script file came in: the client syncs that kind, so a locale file or controller
+    /// missing from `files` is closed and its disk text is current.
+    saw_locale_open: AtomicBool,
+    saw_script_open: AtomicBool,
     /// Files under each app/views root, for render completion.
     templates: Arc<DashMap<PathBuf, Arc<Vec<PathBuf>>>>,
     /// Parsed locale files per config/locales directory.
@@ -307,6 +313,11 @@ impl LanguageServer for Backend {
             if path.as_deref().is_some_and(|path| controller_classes::controller_path(path).is_some()) {
                 self.controllers.insert(p.text_document.uri, p.text_document.text);
             } else {
+                match p.text_document.language_id.as_str() {
+                    LOCALE_LANGUAGE => self.saw_locale_open.store(true, Ordering::Relaxed),
+                    id if SCRIPT_LANGUAGES.contains(&id) => self.saw_script_open.store(true, Ordering::Relaxed),
+                    _ => {}
+                }
                 self.files.insert(p.text_document.uri, p.text_document.text);
                 self.relint_for_stimulus_controller(path.as_deref());
             }

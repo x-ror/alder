@@ -13,6 +13,7 @@ use crate::rails::{i18n, locale_edit, paths, stimulus_controller, stimulus_edit}
 use crate::util::{self, data_edit, data_str, edit_distance, LineIndex};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
 use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::*;
 
@@ -97,13 +98,18 @@ impl Backend {
             return Ok(vec![]);
         }
         let open: HashMap<PathBuf, String> = self.file_texts().collect();
+        let declared = self.options.get().is_some_and(|options| options.syncs_fix_targets);
+        let trust = Trust {
+            locales: declared || self.saw_locale_open.load(Ordering::Relaxed),
+            scripts: declared || self.saw_script_open.load(Ordering::Relaxed),
+        };
         let (path, project, can_create) = (path.to_path_buf(), self.project_for(path), self.can_create_files());
         let diagnostics: Vec<Diagnostic> = diagnostics.iter().filter(|d| reads_files(d)).cloned().collect();
         off_server_task(move || {
             let fixes = diagnostics.iter().filter_map(|d| match util::code(d)? {
-                MISSING_TRANSLATION => add_translation(&project, &path, d, can_create, &open),
-                UNKNOWN_CONTROLLER => create_controller(&path, d, can_create, &open),
-                _ => add_member(&path, d, &open),
+                MISSING_TRANSLATION => add_translation(&project, &path, d, can_create, &open, trust),
+                UNKNOWN_CONTROLLER => create_controller(&path, d, can_create, &open, trust),
+                _ => add_member(&path, d, &open, trust),
             });
             fixes.map(CodeActionOrCommand::CodeAction).collect()
         })
@@ -116,6 +122,19 @@ impl Backend {
     }
 }
 
+/// Which kinds of file the client is known to sync. A file that isn't open is read from disk, which is current only then:
+/// an unsaved buffer of a kind the client doesn't sync would get an edit computed from stale text.
+#[derive(Clone, Copy)]
+struct Trust {
+    locales: bool,
+    scripts: bool,
+}
+
+/// Whether an edit may start from `file`: it is open, or the client syncs its kind, so being closed is certain.
+fn can_edit(open: &HashMap<PathBuf, String>, file: &Path, synced: bool) -> bool {
+    synced || open.contains_key(file)
+}
+
 /// "Add `users.index.title` to config/locales/en.yml": the key goes into the file that holds the closest group of it, else
 /// into `<locale>.yml`, which is created when it isn't there.
 fn add_translation(
@@ -124,6 +143,7 @@ fn add_translation(
     d: &Diagnostic,
     can_create: bool,
     open: &HashMap<PathBuf, String>,
+    trust: Trust,
 ) -> Option<CodeAction> {
     let (key, locale) = (data_str(d, "key")?, data_str(d, "locale")?);
     let segments: Vec<&str> = key.split('.').collect();
@@ -134,6 +154,7 @@ fn add_translation(
     };
     let read = open.get(&file).map_or_else(|| std::fs::read_to_string(&file), |text| Ok(text.clone()));
     let (text, creates) = match read {
+        Ok(_) if !can_edit(open, &file, trust.locales) => return None,
         Ok(text) => (text, false),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound && can_create => (String::new(), true),
         Err(_) => return None,
@@ -155,11 +176,14 @@ fn add_translation(
 }
 
 /// "Create app/javascript/controllers/serch_controller.js", with its lines in the manifest of an app that lists its controllers.
-fn create_controller(path: &Path, d: &Diagnostic, can_create: bool, open: &HashMap<PathBuf, String>) -> Option<CodeAction> {
+fn create_controller(path: &Path, d: &Diagnostic, can_create: bool, open: &HashMap<PathBuf, String>, trust: Trust) -> Option<CodeAction> {
     if !can_create {
         return None;
     }
     let new = stimulus_edit::new_controller(path, data_str(d, "controller")?, open)?;
+    if new.manifest.as_ref().is_some_and(|manifest| !can_edit(open, &manifest.file, trust.scripts)) {
+        return None;
+    }
     let stub = TextEdit::new(Range::default(), stimulus_edit::CONTROLLER_STUB.into());
     let mut changes = vec![Change::Create(&new.file), Change::Edit(&new.file, vec![stub])];
     if let Some(manifest) = &new.manifest {
@@ -172,9 +196,12 @@ fn create_controller(path: &Path, d: &Diagnostic, can_create: bool, open: &HashM
 
 /// "Add `results` to static targets" and "Add method `submit()`" in the controller the template names, when it is read with
 /// confidence and its text, which may be unsaved, doesn't have the member yet.
-fn add_member(path: &Path, d: &Diagnostic, open: &HashMap<PathBuf, String>) -> Option<CodeAction> {
+fn add_member(path: &Path, d: &Diagnostic, open: &HashMap<PathBuf, String>, trust: Trust) -> Option<CodeAction> {
     let (controller, name) = (data_str(d, "controller")?, data_str(d, "name")?);
     let file = stimulus_edit::editable_controller(path, controller, open)?;
+    if !can_edit(open, &file, trust.scripts) {
+        return None;
+    }
     let source = util::open_or_read(open.get(&file).cloned(), &file)?;
     // The client's diagnostic may predate the latest unsaved edit: a member typed since would be added a second time.
     let members = stimulus_controller::members_in(&file, &source, open)?;
@@ -227,6 +254,9 @@ mod tests {
     use super::*;
     use crate::lang::TemplateLang;
     use serde_json::json;
+
+    const TRUSTED: Trust = Trust { locales: true, scripts: true };
+    const UNTRUSTED: Trust = Trust { locales: false, scripts: false };
 
     fn diagnostic(code: &str, range: Range, data: serde_json::Value) -> Diagnostic {
         util::with_data(util::coded(util::warning(range, "x"), code), data)
@@ -387,7 +417,7 @@ mod tests {
             ("config/locales/fr.yml", "fr:\n  users:\n    index:\n      title: Titre\n"),
         ]);
         let project = Project::unknown();
-        let action = |key: &str, can_create| add_translation(&project, &view, &missing_key(key), can_create, &HashMap::new());
+        let action = |key: &str, can_create| add_translation(&project, &view, &missing_key(key), can_create, &HashMap::new(), TRUSTED);
         let sibling = action("users.show.age", false).unwrap();
         assert_eq!(sibling.title, "Add `users.show.age` to config/locales/models/users.en.yml");
         assert_eq!(sibling.is_preferred, Some(false));
@@ -414,7 +444,7 @@ mod tests {
         // An open file's unsaved text is what the key goes into.
         let en = root.join("config/locales/en.yml");
         let unsaved = HashMap::from([(en.clone(), "en:\n  layouts:\n    menu: Menu\n    nav: Nav\n".to_string())]);
-        let edit = add_translation(&project, &view, &missing_key("layouts.footer"), false, &unsaved).unwrap().edit.unwrap();
+        let edit = add_translation(&project, &view, &missing_key("layouts.footer"), false, &unsaved, TRUSTED).unwrap().edit.unwrap();
         let edits = &edit.changes.unwrap()[&util::file_uri(&en).unwrap()];
         assert_eq!(util::edited(&unsaved[&en], &edits[0]), "en:\n  layouts:\n    menu: Menu\n    nav: Nav\n    footer: \"\"\n");
         std::fs::remove_dir_all(root).unwrap();
@@ -425,7 +455,7 @@ mod tests {
         let (root, view) =
             app(&[("config/application.rb", ""), ("config/locales/models/users.en.yml", "en:\n  users:\n    show:\n      name: Name\n")]);
         let project = Project::unknown();
-        let action = |can_create| add_translation(&project, &view, &missing_key("pages.home.title"), can_create, &HashMap::new());
+        let action = |can_create| add_translation(&project, &view, &missing_key("pages.home.title"), can_create, &HashMap::new(), TRUSTED);
         assert!(action(false).is_none(), "the client can't create files");
         let created = action(true).unwrap();
         assert_eq!(created.title, "Add `pages.home.title` to config/locales/en.yml");
@@ -443,9 +473,9 @@ mod tests {
     fn a_translation_is_not_added_where_the_file_cannot_take_it() {
         let (root, view) = app(&[("config/application.rb", ""), ("config/locales/en.yml", "en:\n  users:\n    index: { title: Users }\n")]);
         let project = Project::unknown();
-        assert!(add_translation(&project, &view, &missing_key("users.index.heading"), true, &HashMap::new()).is_none());
+        assert!(add_translation(&project, &view, &missing_key("users.index.heading"), true, &HashMap::new(), TRUSTED).is_none());
         let other_locale = diagnostic("Rails/MissingTranslation", Range::default(), json!({ "key": "a.b", "locale": "fr" }));
-        assert!(add_translation(&project, &view, &other_locale, true, &HashMap::new()).is_none());
+        assert!(add_translation(&project, &view, &other_locale, true, &HashMap::new(), TRUSTED).is_none());
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -460,8 +490,11 @@ mod tests {
             ("app/javascript/controllers/hello_controller.js", "export default class extends Controller {\n}\n"),
             ("app/javascript/controllers/index.js", manifest),
         ]);
-        assert!(create_controller(&view, &unknown_controller("serch"), false, &HashMap::new()).is_none(), "the client can't create files");
-        let action = create_controller(&view, &unknown_controller("serch"), true, &HashMap::new()).unwrap();
+        assert!(
+            create_controller(&view, &unknown_controller("serch"), false, &HashMap::new(), TRUSTED).is_none(),
+            "the client can't create files"
+        );
+        let action = create_controller(&view, &unknown_controller("serch"), true, &HashMap::new(), TRUSTED).unwrap();
         assert_eq!(action.title, "Create app/javascript/controllers/serch_controller.js");
         assert_eq!(action.is_preferred, Some(false));
         let (edited, created) = effects(&action, &root);
@@ -488,16 +521,16 @@ mod tests {
                 json!({ "controller": "search", "kind": kind, "name": name, "suggest": null }),
             )
         };
-        let target = add_member(&view, &member("target", "results"), &HashMap::new()).unwrap();
+        let target = add_member(&view, &member("target", "results"), &HashMap::new(), TRUSTED).unwrap();
         assert_eq!(target.title, "Add `results` to static targets in app/javascript/controllers/search_controller.js");
         assert_eq!(effects(&target, &root).0[0].1, source.replace("[\"query\"]", "[\"query\", \"results\"]"));
-        let method = add_member(&view, &member("method", "reset"), &HashMap::new()).unwrap();
+        let method = add_member(&view, &member("method", "reset"), &HashMap::new(), TRUSTED).unwrap();
         assert_eq!(method.title, "Add method `reset()` to app/javascript/controllers/search_controller.js");
         assert_eq!(effects(&method, &root).0[0].1, source.replace("  }\n}\n", "  }\n\n  reset() {\n  }\n}\n"));
-        assert!(add_member(&view, &member("target", "bad name"), &HashMap::new()).is_none());
+        assert!(add_member(&view, &member("target", "bad name"), &HashMap::new(), TRUSTED).is_none());
         let other =
             diagnostic("Stimulus/UnknownTargetOrAction", Range::default(), json!({ "controller": "other", "kind": "target", "name": "x" }));
-        assert!(add_member(&view, &other, &HashMap::new()).is_none(), "no such controller");
+        assert!(add_member(&view, &other, &HashMap::new(), TRUSTED).is_none(), "no such controller");
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -512,9 +545,56 @@ mod tests {
         };
         let typed = source.replace("[\"query\"]\n", "[\"query\", \"form\"]\n\n  reset() { this.formTarget.reset() }\n");
         let unsaved = HashMap::from([(file, typed)]);
-        assert!(add_member(&view, &member("method", "reset"), &unsaved).is_none(), "the method");
-        assert!(add_member(&view, &member("target", "form"), &unsaved).is_none(), "the target");
-        assert!(add_member(&view, &member("method", "submit"), &unsaved).is_some(), "a method neither text has");
+        assert!(add_member(&view, &member("method", "reset"), &unsaved, TRUSTED).is_none(), "the method");
+        assert!(add_member(&view, &member("target", "form"), &unsaved, TRUSTED).is_none(), "the target");
+        assert!(add_member(&view, &member("method", "submit"), &unsaved, TRUSTED).is_some(), "a method neither text has");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn edits_to_existing_files_need_a_client_that_syncs_them_unless_the_file_is_open() {
+        let manifest = "import { application } from \"./application\"\nimport HelloController from \"./hello_controller\"\napplication.register(\"hello\", HelloController)\n";
+        let controller = "import { Controller } from \"@hotwired/stimulus\"\n\nexport default class extends Controller {\n  static targets = [\"query\"]\n}\n";
+        let (root, view) = app(&[
+            ("config/application.rb", ""),
+            ("config/locales/en.yml", "en:\n  layouts:\n    menu: Menu\n"),
+            ("app/javascript/controllers/hello_controller.js", controller),
+            ("app/javascript/controllers/index.js", manifest),
+        ]);
+        let project = Project::unknown();
+        let key = missing_key("layouts.footer");
+        let member = diagnostic(
+            "Stimulus/UnknownTargetOrAction",
+            Range::default(),
+            json!({ "controller": "hello", "kind": "target", "name": "x", "suggest": null }),
+        );
+        let (locale, script) = (root.join("config/locales/en.yml"), root.join("app/javascript/controllers/hello_controller.js"));
+        let index = root.join("app/javascript/controllers/index.js");
+        let closed = HashMap::new();
+        assert!(add_translation(&project, &view, &key, true, &closed, UNTRUSTED).is_none());
+        assert!(add_member(&view, &member, &closed, UNTRUSTED).is_none());
+        assert!(create_controller(&view, &unknown_controller("serch"), true, &closed, UNTRUSTED).is_none(), "it edits the manifest");
+        let open = HashMap::from([(locale, "en:\n  layouts:\n    menu: Menu\n".to_string()), (script, controller.to_string())]);
+        assert!(add_translation(&project, &view, &key, true, &open, UNTRUSTED).is_some());
+        assert!(add_member(&view, &member, &open, UNTRUSTED).is_some());
+        let with_manifest = HashMap::from([(index, manifest.to_string())]);
+        assert!(create_controller(&view, &unknown_controller("serch"), true, &with_manifest, UNTRUSTED).is_some());
+        let locales_only = Trust { locales: true, scripts: false };
+        assert!(add_translation(&project, &view, &key, true, &closed, locales_only).is_some());
+        assert!(add_member(&view, &member, &closed, locales_only).is_none());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn creating_files_needs_no_sync() {
+        let (root, view) = app(&[
+            ("config/application.rb", ""),
+            ("config/locales/models/users.en.yml", "en:\n  users:\n    show:\n      name: Name\n"),
+            ("app/javascript/controllers/hello_controller.js", "export default class extends Controller {\n}\n"),
+        ]);
+        let project = Project::unknown();
+        assert!(add_translation(&project, &view, &missing_key("pages.home.title"), true, &HashMap::new(), UNTRUSTED).is_some());
+        assert!(create_controller(&view, &unknown_controller("serch"), true, &HashMap::new(), UNTRUSTED).is_some());
         std::fs::remove_dir_all(root).unwrap();
     }
 }

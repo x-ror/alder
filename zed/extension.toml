@@ -25,9 +25,13 @@ languages = [
   "Pug",
   "Liquid",
   "Ruby",
+  "YAML",
+  "JavaScript",
+  "TypeScript",
 ]
-# Only .jbuilder/.builder files and controllers matter, so Ruby users enable it in `languages.Ruby.language_servers`.
-opt_in_languages = ["Ruby"]
+# Only .jbuilder/.builder files and controllers matter for Ruby; YAML, JavaScript and TypeScript are attached only so Zed
+# syncs the locale files and Stimulus controllers that quick fixes edit. Users enable each in `languages.<name>.language_servers`.
+opt_in_languages = ["Ruby", "YAML", "JavaScript", "TypeScript"]
 
 [language_servers.alder-ls.language_ids]
 "ERB" = "erb"
@@ -39,3 +43,6 @@ opt_in_languages = ["Ruby"]
 "Pug" = "jade"
 "Liquid" = "liquid"
 "Ruby" = "ruby"
+"YAML" = "yaml"
+"JavaScript" = "javascript"
+"TypeScript" = "typescript"

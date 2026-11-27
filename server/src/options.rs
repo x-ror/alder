@@ -23,6 +23,8 @@ pub(crate) struct Options {
     format_off: Vec<TemplateLang>,
     /// `erb.format.alignComments`.
     pub align_erb_comments: bool,
+    /// `syncsFixTargets`: the client sends the open locale files and Stimulus controllers the quick fixes edit.
+    pub syncs_fix_targets: bool,
 }
 
 impl Options {
@@ -68,6 +70,12 @@ impl Options {
             match value.as_bool() {
                 Some(align) => options.align_erb_comments = align,
                 None => ignored.push(format!("erb.format.alignComments: expected a boolean, got {value}")),
+            }
+        }
+        if let Some(value) = init.and_then(|v| v.get("syncsFixTargets")) {
+            match value.as_bool() {
+                Some(syncs) => options.syncs_fix_targets = syncs,
+                None => ignored.push(format!("syncsFixTargets: expected a boolean, got {value}")),
             }
         }
         (options, ignored)
@@ -124,6 +132,10 @@ mod tests {
         assert!(!options.align_erb_comments);
         let align = |value| Options::from_init(Some(&serde_json::json!({ "erb": { "format": { "alignComments": value } } })));
         assert!(align(serde_json::json!(true)).0.align_erb_comments);
+        assert!(!options.syncs_fix_targets);
+        let syncs = |value| Options::from_init(Some(&serde_json::json!({ "syncsFixTargets": value })));
+        assert!(syncs(serde_json::json!(true)).0.syncs_fix_targets);
+        assert_eq!(syncs(serde_json::json!("yes")).1.len(), 1);
         assert_eq!(align(serde_json::json!("yes")).1.len(), 1);
         assert!(!options.diagnostics_enabled(TemplateLang::Erb));
         assert!(options.diagnostics_enabled(TemplateLang::Haml) && options.diagnostics_enabled(TemplateLang::Slim));

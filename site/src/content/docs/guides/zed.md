@@ -31,6 +31,20 @@ For Ruby-language files Alder is opt-in, because only `.jbuilder` and `.builder`
 }
 ```
 
+YAML, JavaScript and TypeScript are opt-in too, for the quick fixes that edit a locale file or a Stimulus controller:
+
+```json
+{
+  "languages": {
+    "YAML": { "language_servers": ["alder-ls", "..."] },
+    "JavaScript": { "language_servers": ["alder-ls", "..."] },
+    "TypeScript": { "language_servers": ["alder-ls", "..."] }
+  }
+}
+```
+
+Alder does nothing else for those files: no diagnostics, formatting or completion. It only receives their text, including edits you haven't saved, so a fix lands where the buffer is rather than where the saved file was.
+
 ## Server binary
 
 The extension uses `alder-ls` from your `PATH` when there is one. Otherwise it downloads the `alder-ls-<platform>` archive from the latest [GitHub release](https://github.com/x-ror/alder/releases) (`linux-x64`, `linux-arm64`, `darwin-arm64`, `darwin-x64` or `win32-x64`). Releases up to and including 1.1.3 don't carry these archives, so the download works from the first release after them.
@@ -83,7 +97,7 @@ Semantic tokens are off by default in Zed. To use them, set `"semantic_tokens": 
 
 Everything the language server does works in Zed: diagnostics, formatting and format on save, go to definition (partials, components, helpers), completion, hover, signature help, references, rename of strict locals, partial renames that update `render` calls when you rename the file, document links, folding, document symbols and quick fixes. See [Rails navigation and completion](/alder/guides/rails-navigation/) and [Errors as you type](/alder/guides/checks/).
 
-Quick fixes that edit a locale file or a Stimulus controller are computed from the file on disk in Zed, so save that file before you apply one.
+Without those settings Alder can't tell whether a locale file or Stimulus controller has unsaved changes, so it doesn't offer the quick fixes that edit one that exists: adding a translation to a locale file, adding a target or a method to a controller, and creating a controller the manifest also lists. Fixes that create a new file stay. Alder offers the edits again once it has seen Zed open a file of that kind, so opting in YAML covers locale files and JavaScript or TypeScript covers controllers and the manifest.
 
 Zed formats with the first language server that offers formatting, which for a language can be another server than Alder. To format with Alder, name it as the formatter for that language:
 

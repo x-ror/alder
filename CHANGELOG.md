@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Quick fixes that edit an existing locale file, Stimulus controller or controller manifest are offered only when the language server can see unsaved text: the file is open, the client sends `initializationOptions.syncsFixTargets` (the VS Code extension does), or the client has opened a file of that kind. Before, a client that never synced those files (Zed) got edits computed from the saved file, which could corrupt a buffer with unsaved changes. In Zed, opt YAML, JavaScript and TypeScript in to `alder-ls`; see [Zed](https://x-ror.github.io/alder/guides/zed/).
 - Zed extension (`zed/`, extension id `alder`): the language server for Zed with its snippets. Diagnostics, formatting, navigation, completion, hover, references, renames and code actions work as in VS Code; the commands, tag auto-closing and route awareness stay in the VS Code extension. Highlighting comes from Zed's Ruby, Haml, Slim, Pug and Liquid extensions. The server comes from `PATH` or from the release's `alder-ls-<platform>` archive, so the download works from the first release that carries them. See [Zed](https://x-ror.github.io/alder/guides/zed/).
 
 ## 1.1.3
