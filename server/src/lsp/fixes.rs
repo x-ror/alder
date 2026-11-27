@@ -9,7 +9,7 @@ use crate::rails::attribute_lints::{PERMANENT_REQUIRES_ID, UNKNOWN_CONTROLLER, U
 use crate::rails::missing_translation::MISSING_TRANSLATION;
 use crate::rails::project::Project;
 use crate::rails::unknown_route::UNKNOWN_ROUTE;
-use crate::rails::{i18n, locale_edit, paths, stimulus_edit};
+use crate::rails::{i18n, locale_edit, paths, stimulus_controller, stimulus_edit};
 use crate::util::{self, data_edit, data_str, edit_distance, LineIndex};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -96,7 +96,8 @@ impl Backend {
         if !diagnostics.iter().any(reads_files) {
             return Ok(vec![]);
         }
-        let (path, project, can_create, open) = (path.to_path_buf(), self.project_for(path), self.can_create_files(), self.open_texts());
+        let open: HashMap<PathBuf, String> = self.file_texts().collect();
+        let (path, project, can_create) = (path.to_path_buf(), self.project_for(path), self.can_create_files());
         let diagnostics: Vec<Diagnostic> = diagnostics.iter().filter(|d| reads_files(d)).cloned().collect();
         off_server_task(move || {
             let fixes = diagnostics.iter().filter_map(|d| match util::code(d)? {
@@ -169,15 +170,22 @@ fn create_controller(path: &Path, d: &Diagnostic, can_create: bool, open: &HashM
     Some(quick_fix(format!("Create {}", paths::rails_relative(&new.file, path)), d, files_edit(changes)?, false))
 }
 
-/// "Add `results` to static targets" and "Add method `submit()`" in the controller the template names, when it is read with confidence.
+/// "Add `results` to static targets" and "Add method `submit()`" in the controller the template names, when it is read with
+/// confidence and its text, which may be unsaved, doesn't have the member yet.
 fn add_member(path: &Path, d: &Diagnostic, open: &HashMap<PathBuf, String>) -> Option<CodeAction> {
     let (controller, name) = (data_str(d, "controller")?, data_str(d, "name")?);
     let file = stimulus_edit::editable_controller(path, controller)?;
     let source = util::open_or_read(open.get(&file).cloned(), &file)?;
+    // The diagnostic reads the saved file: a member typed since would be added a second time.
+    let members = stimulus_controller::members_in(&file, &source)?;
     let shown = paths::rails_relative(&file, path);
     let (title, insertions) = match data_str(d, "kind")? {
-        "target" => (format!("Add `{name}` to static targets in {shown}"), stimulus_edit::add_target(&source, name)?),
-        "method" => (format!("Add method `{name}()` to {shown}"), vec![stimulus_edit::add_method(&source, name)?]),
+        "target" if !members.targets.iter().any(|target| target == name) => {
+            (format!("Add `{name}` to static targets in {shown}"), stimulus_edit::add_target(&source, name)?)
+        }
+        "method" if !members.has_method(name) => {
+            (format!("Add method `{name}()` to {shown}"), vec![stimulus_edit::add_method(&source, name)?])
+        }
         _ => return None,
     };
     let index = LineIndex::new(&source);
@@ -490,6 +498,23 @@ mod tests {
         let other =
             diagnostic("Stimulus/UnknownTargetOrAction", Range::default(), json!({ "controller": "other", "kind": "target", "name": "x" }));
         assert!(add_member(&view, &other, &HashMap::new()).is_none(), "no such controller");
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_member_the_unsaved_controller_already_declares_is_not_added_again() {
+        let source = "import { Controller } from \"@hotwired/stimulus\"\n\nexport default class extends Controller {\n  static targets = [\"query\"]\n}\n";
+        let (root, view) = app(&[("app/javascript/controllers/search_controller.js", source)]);
+        let file = root.join("app/javascript/controllers/search_controller.js");
+        let member = |kind: &str, name: &str| {
+            let data = json!({ "controller": "search", "kind": kind, "name": name, "suggest": null });
+            diagnostic("Stimulus/UnknownTargetOrAction", Range::default(), data)
+        };
+        let typed = source.replace("[\"query\"]\n", "[\"query\", \"form\"]\n\n  reset() { this.formTarget.reset() }\n");
+        let unsaved = HashMap::from([(file, typed)]);
+        assert!(add_member(&view, &member("method", "reset"), &unsaved).is_none(), "the method");
+        assert!(add_member(&view, &member("target", "form"), &unsaved).is_none(), "the target");
+        assert!(add_member(&view, &member("method", "submit"), &unsaved).is_some(), "a method neither text has");
         std::fs::remove_dir_all(root).unwrap();
     }
 }

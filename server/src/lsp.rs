@@ -1214,9 +1214,14 @@ impl Backend {
     /// case and colon encoding (`c%3A` vs `C:`) from `util::file_uri`.
     fn open_texts(&self) -> HashMap<PathBuf, String> {
         let templates = self.docs.iter().filter_map(|d| Some((util::file_path(d.key())?, d.text.clone())));
-        // Partial and i18n references also scan controllers, and fixes edit locale files and Stimulus controllers.
-        let others = self.controllers.iter().chain(self.files.iter()).filter_map(|c| Some((util::file_path(c.key())?, c.value().clone())));
-        templates.chain(others).collect()
+        // Partial and i18n references also scan controllers.
+        let controllers = self.controllers.iter().filter_map(|c| Some((util::file_path(c.key())?, c.value().clone())));
+        templates.chain(controllers).chain(self.file_texts()).collect()
+    }
+
+    /// The text of the open `files`, keyed by path like `open_texts`: the locale files and Stimulus controllers fixes edit.
+    fn file_texts(&self) -> impl Iterator<Item = (PathBuf, String)> + '_ {
+        self.files.iter().filter_map(|f| Some((util::file_path(f.key())?, f.value().clone())))
     }
 
     /// Sends `registrations`, logging what `what` names as not registered when the client refuses them.

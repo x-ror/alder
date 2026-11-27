@@ -4003,6 +4003,49 @@ const check = (label, actual, expected) => {
       [`3:${titleEnd}-3:${titleEnd} \n      heading: ""`],
     ],
   );
+  // The diagnostics read the saved controller: members typed since aren't offered again.
+  const helloUri = fileUri(path.join(fixRoot, hello));
+  const insert = (line, character, text) => ({
+    range: { start: { line, character }, end: { line, character } },
+    text,
+  });
+  await withFiles.srv.send(
+    "textDocument/didOpen",
+    {
+      textDocument: {
+        uri: helloUri,
+        languageId: "javascript",
+        version: 1,
+        text: helloController,
+      },
+    },
+    true,
+  );
+  await withFiles.srv.send(
+    "textDocument/didChange",
+    {
+      textDocument: { uri: helloUri, version: 2 },
+      contentChanges: [
+        insert(7, 0, "\n  rotate() {\n  }\n"),
+        insert(3, 26, ', "output"'),
+      ],
+    },
+    true,
+  );
+  const typedFixes = [
+    await withFiles.actions("Stimulus/UnknownTargetOrAction", 5, 0),
+    await withFiles.actions("Stimulus/UnknownTargetOrAction", 5, 1),
+  ];
+  await withFiles.srv.send(
+    "textDocument/didClose",
+    { textDocument: { uri: helloUri } },
+    true,
+  );
+  check(
+    "quick fixes: no target or method the unsaved controller already has",
+    typedFixes,
+    [[], []],
+  );
   await withFiles.srv.send("shutdown", {});
   await withFiles.srv.send("exit", {}, true);
   // A client that can't create files is offered no file to create.
@@ -4253,7 +4296,9 @@ const check = (label, actual, expected) => {
   console.log(failures ? `${failures} check(s) failed` : "all checks passed");
   process.exit(failures ? 1 : 0);
 })();
+// The suite takes about 6 s locally; CI's Windows and macOS runners are slower.
+const SUITE_TIMEOUT_MS = 20_000;
 setTimeout(() => {
   console.error("timeout");
   process.exit(1);
-}, 8000);
+}, SUITE_TIMEOUT_MS);
