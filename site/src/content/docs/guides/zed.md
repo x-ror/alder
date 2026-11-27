@@ -21,7 +21,15 @@ Highlighting comes from other Zed extensions, which you install yourself:
 
 Alder starts only for the languages whose extension is installed.
 
-Whether Alder starts for Ruby-language files (`.jbuilder`, `.builder`) in Zed is not settled yet.
+For Ruby-language files Alder is opt-in, because only `.jbuilder` and `.builder` files and Rails controllers concern it. Name it in Zed's `settings.json` to turn it on:
+
+```json
+{
+  "languages": {
+    "Ruby": { "language_servers": ["alder-ls", "..."] }
+  }
+}
+```
 
 ## Server binary
 
@@ -74,6 +82,16 @@ Semantic tokens are off by default in Zed. To use them, set `"semantic_tokens": 
 ## What works
 
 Everything the language server does works in Zed: diagnostics, formatting and format on save, go to definition (partials, components, helpers), completion, hover, signature help, references, rename of strict locals, partial renames that update `render` calls when you rename the file, document links, folding, document symbols and quick fixes. See [Rails navigation and completion](/alder/guides/rails-navigation/) and [Errors as you type](/alder/guides/checks/).
+
+Zed formats with the first language server that offers formatting, which for a language can be another server than Alder. To format with Alder, name it as the formatter for that language:
+
+```json
+{
+  "languages": {
+    "HTML+ERB": { "formatter": [{ "language_server": { "name": "alder-ls" } }] }
+  }
+}
+```
 
 ## What differs from VS Code
 
