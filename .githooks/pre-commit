@@ -5,7 +5,7 @@ set -e
 fmt=$(git diff --cached --name-only --diff-filter=ACMR -- '*.js' '*.md' '*.json' '*.yml' '*.yaml' '*.toml')
 # bun fmt refuses a symlink named explicitly; its target is checked as its own file.
 fmt=$(for f in $fmt; do [ -L "$f" ] || echo "$f"; done)
-rs=$(git diff --cached --name-only --diff-filter=ACMR -- 'server/*.rs')
+rs=$(git diff --cached --name-only --diff-filter=ACMR -- 'server/*.rs' 'zed/*.rs')
 [ -z "$fmt$rs" ] && exit 0
 
 # Checking or re-staging a partly staged file would judge or commit its unstaged changes.
@@ -16,10 +16,14 @@ if [ -n "$partial" ]; then
   exit 1
 fi
 
-if [ -n "$rs" ]; then
-  rustfmt --edition 2021 $rs
-  git add $rs
-fi
+# rustfmt needs each crate's edition; the crates differ.
+for crate in server zed; do
+  crate_rs=$(echo "$rs" | grep "^$crate/" || true)
+  [ -z "$crate_rs" ] && continue
+  edition=$(sed -n 's/^edition = "\(.*\)"/\1/p' "$crate/Cargo.toml")
+  rustfmt --edition "$edition" $crate_rs
+  git add $crate_rs
+done
 
 if [ -n "$fmt" ] && ! bun run format:check $fmt >/dev/null 2>&1; then
   echo "pre-commit: run \`bun run format\` and stage the result:" >&2
