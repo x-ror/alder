@@ -1,8 +1,11 @@
 //! Reading an app's routes by running `bin/rails runner`, off the request path, one run per app at a time.
 
 use super::routes::{self, Route};
+use std::collections::hash_map::RandomState;
 use std::collections::HashMap;
-use std::io::{self, Read};
+use std::fs::OpenOptions;
+use std::hash::{BuildHasher, Hasher};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
@@ -52,6 +55,8 @@ pub async fn stop() {
     }
 }
 
+const MAX_NAME_ATTEMPTS: usize = 8;
+
 const SCRIPT: &str = include_str!("routes_dump.rb");
 /// The line before the JSON, which separates it from whatever the app's initializers print.
 const MARKER: &str = "__ALDER_ROUTES__";
@@ -85,14 +90,35 @@ pub fn load(root: &Path, ruby: &str) -> Result<Vec<Route>, String> {
     if STOPPING.load(Ordering::SeqCst) {
         return Err("the server is shutting down".into());
     }
-    static RUNS: AtomicU64 = AtomicU64::new(0);
-    let name = format!("alder-routes-{}-{}.rb", std::process::id(), RUNS.fetch_add(1, Ordering::Relaxed));
-    let script = std::env::temp_dir().join(name);
-    // A file, not the code as an argument: Windows `.bat` shims can't take the script's quotes.
-    std::fs::write(&script, SCRIPT).map_err(|e| format!("writing {}: {e}", script.display()))?;
+    let script = write_script().map_err(|e| format!("writing the runner script: {e}"))?;
     let result = run_runner(root, ruby, &script);
     let _ = std::fs::remove_file(&script);
     result
+}
+
+/// The script in a new temp file, which Ruby runs: a file, not the code as an argument, because Windows `.bat` shims can't
+/// take the script's quotes. The name is unpredictable and the file is created exclusively (and private on unix), so
+/// another user can't plant or swap it.
+fn write_script() -> io::Result<PathBuf> {
+    static RUNS: AtomicU64 = AtomicU64::new(0);
+    for _ in 0..MAX_NAME_ATTEMPTS {
+        let random = RandomState::new().build_hasher().finish();
+        let name = format!("alder-routes-{}-{}-{random:x}.rb", std::process::id(), RUNS.fetch_add(1, Ordering::Relaxed));
+        let script = std::env::temp_dir().join(name);
+        let mut options = OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        match options.open(&script) {
+            Ok(mut file) => {
+                file.write_all(SCRIPT.as_bytes())?;
+                return Ok(script);
+            }
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Err(io::Error::new(io::ErrorKind::AlreadyExists, "no free file name"))
 }
 
 fn run_runner(root: &Path, ruby: &str, script: &Path) -> Result<Vec<Route>, String> {
@@ -286,6 +312,16 @@ mod tests {
         tokio::join!(request(&loads, &a, Duration::ZERO, run.clone()), request(&loads, &b, Duration::ZERO, run));
         assert_eq!(runs.load(Ordering::SeqCst), 2);
         assert!(loads.known(&a) && !loads.known(Path::new("/c")));
+    }
+
+    #[test]
+    fn the_script_is_a_new_private_file_each_time() {
+        let (first, second) = (write_script().unwrap(), write_script().unwrap());
+        assert_ne!(first, second);
+        assert_eq!(std::fs::read_to_string(&first).unwrap(), SCRIPT);
+        #[cfg(unix)]
+        assert_eq!(std::os::unix::fs::PermissionsExt::mode(&std::fs::metadata(&first).unwrap().permissions()) & 0o777, 0o600);
+        let _ = (std::fs::remove_file(first), std::fs::remove_file(second));
     }
 
     #[test]

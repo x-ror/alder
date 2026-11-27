@@ -1300,8 +1300,11 @@ impl Backend {
             let handle = |outcome: std::result::Result<Vec<routes::Route>, String>| match outcome {
                 // `Rails/UnknownRoute` reads them.
                 Ok(routes) => {
+                    let message = format!("routes: loaded {} routes of {}", routes.len(), loaded.display());
                     publisher.routes.insert(loaded.clone(), Arc::new(routes));
                     publisher.publish_open();
+                    let client = publisher.client.clone();
+                    tokio::spawn(async move { client.log_message(MessageType::INFO, message).await });
                 }
                 Err(reason) => {
                     let (client, message) =
