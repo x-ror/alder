@@ -1,10 +1,10 @@
 #!/usr/bin/env ruby
-# A stand-in for Rails: answers only the extension's routes query (`bin/rails runner <ext>/ruby/routes.rb`)
+# A stand-in for Rails: answers only the language server's routes query (`bin/rails runner <script>`)
 # with the routes of config/routes.rb, so route helpers can be tried without installing Rails.
 require "json"
 
 script = ARGV[1].to_s
-unless ARGV[0] == "runner" && File.basename(script) == "routes.rb"
+unless ARGV[0] == "runner" && File.file?(script)
   warn "demo bin/rails only answers the routes query; use a real Rails app for `#{ARGV.join(" ")}`"
   exit 1
 end
